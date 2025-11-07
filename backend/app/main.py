@@ -21,7 +21,7 @@ app.add_middleware(
 app.include_router(hypothesis_testing.router, prefix="/api/hypothesis", tags=["Hypothesis Testing"])
 app.include_router(anova.router, prefix="/api/anova", tags=["ANOVA"])
 app.include_router(factorial.router, prefix="/api/factorial", tags=["Factorial Designs"])
-app.include_router(block_designs.router, prefix="/api/blocks", tags=["Block Designs"])
+app.include_router(block_designs.router, prefix="/api/block-designs", tags=["Block Designs"])
 app.include_router(mixed_models.router, prefix="/api/mixed", tags=["Mixed Models"])
 app.include_router(rsm.router, prefix="/api/rsm", tags=["Response Surface Methodology"])
 

@@ -29,10 +29,10 @@ function App() {
         <header className="bg-slate-800/50 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16">
-              <div className="flex items-center space-x-3">
+              <Link to="/" className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
                 <BarChart3 className="w-8 h-8 text-blue-400" />
                 <h1 className="text-2xl font-bold text-gray-100">MasterStat</h1>
-              </div>
+              </Link>
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
                 className="lg:hidden text-gray-200 p-2 rounded-md hover:bg-slate-700/50"

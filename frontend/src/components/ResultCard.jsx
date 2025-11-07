@@ -168,6 +168,193 @@ const ResultCard = ({ result }) => {
         </div>
       )}
 
+      {/* Alias Structure (for Fractional Factorial Designs) */}
+      {result.alias_structure && (
+        <div className="bg-gradient-to-r from-orange-900/30 to-red-900/30 rounded-xl p-5 border border-orange-500/30">
+          <h4 className="text-gray-100 font-bold text-lg mb-3 flex items-center">
+            <span className="mr-2">⚡</span>
+            Alias Structure (Confounding Pattern)
+          </h4>
+
+          {/* Resolution and basic info */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="bg-slate-800/50 rounded-lg p-3">
+              <p className="text-gray-300 text-xs">Resolution</p>
+              <p className="text-orange-300 text-xl font-bold">
+                {result.alias_structure.resolution}
+              </p>
+            </div>
+            <div className="bg-slate-800/50 rounded-lg p-3">
+              <p className="text-gray-300 text-xs">Fraction</p>
+              <p className="text-gray-100 text-lg font-semibold">
+                {result.fraction || 'N/A'}
+              </p>
+            </div>
+            <div className="bg-slate-800/50 rounded-lg p-3">
+              <p className="text-gray-300 text-xs">Runs</p>
+              <p className="text-gray-100 text-lg font-semibold">
+                {result.alias_structure.n_runs}
+              </p>
+            </div>
+            <div className="bg-slate-800/50 rounded-lg p-3">
+              <p className="text-gray-300 text-xs">Generators</p>
+              <p className="text-gray-100 text-lg font-semibold">
+                {result.alias_structure.n_generators}
+              </p>
+            </div>
+          </div>
+
+          {/* Defining Relations */}
+          {result.alias_structure.defining_relations && result.alias_structure.defining_relations.length > 0 && (
+            <div className="mb-4">
+              <p className="text-gray-300 text-sm font-semibold mb-2">Defining Relations:</p>
+              <div className="flex flex-wrap gap-2">
+                {result.alias_structure.defining_relations.map((rel, idx) => (
+                  <span
+                    key={idx}
+                    className="px-3 py-1 bg-orange-700/50 text-orange-100 rounded-full text-sm font-mono"
+                  >
+                    {rel.generated_factor} = {rel.generator}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Alias Information */}
+          {result.alias_structure.aliases && (
+            <div className="bg-slate-800/50 rounded-lg p-4">
+              <p className="text-gray-300 text-sm font-semibold mb-3">Confounding (Alias) Patterns:</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                {Object.entries(result.alias_structure.aliases)
+                  .filter(([_, aliases]) => aliases && aliases.length > 1)
+                  .map(([effect, aliases]) => (
+                    <div key={effect} className="flex items-start space-x-2">
+                      <span className="text-orange-400 font-mono">{effect}</span>
+                      <span className="text-gray-400">=</span>
+                      <span className="text-gray-200 font-mono">{aliases.slice(1).join(' = ')}</span>
+                    </div>
+                  ))}
+              </div>
+              <p className="text-gray-400 text-xs mt-3">
+                Effects shown above are confounded (aliased). The estimated effect represents the combined influence of all aliased terms.
+              </p>
+            </div>
+          )}
+
+          {/* Resolution explanation */}
+          <div className="mt-4 p-3 bg-slate-800/30 rounded-lg">
+            <p className="text-gray-300 text-xs">
+              {result.alias_structure.resolution === 'III' && (
+                <span>
+                  <strong>Resolution III:</strong> Main effects are confounded with 2-way interactions.
+                  Use when you believe interactions are negligible or for initial screening.
+                </span>
+              )}
+              {result.alias_structure.resolution === 'IV' && (
+                <span>
+                  <strong>Resolution IV:</strong> Main effects are clear, but 2-way interactions are confounded with each other.
+                  Suitable for screening with some interaction estimation.
+                </span>
+              )}
+              {result.alias_structure.resolution === 'V' && (
+                <span>
+                  <strong>Resolution V:</strong> Main effects and 2-way interactions are clear.
+                  Ideal for detailed analysis of main effects and interactions.
+                </span>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Variance Components (for Random Blocks) */}
+      {result.variance_components && (
+        <div className="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 rounded-xl p-5 border border-purple-500/30">
+          <h4 className="text-gray-100 font-bold text-lg mb-3 flex items-center">
+            <span className="mr-2">🔀</span>
+            Variance Components (Random Effects)
+          </h4>
+
+          {/* Block Type Badge */}
+          <div className="mb-4">
+            <span className="px-3 py-1 bg-purple-700/50 text-purple-100 rounded-full text-sm font-semibold">
+              {result.block_type === 'random' ? 'Random Blocks Model' : 'Mixed Model'}
+            </span>
+          </div>
+
+          {/* Variance Components Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="bg-slate-800/50 rounded-lg p-3">
+              <p className="text-gray-300 text-xs">Block Variance (σ²ᵦ)</p>
+              <p className="text-purple-300 text-xl font-bold">
+                {renderValue(result.variance_components.block_variance || result.variance_components.row_block_variance)}
+              </p>
+            </div>
+            <div className="bg-slate-800/50 rounded-lg p-3">
+              <p className="text-gray-300 text-xs">Residual Variance (σ²ₑ)</p>
+              <p className="text-gray-100 text-xl font-bold">
+                {renderValue(result.variance_components.residual_variance)}
+              </p>
+            </div>
+            <div className="bg-slate-800/50 rounded-lg p-3">
+              <p className="text-gray-300 text-xs">Total Variance</p>
+              <p className="text-gray-100 text-xl font-bold">
+                {renderValue(result.variance_components.total_variance)}
+              </p>
+            </div>
+            <div className="bg-slate-800/50 rounded-lg p-3">
+              <p className="text-gray-300 text-xs">ICC (ρ)</p>
+              <p className="text-purple-300 text-xl font-bold">
+                {renderValue(result.variance_components.icc)}
+              </p>
+              <p className="text-gray-400 text-[10px] mt-1">
+                {result.variance_components.icc > 0.1 ? 'High correlation' : 'Low correlation'}
+              </p>
+            </div>
+          </div>
+
+          {/* Model Fit Statistics */}
+          {(result.log_likelihood || result.aic || result.bic) && (
+            <div className="bg-slate-800/50 rounded-lg p-4">
+              <p className="text-gray-300 text-sm font-semibold mb-3">Model Fit Statistics:</p>
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                {result.log_likelihood !== undefined && (
+                  <div>
+                    <p className="text-gray-400 text-xs">Log-Likelihood</p>
+                    <p className="text-gray-100 font-mono">{renderValue(result.log_likelihood)}</p>
+                  </div>
+                )}
+                {result.aic !== undefined && (
+                  <div>
+                    <p className="text-gray-400 text-xs">AIC</p>
+                    <p className="text-gray-100 font-mono">{renderValue(result.aic)}</p>
+                  </div>
+                )}
+                {result.bic !== undefined && (
+                  <div>
+                    <p className="text-gray-400 text-xs">BIC</p>
+                    <p className="text-gray-100 font-mono">{renderValue(result.bic)}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ICC Explanation */}
+          <div className="mt-4 p-3 bg-slate-800/30 rounded-lg">
+            <p className="text-gray-300 text-xs">
+              <strong>Intraclass Correlation (ICC):</strong> Proportion of total variance due to blocks.
+              ICC = {renderValue(result.variance_components.icc)} means {(result.variance_components.icc * 100).toFixed(1)}%
+              of the variability is attributable to differences between blocks.
+              {result.variance_components.icc > 0.1 && (
+                <span className="text-purple-300"> High ICC justifies using random blocks model.</span>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Test Type */}
       {result.test_type && (
         <div>

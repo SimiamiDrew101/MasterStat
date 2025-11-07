@@ -10,6 +10,98 @@ from scipy import stats
 
 router = APIRouter()
 
+def calculate_alias_structure(factors: List[str], generators: List[str]) -> Dict[str, Any]:
+    """
+    Calculate alias structure for fractional factorial designs
+    Returns confounding patterns and resolution
+    """
+    from itertools import combinations
+
+    k = len(factors)
+    p = len(generators)
+
+    # Parse generators to get defining relations
+    defining_relations = []
+    for gen in generators:
+        if '=' in gen:
+            parts = gen.split('=')
+            if len(parts) == 2:
+                defining_relations.append({
+                    'generated_factor': parts[0].strip(),
+                    'generator': parts[1].strip()
+                })
+
+    # Build alias structure
+    # For a 2^(k-p) design, we have confounding
+    aliases = {}
+
+    # Main effects aliases
+    for factor in factors:
+        aliases[factor] = [factor]
+
+        # Check if this factor is confounded with any generator products
+        for rel in defining_relations:
+            if rel['generated_factor'] == factor:
+                aliases[factor].append(rel['generator'])
+
+    # Two-way interaction aliases
+    for i in range(k):
+        for j in range(i+1, k):
+            interaction = f"{factors[i]}×{factors[j]}"
+            aliases[interaction] = [interaction]
+
+            # Check confounding with other interactions or main effects
+            for rel in defining_relations:
+                gen = rel['generator']
+                # Simple check - if both factors in interaction are in generator
+                if factors[i] in gen and factors[j] in gen:
+                    # Confounded with higher order or other interaction
+                    other_factors = [f for f in factors if f not in [factors[i], factors[j]] and f in gen]
+                    if other_factors:
+                        aliases[interaction].append(gen)
+
+    # Determine resolution
+    # Resolution III: Main effects confounded with 2-way interactions
+    # Resolution IV: Main effects clear, 2-way interactions confounded with each other
+    # Resolution V: Main effects and 2-way interactions clear
+
+    resolution = "V"  # Default to highest
+
+    # Check if any main effect has more than just itself in alias
+    for factor in factors:
+        if len(aliases[factor]) > 1:
+            # Check if confounded with 2-way interaction
+            for alias in aliases[factor][1:]:
+                if len(alias) >= 2 and all(f in factors for f in alias):
+                    resolution = "III"
+                    break
+        if resolution == "III":
+            break
+
+    if resolution != "III":
+        # Check if 2-way interactions are confounded
+        for interaction_key in aliases:
+            if '×' in interaction_key and len(aliases[interaction_key]) > 1:
+                resolution = "IV"
+                break
+
+    # Adjust resolution based on fraction size
+    if p == 1:
+        resolution = max(resolution, "IV") if k <= 5 else "III"
+    elif p == 2:
+        resolution = "III"
+    elif p >= 3:
+        resolution = "III"
+
+    return {
+        "resolution": resolution,
+        "defining_relations": defining_relations,
+        "aliases": aliases,
+        "n_factors": k,
+        "n_generators": p,
+        "n_runs": 2**(k-p)
+    }
+
 def generate_factorial_interpretation(results: dict, factors: list, alpha: float,
                                       r_squared: float, adj_r_squared: float,
                                       has_replicates: bool) -> dict:
@@ -126,6 +218,14 @@ class FractionalFactorialRequest(BaseModel):
     factors: int = Field(..., description="Number of factors (k)")
     fraction: str = Field(..., description="Fraction specification (e.g., '1/2', '1/4')")
     generator: Optional[str] = Field(None, description="Generator for fractional design (e.g., 'D=ABC')")
+
+class FractionalFactorialAnalysisRequest(BaseModel):
+    data: List[Dict[str, Union[str, float]]] = Field(..., description="Experimental data")
+    factors: List[str] = Field(..., description="List of factor names")
+    response: str = Field(..., description="Response variable name")
+    alpha: float = Field(0.05, description="Significance level")
+    generators: List[str] = Field(..., description="Generator relationships (e.g., ['D=ABC', 'E=ABD'])")
+    fraction: str = Field(..., description="Fraction specification (e.g., '1/2', '1/4')")
 
 @router.post("/full-factorial")
 async def full_factorial_analysis(request: FactorialDesignRequest):
@@ -536,6 +636,189 @@ async def three_level_factorial_analysis(request: FactorialDesignRequest):
             "main_effects_plot_data": main_effects_plot_data,
             "response_name": request.response,
             "model_summary": str(model.summary()),
+            "interpretation": interpretation
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/fractional-factorial/analyze")
+async def fractional_factorial_analysis(request: FractionalFactorialAnalysisRequest):
+    """
+    Analyze fractional factorial design with alias structure
+    """
+    try:
+        df = pd.DataFrame(request.data)
+
+        # Calculate alias structure
+        alias_info = calculate_alias_structure(request.factors, request.generators)
+
+        # Rename columns to avoid conflicts
+        column_mapping = {}
+        for factor in request.factors:
+            column_mapping[factor] = f"factor_{factor}"
+        column_mapping[request.response] = f"response_{request.response}"
+
+        df_renamed = df.rename(columns=column_mapping)
+
+        # Build formula with renamed columns
+        renamed_factors = [f"factor_{f}" for f in request.factors]
+        renamed_response = f"response_{request.response}"
+        factor_terms = [f"C({f})" for f in renamed_factors]
+
+        # For fractional designs, include main effects and 2-way interactions
+        # Note: Some will be aliased/confounded
+        main_effects = " + ".join(factor_terms)
+        interactions = []
+        for i in range(len(factor_terms)):
+            for j in range(i+1, len(factor_terms)):
+                interactions.append(f"{factor_terms[i]}:{factor_terms[j]}")
+
+        if interactions:
+            formula = f"{renamed_response} ~ {main_effects} + {' + '.join(interactions)}"
+        else:
+            formula = f"{renamed_response} ~ {main_effects}"
+
+        # Fit model
+        try:
+            model = ols(formula, data=df_renamed).fit()
+            anova_table = sm.stats.anova_lm(model, typ=2)
+        except Exception as e:
+            # If full model doesn't fit (insufficient data), fit main effects only
+            formula = f"{renamed_response} ~ {main_effects}"
+            model = ols(formula, data=df_renamed).fit()
+            anova_table = sm.stats.anova_lm(model, typ=2)
+
+        # Parse ANOVA results
+        results = {}
+        for idx, row in anova_table.iterrows():
+            source = str(idx)
+
+            # Clean up source names
+            for factor in request.factors:
+                source = source.replace(f"C(factor_{factor})", factor)
+                source = source.replace(f"factor_{factor}", factor)
+
+            results[source] = {
+                "sum_sq": round(float(row['sum_sq']), 4),
+                "df": int(row['df']),
+                "F": round(float(row['F']), 4) if not pd.isna(row['F']) else None,
+                "p_value": round(float(row['PR(>F)']), 6) if not pd.isna(row['PR(>F)']) else None,
+                "significant": bool(row['PR(>F)'] < request.alpha) if not pd.isna(row['PR(>F)']) else False
+            }
+
+        # Calculate effect estimates for 2-level designs
+        effects = {}
+        for factor in request.factors:
+            if df[factor].nunique() == 2:
+                levels = sorted(df[factor].unique())
+                high = df[df[factor] == levels[1]][request.response].mean()
+                low = df[df[factor] == levels[0]][request.response].mean()
+
+                if pd.notna(high) and pd.notna(low):
+                    effects[factor] = round(float(high - low), 4)
+                else:
+                    effects[factor] = 0.0
+
+        # Calculate residuals and fitted values
+        fitted_values = model.fittedvalues.values
+        residuals = model.resid.values
+        mse = np.mean(residuals**2)
+
+        if mse > 0:
+            standardized_residuals = residuals / np.sqrt(mse)
+        else:
+            standardized_residuals = residuals
+
+        # Replace any NaN or inf with 0
+        fitted_values = np.nan_to_num(fitted_values, nan=0.0, posinf=0.0, neginf=0.0)
+        residuals = np.nan_to_num(residuals, nan=0.0, posinf=0.0, neginf=0.0)
+        standardized_residuals = np.nan_to_num(standardized_residuals, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # Prepare effect magnitudes for Pareto chart
+        effect_magnitudes = []
+        for name, value in effects.items():
+            effect_magnitudes.append({
+                "name": name,
+                "effect": value,
+                "abs_effect": abs(value)
+            })
+
+        # Calculate 2-way interaction effects for fractional designs
+        k = len(request.factors)
+        for i in range(k):
+            for j in range(i+1, k):
+                if df[request.factors[i]].nunique() == 2 and df[request.factors[j]].nunique() == 2:
+                    f1, f2 = request.factors[i], request.factors[j]
+                    levels_f1 = sorted(df[f1].unique())
+                    levels_f2 = sorted(df[f2].unique())
+
+                    try:
+                        high_high = df[(df[f1] == levels_f1[1]) & (df[f2] == levels_f2[1])][request.response].mean()
+                        high_low = df[(df[f1] == levels_f1[1]) & (df[f2] == levels_f2[0])][request.response].mean()
+                        low_high = df[(df[f1] == levels_f1[0]) & (df[f2] == levels_f2[1])][request.response].mean()
+                        low_low = df[(df[f1] == levels_f1[0]) & (df[f2] == levels_f2[0])][request.response].mean()
+
+                        if pd.notna(high_high) and pd.notna(high_low) and pd.notna(low_high) and pd.notna(low_low):
+                            interaction_effect = ((high_high + low_low) - (high_low + low_high)) / 2
+
+                            effect_magnitudes.append({
+                                "name": f"{f1} × {f2}",
+                                "effect": float(interaction_effect),
+                                "abs_effect": abs(float(interaction_effect))
+                            })
+                    except:
+                        pass  # Skip if interaction can't be calculated
+
+        # Sort by absolute magnitude
+        effect_magnitudes.sort(key=lambda x: x['abs_effect'], reverse=True)
+
+        # Main effects plot data
+        main_effects_plot_data = {}
+        for factor in request.factors:
+            levels = sorted(df[factor].unique())
+            means = [df[df[factor] == level][request.response].mean() for level in levels]
+            valid_means = [round(float(m), 4) if pd.notna(m) else 0.0 for m in means]
+
+            main_effects_plot_data[factor] = {
+                "levels": [str(l) for l in levels],
+                "means": valid_means
+            }
+
+        # Generate interpretation
+        interpretation = generate_factorial_interpretation(
+            results=results,
+            factors=request.factors,
+            alpha=request.alpha,
+            r_squared=model.rsquared,
+            adj_r_squared=model.rsquared_adj,
+            has_replicates=False
+        )
+
+        # Add fractional design specific warnings
+        if alias_info['resolution'] == "III":
+            interpretation['recommendations'].insert(0,
+                "⚠️ Resolution III design: Main effects are confounded with 2-way interactions. Interpret results carefully and consider follow-up experiments.")
+        elif alias_info['resolution'] == "IV":
+            interpretation['recommendations'].insert(0,
+                "⚡ Resolution IV design: Main effects are clear, but 2-way interactions are confounded with each other.")
+
+        return {
+            "test_type": f"2^({len(request.factors)}-{len(request.generators)}) Fractional Factorial Design",
+            "n_factors": len(request.factors),
+            "factors": request.factors,
+            "fraction": request.fraction,
+            "alpha": request.alpha,
+            "alias_structure": alias_info,
+            "anova_table": results,
+            "main_effects": effects,
+            "model_r_squared": round(float(model.rsquared), 4),
+            "model_adj_r_squared": round(float(model.rsquared_adj), 4),
+            "residuals": [round(float(r), 4) for r in residuals],
+            "fitted_values": [round(float(f), 4) for f in fitted_values],
+            "standardized_residuals": [round(float(r), 4) for r in standardized_residuals],
+            "effect_magnitudes": effect_magnitudes,
+            "main_effects_plot_data": main_effects_plot_data,
+            "response_name": request.response,
             "interpretation": interpretation
         }
     except Exception as e:
