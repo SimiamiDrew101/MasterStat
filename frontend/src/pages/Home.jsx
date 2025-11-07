@@ -1,0 +1,125 @@
+import { Link } from 'react-router-dom'
+import { TrendingUp, Database, Beaker, Grid, Layers, Mountain } from 'lucide-react'
+
+const Home = () => {
+  const features = [
+    {
+      icon: <TrendingUp className="w-12 h-12" />,
+      title: 'Hypothesis Testing',
+      description: 't-tests, F-tests, Z-tests with confidence intervals',
+      path: '/hypothesis',
+      color: 'from-blue-400 to-blue-600'
+    },
+    {
+      icon: <Database className="w-12 h-12" />,
+      title: 'ANOVA',
+      description: 'One-way, Two-way, and Post-hoc analysis',
+      path: '/anova',
+      color: 'from-green-400 to-green-600'
+    },
+    {
+      icon: <Beaker className="w-12 h-12" />,
+      title: 'Factorial Designs',
+      description: 'Full and fractional factorial experiments',
+      path: '/factorial',
+      color: 'from-purple-400 to-purple-600'
+    },
+    {
+      icon: <Grid className="w-12 h-12" />,
+      title: 'Block Designs',
+      description: 'RCBD, Latin Squares, and blocking strategies',
+      path: '/blocks',
+      color: 'from-pink-400 to-pink-600'
+    },
+    {
+      icon: <Layers className="w-12 h-12" />,
+      title: 'Mixed Models',
+      description: 'Split-plot, nested designs, variance components',
+      path: '/mixed',
+      color: 'from-indigo-400 to-indigo-600'
+    },
+    {
+      icon: <Mountain className="w-12 h-12" />,
+      title: 'Response Surface',
+      description: 'RSM, CCD, steepest ascent optimization',
+      path: '/rsm',
+      color: 'from-orange-400 to-orange-600'
+    }
+  ]
+
+  return (
+    <div className="space-y-8">
+      {/* Hero Section */}
+      <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-8 border border-slate-700/50">
+        <h1 className="text-4xl md:text-5xl font-bold text-gray-100 mb-4">
+          Welcome to MasterStat
+        </h1>
+        <p className="text-xl text-gray-300 mb-6">
+          Your comprehensive statistical analysis toolkit for experimental design and ANOVA
+        </p>
+        <div className="flex flex-wrap gap-4 text-sm text-gray-300">
+          <div className="bg-slate-700/50 px-4 py-2 rounded-full">
+            ✓ 15+ Statistical Methods
+          </div>
+          <div className="bg-slate-700/50 px-4 py-2 rounded-full">
+            ✓ Real-time Calculations
+          </div>
+          <div className="bg-slate-700/50 px-4 py-2 rounded-full">
+            ✓ Beautiful Visualizations
+          </div>
+          <div className="bg-slate-700/50 px-4 py-2 rounded-full">
+            ✓ Export Results
+          </div>
+        </div>
+      </div>
+
+      {/* Features Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {features.map((feature, index) => (
+          <Link
+            key={index}
+            to={feature.path}
+            className="group bg-slate-800/50 backdrop-blur-lg rounded-xl p-6 border border-slate-700/50 hover:bg-slate-700/50 transition-all duration-300 hover:scale-105"
+          >
+            <div className={`w-16 h-16 rounded-lg bg-gradient-to-br ${feature.color} flex items-center justify-center text-white mb-4 group-hover:scale-110 transition-transform duration-300`}>
+              {feature.icon}
+            </div>
+            <h3 className="text-xl font-bold text-gray-100 mb-2">{feature.title}</h3>
+            <p className="text-gray-300">{feature.description}</p>
+          </Link>
+        ))}
+      </div>
+
+      {/* Quick Start */}
+      <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-8 border border-slate-700/50">
+        <h2 className="text-2xl font-bold text-gray-100 mb-4">Quick Start Guide</h2>
+        <ol className="space-y-3 text-gray-300">
+          <li className="flex items-start space-x-3">
+            <span className="bg-slate-700/50 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
+            <span>Select a statistical method from the sidebar or cards above</span>
+          </li>
+          <li className="flex items-start space-x-3">
+            <span className="bg-slate-700/50 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
+            <span>Enter your data manually using the input forms</span>
+          </li>
+          <li className="flex items-start space-x-3">
+            <span className="bg-slate-700/50 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
+            <span>Configure analysis parameters (significance level, test type, etc.)</span>
+          </li>
+          <li className="flex items-start space-x-3">
+            <span className="bg-slate-700/50 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5">4</span>
+            <span>View comprehensive results with visualizations and interpretations</span>
+          </li>
+        </ol>
+      </div>
+
+      {/* Footer */}
+      <div className="text-center text-gray-400 text-sm">
+        <p>Powered by Python, FastAPI, React, and Tailwind CSS</p>
+        <p className="mt-1">Statistical computations using scipy, statsmodels, and pandas</p>
+      </div>
+    </div>
+  )
+}
+
+export default Home
