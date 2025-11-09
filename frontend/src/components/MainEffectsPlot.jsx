@@ -1,4 +1,10 @@
+import { useRef } from 'react'
+import { Download } from 'lucide-react'
+import { exportMultipleSvgsToPng } from '../utils/exportChart'
+
 const MainEffectsPlot = ({ data, title = "Main Effects Plot" }) => {
+  const svgRefs = useRef([])
+
   if (!data || Object.keys(data).length === 0) return null
 
   const factors = Object.keys(data)
@@ -30,7 +36,23 @@ const MainEffectsPlot = ({ data, title = "Main Effects Plot" }) => {
 
   return (
     <div className="bg-slate-700/50 rounded-lg p-6">
-      <h4 className="text-gray-100 font-semibold mb-4">{title}</h4>
+      <div className="flex items-center justify-between mb-4">
+        <h4 className="text-gray-100 font-semibold">{title}</h4>
+        <button
+          type="button"
+          onClick={() => {
+            const validRefs = svgRefs.current.filter(ref => ref !== null)
+            if (validRefs.length > 0) {
+              exportMultipleSvgsToPng(validRefs, `main-effects-plot-${new Date().toISOString().split('T')[0]}`)
+            }
+          }}
+          className="px-3 py-2 rounded-lg text-sm font-medium bg-slate-600/50 text-gray-300 hover:bg-slate-600 transition-all flex items-center space-x-2"
+          title="Export as PNG"
+        >
+          <Download className="w-4 h-4" />
+          <span>Export PNG</span>
+        </button>
+      </div>
       <p className="text-gray-300 text-sm mb-4">
         Steeper slopes indicate larger main effects. Horizontal lines indicate no effect.
       </p>
@@ -49,7 +71,11 @@ const MainEffectsPlot = ({ data, title = "Main Effects Plot" }) => {
             const xScale = (index) => (index / (numLevels - 1)) * innerWidth
 
             return (
-              <svg key={factorIndex} width={plotWidth} height={plotHeight}>
+              <svg
+                key={factorIndex}
+                ref={(el) => svgRefs.current[factorIndex] = el}
+                width={plotWidth}
+                height={plotHeight}>
                 <g transform={`translate(${margin.left}, ${margin.top})`}>
                   {/* Grid lines */}
                   {[0, 0.25, 0.5, 0.75, 1].map((fraction, i) => (

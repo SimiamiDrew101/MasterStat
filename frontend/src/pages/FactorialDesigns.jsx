@@ -25,12 +25,23 @@ const FactorialDesigns = () => {
   const numCols = factors.length + 1 // factors + response
   const numFactors = factors.length
 
-  // Update factor names when switching to fractional design (needs at least 4 factors)
+  // Update factor names when switching to fractional design or changing fraction
   useEffect(() => {
-    if (designType === 'fractional' && numFactors < 4 && numFactors > 0) {
-      setFactorNames('A,B,C,D')
+    if (designType === 'fractional') {
+      // Determine minimum factors needed for the selected fraction
+      const minFactorsNeeded = {
+        '1/2': 4,
+        '1/4': 4,
+        '1/8': 5,
+      }[fraction] || 4
+
+      // Auto-expand factor names if we don't have enough
+      if (numFactors < minFactorsNeeded) {
+        const factorLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+        setFactorNames(factorLetters.slice(0, minFactorsNeeded).join(','))
+      }
     }
-  }, [designType])
+  }, [designType, fraction])
 
   // Generate random number from normal distribution using Box-Muller transform
   const randomNormal = (mean = 65, stdDev = 15) => {
@@ -64,7 +75,7 @@ const FactorialDesigns = () => {
   }
 
   // Generate fractional factorial design runs
-  const generateFractionalFactorialRuns = (numFactors, fraction, gens) => {
+  const generateFractionalFactorialRuns = (numFactors, fraction, gens, replicates = 1) => {
     if (numFactors < 3) return []
 
     // Determine number of base factors and generators
@@ -89,7 +100,7 @@ const FactorialDesigns = () => {
     }
 
     // Add generated columns based on generators
-    const runs = baseRuns.map(baseRun => {
+    const runsWithoutReplicates = baseRuns.map(baseRun => {
       const fullRun = [...baseRun]
 
       // Apply each generator
@@ -112,9 +123,16 @@ const FactorialDesigns = () => {
         }
       })
 
-      fullRun.push('') // Add empty response column
       return fullRun
     })
+
+    // Add replication
+    const runs = []
+    for (const run of runsWithoutReplicates) {
+      for (let rep = 0; rep < replicates; rep++) {
+        runs.push([...run, '']) // Add copy of run with empty response column
+      }
+    }
 
     return runs
   }
@@ -155,12 +173,22 @@ const FactorialDesigns = () => {
   // Get default generators for common fractional designs
   const getDefaultGenerators = (k, frac) => {
     const designs = {
+      // Half-fraction designs (1/2)
       '4-1/2': ['D=ABC'],
       '5-1/2': ['E=ABCD'],
-      '5-1/4': ['D=AB', 'E=AC'],
       '6-1/2': ['F=ABCDE'],
-      '6-1/4': ['E=ABC', 'F=BCD'],
-      '7-1/4': ['F=ABC', 'G=BCD'],
+      '7-1/2': ['G=ABCDEF'],
+
+      // Quarter-fraction designs (1/4)
+      '4-1/4': ['C=AB', 'D=AC'],  // 2^(4-2)
+      '5-1/4': ['D=AB', 'E=AC'],   // 2^(5-2)
+      '6-1/4': ['E=ABC', 'F=BCD'], // 2^(6-2)
+      '7-1/4': ['F=ABCD', 'G=ABCE'], // 2^(7-2)
+
+      // One-eighth fraction designs (1/8)
+      '5-1/8': ['C=AB', 'D=AC', 'E=BC'],     // 2^(5-3)
+      '6-1/8': ['D=AB', 'E=AC', 'F=BC'],     // 2^(6-3)
+      '7-1/8': ['E=ABC', 'F=ABD', 'G=ACD'],  // 2^(7-3)
     }
     const key = `${k}-${frac}`
     return designs[key] || []
@@ -199,7 +227,7 @@ const FactorialDesigns = () => {
     if (designType === 'fractional') {
       // Fractional factorial design
       if (numFactors >= 4 && generators.length > 0) {
-        const newRuns = generateFractionalFactorialRuns(numFactors, fraction, generators)
+        const newRuns = generateFractionalFactorialRuns(numFactors, fraction, generators, numReplicates)
 
         // Add sample response values with factor effects
         const responses = generateFractionalResponses(newRuns)
@@ -451,7 +479,7 @@ const FactorialDesigns = () => {
                 <option value="1/8">1/8 Fraction (Eighth the runs)</option>
               </select>
               <p className="text-gray-400 text-xs mt-1">
-                Smaller fractions = fewer runs but more confounding. Requires at least 4 factors.
+                Smaller fractions = fewer runs but more confounding. Requires 4+ factors (1/2, 1/4) or 5+ factors (1/8).
               </p>
             </div>
           )}
@@ -478,13 +506,13 @@ const FactorialDesigns = () => {
                     These generators define which effects are confounded. Default generators for common designs are shown.
                   </p>
                 </div>
-              ) : numFactors > 0 && numFactors < 4 ? (
+              ) : numFactors > 0 && numFactors < (fraction === '1/8' ? 5 : 4) ? (
                 <div className="bg-orange-900/20 rounded-lg p-4 border border-orange-700/30">
                   <p className="text-orange-300 text-sm">
-                    ⚠️ Fractional factorial designs require at least 4 factors. Currently you have {numFactors} factor{numFactors !== 1 ? 's' : ''}.
+                    ⚠️ {fraction === '1/8' ? 'One-eighth fraction' : 'Fractional factorial'} designs require at least {fraction === '1/8' ? '5' : '4'} factors. Currently you have {numFactors} factor{numFactors !== 1 ? 's' : ''}.
                   </p>
                   <p className="text-orange-200/70 text-xs mt-2">
-                    Add more factors (e.g., "A,B,C,D") to generate a fractional design.
+                    Add more factors to generate a {fraction} fractional design. (Auto-updating...)
                   </p>
                 </div>
               ) : null}
@@ -674,8 +702,8 @@ const FactorialDesigns = () => {
             />
           </div>
 
-          {/* Number of Replicates (2k only) */}
-          {designType === '2k' && (
+          {/* Number of Replicates (2k and fractional) */}
+          {(designType === '2k' || designType === 'fractional') && (
             <div>
               <label className="block text-gray-100 font-medium mb-2">
                 Number of Replicates
@@ -689,7 +717,7 @@ const FactorialDesigns = () => {
                 className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
               <p className="text-gray-400 text-xs mt-1">
-                Replicates allow estimation of pure error for lack-of-fit testing. Each treatment combination will be run {numReplicates} time{numReplicates > 1 ? 's' : ''}.
+                Replicates allow estimation of pure error for lack-of-fit testing. Each {designType === 'fractional' ? 'run' : 'treatment combination'} will be repeated {numReplicates} time{numReplicates > 1 ? 's' : ''}.
               </p>
             </div>
           )}

@@ -1,8 +1,15 @@
 import { Link } from 'react-router-dom'
-import { TrendingUp, Database, Beaker, Grid, Layers, Mountain } from 'lucide-react'
+import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target } from 'lucide-react'
 
 const Home = () => {
   const features = [
+    {
+      icon: <Target className="w-12 h-12" />,
+      title: 'Experiment Planning',
+      description: 'Sample size, power analysis, effect size calculations',
+      path: '/planning',
+      color: 'from-cyan-400 to-cyan-600'
+    },
     {
       icon: <TrendingUp className="w-12 h-12" />,
       title: 'Hypothesis Testing',
@@ -44,6 +51,13 @@ const Home = () => {
       description: 'RSM, CCD, steepest ascent optimization',
       path: '/rsm',
       color: 'from-orange-400 to-orange-600'
+    },
+    {
+      icon: <Network className="w-12 h-12" />,
+      title: 'Bayesian DOE',
+      description: 'Bayesian inference, sequential designs, optimal uncertainty',
+      path: '/bayesian-doe',
+      color: 'from-purple-400 to-purple-600'
     }
   ]
 
@@ -59,16 +73,16 @@ const Home = () => {
         </p>
         <div className="flex flex-wrap gap-4 text-sm text-gray-300">
           <div className="bg-slate-700/50 px-4 py-2 rounded-full">
-            ✓ 15+ Statistical Methods
+            ✓ 20+ Statistical Methods
+          </div>
+          <div className="bg-slate-700/50 px-4 py-2 rounded-full">
+            ✓ Power Analysis & Planning
           </div>
           <div className="bg-slate-700/50 px-4 py-2 rounded-full">
             ✓ Real-time Calculations
           </div>
           <div className="bg-slate-700/50 px-4 py-2 rounded-full">
             ✓ Beautiful Visualizations
-          </div>
-          <div className="bg-slate-700/50 px-4 py-2 rounded-full">
-            ✓ Export Results
           </div>
         </div>
       </div>

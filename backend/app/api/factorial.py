@@ -12,7 +12,7 @@ router = APIRouter()
 
 def calculate_alias_structure(factors: List[str], generators: List[str]) -> Dict[str, Any]:
     """
-    Calculate alias structure for fractional factorial designs
+    Calculate alias structure for fractional factorial designs using proper algebra
     Returns confounding patterns and resolution
     """
     from itertools import combinations
@@ -20,86 +20,96 @@ def calculate_alias_structure(factors: List[str], generators: List[str]) -> Dict
     k = len(factors)
     p = len(generators)
 
-    # Parse generators to get defining relations
-    defining_relations = []
+    # Helper function to multiply two effects (XOR operation for 2-level designs)
+    def multiply_effects(effect1: str, effect2: str) -> str:
+        """Multiply two effects using modulo 2 algebra"""
+        # Convert effects to sets of factors
+        set1 = set(effect1.replace('I', ''))
+        set2 = set(effect2.replace('I', ''))
+
+        # XOR operation: symmetric difference
+        result = set1.symmetric_difference(set2)
+
+        if len(result) == 0:
+            return 'I'
+        return ''.join(sorted(result))
+
+    # Parse generators and create defining contrast words
+    defining_words = ['I']  # Start with identity
+    generator_dict = {}
+
     for gen in generators:
         if '=' in gen:
             parts = gen.split('=')
             if len(parts) == 2:
-                defining_relations.append({
-                    'generated_factor': parts[0].strip(),
-                    'generator': parts[1].strip()
-                })
+                left = parts[0].strip()
+                right = parts[1].strip()
+                generator_dict[left] = right
+                # Defining word is left * right (e.g., D=ABC gives I=ABCD)
+                word = multiply_effects(left, right)
+                defining_words.append(word)
 
-    # Build alias structure
-    # For a 2^(k-p) design, we have confounding
+    # Generate all defining relation words by multiplying combinations
+    all_words = set(defining_words)
+    for i in range(len(defining_words)):
+        for j in range(i+1, len(defining_words)):
+            new_word = multiply_effects(defining_words[i], defining_words[j])
+            all_words.add(new_word)
+            # For p >= 3, also get 3-way products
+            if p >= 3:
+                for m in range(j+1, len(defining_words)):
+                    three_way = multiply_effects(new_word, defining_words[m])
+                    all_words.add(three_way)
+
+    all_words.discard('I')
+    defining_words = sorted(list(all_words))
+
+    # Calculate aliases for main effects
     aliases = {}
 
-    # Main effects aliases
+    # Main effects
     for factor in factors:
-        aliases[factor] = [factor]
+        aliases_list = []
+        for word in defining_words:
+            alias = multiply_effects(factor, word)
+            if alias != 'I' and alias != factor:
+                aliases_list.append(alias)
+        aliases[factor] = [factor] + (aliases_list[:3] if len(aliases_list) > 3 else aliases_list)
 
-        # Check if this factor is confounded with any generator products
-        for rel in defining_relations:
-            if rel['generated_factor'] == factor:
-                aliases[factor].append(rel['generator'])
-
-    # Two-way interaction aliases
+    # Two-factor interactions
     for i in range(k):
         for j in range(i+1, k):
-            interaction = f"{factors[i]}×{factors[j]}"
-            aliases[interaction] = [interaction]
-
-            # Check confounding with other interactions or main effects
-            for rel in defining_relations:
-                gen = rel['generator']
-                # Simple check - if both factors in interaction are in generator
-                if factors[i] in gen and factors[j] in gen:
-                    # Confounded with higher order or other interaction
-                    other_factors = [f for f in factors if f not in [factors[i], factors[j]] and f in gen]
-                    if other_factors:
-                        aliases[interaction].append(gen)
+            interaction = factors[i] + factors[j]
+            interaction_display = f"{factors[i]}×{factors[j]}"
+            aliases_list = []
+            for word in defining_words:
+                alias = multiply_effects(interaction, word)
+                if alias != 'I' and alias != interaction:
+                    aliases_list.append(alias)
+            aliases[interaction_display] = [interaction] + (aliases_list[:3] if len(aliases_list) > 3 else aliases_list)
 
     # Determine resolution
-    # Resolution III: Main effects confounded with 2-way interactions
-    # Resolution IV: Main effects clear, 2-way interactions confounded with each other
-    # Resolution V: Main effects and 2-way interactions clear
+    min_word_length = min([len(w) for w in defining_words]) if defining_words else 999
 
-    resolution = "V"  # Default to highest
+    # Resolution is the length of the shortest word in defining relation
+    # Convert to Roman numerals
+    resolution_map = {3: "III", 4: "IV", 5: "V", 6: "VI", 7: "VII", 8: "VIII"}
+    resolution = resolution_map.get(min_word_length, str(min_word_length))
 
-    # Check if any main effect has more than just itself in alias
-    for factor in factors:
-        if len(aliases[factor]) > 1:
-            # Check if confounded with 2-way interaction
-            for alias in aliases[factor][1:]:
-                if len(alias) >= 2 and all(f in factors for f in alias):
-                    resolution = "III"
-                    break
-        if resolution == "III":
-            break
-
-    if resolution != "III":
-        # Check if 2-way interactions are confounded
-        for interaction_key in aliases:
-            if '×' in interaction_key and len(aliases[interaction_key]) > 1:
-                resolution = "IV"
-                break
-
-    # Adjust resolution based on fraction size
-    if p == 1:
-        resolution = max(resolution, "IV") if k <= 5 else "III"
-    elif p == 2:
-        resolution = "III"
-    elif p >= 3:
-        resolution = "III"
+    # Format defining relations for display
+    defining_relations_display = []
+    for word in sorted(defining_words)[:5]:  # Show first 5
+        defining_relations_display.append(f"I = {word}")
 
     return {
         "resolution": resolution,
-        "defining_relations": defining_relations,
+        "defining_relations": defining_relations_display,
+        "defining_words": defining_words,
         "aliases": aliases,
         "n_factors": k,
         "n_generators": p,
-        "n_runs": 2**(k-p)
+        "n_runs": 2**(k-p),
+        "generators": [f"{k}={v}" for k, v in generator_dict.items()]
     }
 
 def generate_factorial_interpretation(results: dict, factors: list, alpha: float,
@@ -445,6 +455,42 @@ async def full_factorial_analysis(request: FactorialDesignRequest):
                 "means": valid_means
             }
 
+        # Interaction plots data (for all 2-way interactions)
+        interaction_plots_data = {}
+        if len(request.factors) >= 2:
+            for i in range(len(request.factors)):
+                for j in range(i+1, len(request.factors)):
+                    f1, f2 = request.factors[i], request.factors[j]
+
+                    # Get sorted levels
+                    levels_f1 = sorted(df[f1].unique())
+                    levels_f2 = sorted(df[f2].unique())
+
+                    # For each level of f2, calculate means at each level of f1
+                    plot_data = {
+                        "x_factor": f1,
+                        "line_factor": f2,
+                        "x_levels": [str(l) for l in levels_f1],
+                        "lines": []
+                    }
+
+                    for level_f2 in levels_f2:
+                        means_at_f2 = []
+                        for level_f1 in levels_f1:
+                            subset = df[(df[f1] == level_f1) & (df[f2] == level_f2)]
+                            if len(subset) > 0:
+                                mean_val = subset[request.response].mean()
+                                means_at_f2.append(round(float(mean_val), 4) if pd.notna(mean_val) else None)
+                            else:
+                                means_at_f2.append(None)
+
+                        plot_data["lines"].append({
+                            "label": str(level_f2),
+                            "values": means_at_f2
+                        })
+
+                    interaction_plots_data[f"{f1}×{f2}"] = plot_data
+
         # Generate interpretation and recommendations
         interpretation = generate_factorial_interpretation(
             results=results,
@@ -497,6 +543,7 @@ async def full_factorial_analysis(request: FactorialDesignRequest):
             "standardized_residuals": [round(float(r), 4) for r in standardized_residuals],
             "effect_magnitudes": effect_magnitudes,
             "main_effects_plot_data": main_effects_plot_data,
+            "interaction_plots_data": interaction_plots_data,
             "cube_data": cube_data,
             "response_name": request.response,
             "interpretation": interpretation
@@ -688,6 +735,21 @@ async def fractional_factorial_analysis(request: FractionalFactorialAnalysisRequ
             model = ols(formula, data=df_renamed).fit()
             anova_table = sm.stats.anova_lm(model, typ=2)
 
+        # Group by all factors to find replicates
+        grouped = df.groupby(request.factors)[request.response]
+        has_replicates = any(grouped.count() > 1)
+        pure_error_ss = 0.0
+        pure_error_df = 0
+
+        if has_replicates:
+            # Calculate pure error from within-group variation
+            for name, group in grouped:
+                if len(group) > 1:
+                    group_var = group.var(ddof=1)
+                    if pd.notna(group_var):
+                        pure_error_ss += group_var * (len(group) - 1)
+                        pure_error_df += len(group) - 1
+
         # Parse ANOVA results
         results = {}
         for idx, row in anova_table.iterrows():
@@ -705,6 +767,42 @@ async def fractional_factorial_analysis(request: FractionalFactorialAnalysisRequ
                 "p_value": round(float(row['PR(>F)']), 6) if not pd.isna(row['PR(>F)']) else None,
                 "significant": bool(row['PR(>F)'] < request.alpha) if not pd.isna(row['PR(>F)']) else False
             }
+
+        # Add pure error and lack of fit if we have replicates
+        if has_replicates and pure_error_df > 0:
+            # Get residual row from results
+            residual_ss = results.get('Residual', {}).get('sum_sq', 0)
+            residual_df = results.get('Residual', {}).get('df', 0)
+
+            # Lack of fit = Residual - Pure Error
+            lof_ss = residual_ss - pure_error_ss
+            lof_df = residual_df - pure_error_df
+
+            if lof_df > 0 and pure_error_df > 0:
+                lof_ms = lof_ss / lof_df
+                pure_error_ms = pure_error_ss / pure_error_df
+
+                # F-test for lack of fit
+                if pure_error_ms > 0:
+                    f_lof = lof_ms / pure_error_ms
+                    p_lof = 1 - stats.f.cdf(f_lof, lof_df, pure_error_df)
+
+                    # Add to results table
+                    results['Lack of Fit'] = {
+                        "sum_sq": round(float(lof_ss), 4),
+                        "df": int(lof_df),
+                        "F": round(float(f_lof), 4),
+                        "p_value": round(float(p_lof), 6),
+                        "significant": bool(p_lof < request.alpha)
+                    }
+
+                    results['Pure Error'] = {
+                        "sum_sq": round(float(pure_error_ss), 4),
+                        "df": int(pure_error_df),
+                        "F": None,
+                        "p_value": None,
+                        "significant": False
+                    }
 
         # Calculate effect estimates for 2-level designs
         effects = {}
@@ -784,6 +882,42 @@ async def fractional_factorial_analysis(request: FractionalFactorialAnalysisRequ
                 "means": valid_means
             }
 
+        # Interaction plots data (for all 2-way interactions)
+        interaction_plots_data = {}
+        if len(request.factors) >= 2:
+            for i in range(len(request.factors)):
+                for j in range(i+1, len(request.factors)):
+                    f1, f2 = request.factors[i], request.factors[j]
+
+                    # Get sorted levels
+                    levels_f1 = sorted(df[f1].unique())
+                    levels_f2 = sorted(df[f2].unique())
+
+                    # For each level of f2, calculate means at each level of f1
+                    plot_data = {
+                        "x_factor": f1,
+                        "line_factor": f2,
+                        "x_levels": [str(l) for l in levels_f1],
+                        "lines": []
+                    }
+
+                    for level_f2 in levels_f2:
+                        means_at_f2 = []
+                        for level_f1 in levels_f1:
+                            subset = df[(df[f1] == level_f1) & (df[f2] == level_f2)]
+                            if len(subset) > 0:
+                                mean_val = subset[request.response].mean()
+                                means_at_f2.append(round(float(mean_val), 4) if pd.notna(mean_val) else None)
+                            else:
+                                means_at_f2.append(None)
+
+                        plot_data["lines"].append({
+                            "label": str(level_f2),
+                            "values": means_at_f2
+                        })
+
+                    interaction_plots_data[f"{f1}×{f2}"] = plot_data
+
         # Generate interpretation
         interpretation = generate_factorial_interpretation(
             results=results,
@@ -791,7 +925,7 @@ async def fractional_factorial_analysis(request: FractionalFactorialAnalysisRequ
             alpha=request.alpha,
             r_squared=model.rsquared,
             adj_r_squared=model.rsquared_adj,
-            has_replicates=False
+            has_replicates=has_replicates
         )
 
         # Add fractional design specific warnings
@@ -818,6 +952,7 @@ async def fractional_factorial_analysis(request: FractionalFactorialAnalysisRequ
             "standardized_residuals": [round(float(r), 4) for r in standardized_residuals],
             "effect_magnitudes": effect_magnitudes,
             "main_effects_plot_data": main_effects_plot_data,
+            "interaction_plots_data": interaction_plots_data,
             "response_name": request.response,
             "interpretation": interpretation
         }

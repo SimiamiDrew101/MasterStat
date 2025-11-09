@@ -1,4 +1,10 @@
+import { useRef } from 'react'
+import { Download } from 'lucide-react'
+import { exportSvgToPng } from '../utils/exportChart'
+
 const FDistributionPlot = ({ fStatistic, fCritical, alpha, df1, df2 }) => {
+  const svgRef = useRef(null)
+
   if (!fStatistic || !fCritical) return null
 
   // SVG dimensions
@@ -89,12 +95,27 @@ const FDistributionPlot = ({ fStatistic, fCritical, alpha, df1, df2 }) => {
 
   return (
     <div className="bg-slate-700/50 rounded-lg p-6">
-      <h4 className="text-gray-100 font-semibold mb-4">
-        F-Distribution (df₁ = {df1}, df₂ = {df2})
-      </h4>
+      <div className="flex items-center justify-between mb-4">
+        <h4 className="text-gray-100 font-semibold">
+          F-Distribution (df₁ = {df1}, df₂ = {df2})
+        </h4>
+        <button
+          type="button"
+          onClick={() => {
+            if (svgRef.current) {
+              exportSvgToPng(svgRef.current, `f-distribution-${new Date().toISOString().split('T')[0]}`)
+            }
+          }}
+          className="px-3 py-2 rounded-lg text-sm font-medium bg-slate-600/50 text-gray-300 hover:bg-slate-600 transition-all flex items-center space-x-2"
+          title="Export as PNG"
+        >
+          <Download className="w-4 h-4" />
+          <span>Export PNG</span>
+        </button>
+      </div>
 
       <div className="flex justify-center">
-        <svg width={width} height={height} className="overflow-visible">
+        <svg ref={svgRef} width={width} height={height} className="overflow-visible">
           <g transform={`translate(${margin.left}, ${margin.top})`}>
             {/* Grid lines */}
             {[0, 0.25, 0.5, 0.75, 1].map((fraction, i) => (

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import hypothesis_testing, anova, factorial, block_designs, mixed_models, rsm
+from app.api import hypothesis_testing, anova, factorial, block_designs, mixed_models, rsm, power_analysis
 
 app = FastAPI(
     title="MasterStat - Statistical Analysis Tool",
@@ -11,13 +11,14 @@ app = FastAPI(
 # Configure CORS for React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Include routers
+app.include_router(power_analysis.router, prefix="/api/power", tags=["Power Analysis"])
 app.include_router(hypothesis_testing.router, prefix="/api/hypothesis", tags=["Hypothesis Testing"])
 app.include_router(anova.router, prefix="/api/anova", tags=["ANOVA"])
 app.include_router(factorial.router, prefix="/api/factorial", tags=["Factorial Designs"])

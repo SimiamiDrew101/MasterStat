@@ -1,4 +1,10 @@
+import { useRef } from 'react'
+import { Download } from 'lucide-react'
+import { exportSvgToPng } from '../utils/exportChart'
+
 const BoxPlot = ({ data }) => {
+  const svgRef = useRef(null)
+
   if (!data || data.length === 0) return null
 
   // Find min and max across all box plots for scaling
@@ -30,9 +36,24 @@ const BoxPlot = ({ data }) => {
 
   return (
     <div className="bg-slate-700/50 rounded-lg p-6">
-      <h4 className="text-gray-100 font-semibold mb-4">Box Plot</h4>
+      <div className="flex items-center justify-between mb-4">
+        <h4 className="text-gray-100 font-semibold">Box Plot</h4>
+        <button
+          type="button"
+          onClick={() => {
+            if (svgRef.current) {
+              exportSvgToPng(svgRef.current, `box-plot-${new Date().toISOString().split('T')[0]}`)
+            }
+          }}
+          className="px-3 py-2 rounded-lg text-sm font-medium bg-slate-600/50 text-gray-300 hover:bg-slate-600 transition-all flex items-center space-x-2"
+          title="Export as PNG"
+        >
+          <Download className="w-4 h-4" />
+          <span>Export PNG</span>
+        </button>
+      </div>
       <div className="flex justify-center">
-        <svg width={width} height={height} className="overflow-visible">
+        <svg ref={svgRef} width={width} height={height} className="overflow-visible">
           {/* Background grid */}
           <g transform={`translate(${margin.left}, ${margin.top})`}>
             {/* Horizontal grid lines */}

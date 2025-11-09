@@ -187,6 +187,63 @@ async def rcbd_analysis(request: RCBDRequest):
             else:
                 relative_efficiency = None
 
+            # Calculate residuals and fitted values
+            fitted_values = model.fittedvalues.values
+            residuals = model.resid.values
+            mse = np.mean(residuals**2)
+            standardized_residuals = residuals / np.sqrt(mse) if mse > 0 else residuals
+
+            # Calculate confidence intervals for treatment means
+            from scipy import stats as sp_stats
+            means_ci = {}
+            for treatment_name, group_df in df.groupby(request.treatment):
+                data = group_df[request.response].values
+                mean = np.mean(data)
+                n = len(data)
+                if n > 1:
+                    sem = np.sqrt(ms_error / n)  # Use pooled error from ANOVA
+                    df_error = results.get('Residual', {}).get('df', n - 1)
+                    t_crit = sp_stats.t.ppf(0.975, df_error)
+                    ci_margin = t_crit * sem
+                    means_ci[str(treatment_name)] = {
+                        "mean": round(float(mean), 4),
+                        "lower": round(float(mean - ci_margin), 4),
+                        "upper": round(float(mean + ci_margin), 4),
+                        "sem": round(float(sem), 4)
+                    }
+
+            # Box plot data by treatment
+            def calculate_boxplot_data(data, label):
+                q1 = float(np.percentile(data, 25))
+                median = float(np.median(data))
+                q3 = float(np.percentile(data, 75))
+                iqr = q3 - q1
+                lower_whisker = float(np.min(data[data >= q1 - 1.5 * iqr]))
+                upper_whisker = float(np.max(data[data <= q3 + 1.5 * iqr]))
+                outliers = [float(x) for x in data if x < q1 - 1.5 * iqr or x > q3 + 1.5 * iqr]
+
+                return {
+                    "label": str(label),
+                    "min": lower_whisker,
+                    "q1": q1,
+                    "median": median,
+                    "q3": q3,
+                    "max": upper_whisker,
+                    "outliers": outliers
+                }
+
+            boxplot_data_treatment = []
+            for treatment_name, group_df in df.groupby(request.treatment):
+                boxplot_data_treatment.append(
+                    calculate_boxplot_data(group_df[request.response].values, treatment_name)
+                )
+
+            boxplot_data_block = []
+            for block_name, group_df in df.groupby(request.block):
+                boxplot_data_block.append(
+                    calculate_boxplot_data(group_df[request.response].values, block_name)
+                )
+
             return {
                 "test_type": "Randomized Complete Block Design (RCBD) - Fixed Blocks",
                 "alpha": request.alpha,
@@ -196,7 +253,13 @@ async def rcbd_analysis(request: RCBDRequest):
                 "block_means": {str(k): round(float(v), 4) for k, v in block_means.items()},
                 "grand_mean": round(float(df[request.response].mean()), 4),
                 "relative_efficiency": round(float(relative_efficiency), 4) if relative_efficiency else None,
-                "model_r_squared": round(float(model.rsquared), 4)
+                "model_r_squared": round(float(model.rsquared), 4),
+                "means_ci": means_ci,
+                "boxplot_data_treatment": boxplot_data_treatment,
+                "boxplot_data_block": boxplot_data_block,
+                "residuals": [round(float(r), 4) for r in residuals],
+                "fitted_values": [round(float(f), 4) for f in fitted_values],
+                "standardized_residuals": [round(float(r), 4) for r in standardized_residuals]
             }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -320,6 +383,58 @@ async def latin_square_analysis(request: LatinSquareRequest):
                     "significant": bool(row['PR(>F)'] < request.alpha) if not pd.isna(row['PR(>F)']) else False
                 }
 
+            # Calculate residuals and fitted values
+            fitted_values = model.fittedvalues.values
+            residuals = model.resid.values
+            mse = np.mean(residuals**2)
+            standardized_residuals = residuals / np.sqrt(mse) if mse > 0 else residuals
+
+            # Calculate confidence intervals for treatment means
+            ms_error = results.get('Residual', {}).get('sum_sq', 0) / results.get('Residual', {}).get('df', 1)
+            from scipy import stats as sp_stats
+            means_ci = {}
+            for treatment_name, group_df in df.groupby(request.treatment):
+                data = group_df[request.response].values
+                mean = np.mean(data)
+                n = len(data)
+                if n > 1:
+                    sem = np.sqrt(ms_error / n)
+                    df_error = results.get('Residual', {}).get('df', n - 1)
+                    t_crit = sp_stats.t.ppf(0.975, df_error)
+                    ci_margin = t_crit * sem
+                    means_ci[str(treatment_name)] = {
+                        "mean": round(float(mean), 4),
+                        "lower": round(float(mean - ci_margin), 4),
+                        "upper": round(float(mean + ci_margin), 4),
+                        "sem": round(float(sem), 4)
+                    }
+
+            # Box plot data
+            def calculate_boxplot_data(data, label):
+                q1 = float(np.percentile(data, 25))
+                median = float(np.median(data))
+                q3 = float(np.percentile(data, 75))
+                iqr = q3 - q1
+                lower_whisker = float(np.min(data[data >= q1 - 1.5 * iqr]))
+                upper_whisker = float(np.max(data[data <= q3 + 1.5 * iqr]))
+                outliers = [float(x) for x in data if x < q1 - 1.5 * iqr or x > q3 + 1.5 * iqr]
+
+                return {
+                    "label": str(label),
+                    "min": lower_whisker,
+                    "q1": q1,
+                    "median": median,
+                    "q3": q3,
+                    "max": upper_whisker,
+                    "outliers": outliers
+                }
+
+            boxplot_data_treatment = []
+            for treatment_name, group_df in df.groupby(request.treatment):
+                boxplot_data_treatment.append(
+                    calculate_boxplot_data(group_df[request.response].values, treatment_name)
+                )
+
             return {
                 "test_type": "Latin Square Design - Fixed Blocks",
                 "alpha": request.alpha,
@@ -329,7 +444,12 @@ async def latin_square_analysis(request: LatinSquareRequest):
                 "row_block_means": {str(k): round(float(v), 4) for k, v in row_means.items()},
                 "col_block_means": {str(k): round(float(v), 4) for k, v in col_means.items()},
                 "grand_mean": round(float(df[request.response].mean()), 4),
-                "model_r_squared": round(float(model.rsquared), 4)
+                "model_r_squared": round(float(model.rsquared), 4),
+                "means_ci": means_ci,
+                "boxplot_data_treatment": boxplot_data_treatment,
+                "residuals": [round(float(r), 4) for r in residuals],
+                "fitted_values": [round(float(f), 4) for f in fitted_values],
+                "standardized_residuals": [round(float(r), 4) for r in standardized_residuals]
             }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -4,6 +4,7 @@ import MeansPlot from './MeansPlot'
 import ResidualPlots from './ResidualPlots'
 import FDistributionPlot from './FDistributionPlot'
 import InteractionPlot from './InteractionPlot'
+import InteractionPlotsGrid from './InteractionPlotsGrid'
 import ParetoChart from './ParetoChart'
 import MainEffectsPlot from './MainEffectsPlot'
 import CubePlot from './CubePlot'
@@ -204,20 +205,43 @@ const ResultCard = ({ result }) => {
             </div>
           </div>
 
+          {/* Generators */}
+          {result.alias_structure.generators && result.alias_structure.generators.length > 0 && (
+            <div className="mb-4">
+              <p className="text-gray-300 text-sm font-semibold mb-2">Generators:</p>
+              <div className="flex flex-wrap gap-2">
+                {result.alias_structure.generators.map((gen, idx) => (
+                  <span
+                    key={idx}
+                    className="px-3 py-1 bg-blue-700/50 text-blue-100 rounded-full text-sm font-mono"
+                  >
+                    {gen}
+                  </span>
+                ))}
+              </div>
+              <p className="text-gray-400 text-xs mt-2">
+                These generators specify how to create the fractional design from the base factors.
+              </p>
+            </div>
+          )}
+
           {/* Defining Relations */}
           {result.alias_structure.defining_relations && result.alias_structure.defining_relations.length > 0 && (
             <div className="mb-4">
-              <p className="text-gray-300 text-sm font-semibold mb-2">Defining Relations:</p>
+              <p className="text-gray-300 text-sm font-semibold mb-2">Defining Relations (Complete Defining Contrast):</p>
               <div className="flex flex-wrap gap-2">
                 {result.alias_structure.defining_relations.map((rel, idx) => (
                   <span
                     key={idx}
                     className="px-3 py-1 bg-orange-700/50 text-orange-100 rounded-full text-sm font-mono"
                   >
-                    {rel.generated_factor} = {rel.generator}
+                    {typeof rel === 'string' ? rel : `${rel.generated_factor} = ${rel.generator}`}
                   </span>
                 ))}
               </div>
+              <p className="text-gray-400 text-xs mt-2">
+                All words in the defining contrast subgroup. Resolution = length of shortest word.
+              </p>
             </div>
           )}
 
@@ -261,6 +285,23 @@ const ResultCard = ({ result }) => {
                 <span>
                   <strong>Resolution V:</strong> Main effects and 2-way interactions are clear.
                   Ideal for detailed analysis of main effects and interactions.
+                </span>
+              )}
+              {result.alias_structure.resolution === 'VI' && (
+                <span>
+                  <strong>Resolution VI:</strong> Main effects and 2-way interactions are clear. 3-way interactions confounded with each other.
+                  Excellent for studying main effects and 2-way interactions without confounding.
+                </span>
+              )}
+              {result.alias_structure.resolution === 'VII' && (
+                <span>
+                  <strong>Resolution VII:</strong> Main effects, 2-way, and 3-way interactions are all clear.
+                  Very high resolution design with minimal confounding.
+                </span>
+              )}
+              {!['III', 'IV', 'V', 'VI', 'VII'].includes(result.alias_structure.resolution) && (
+                <span>
+                  <strong>Resolution {result.alias_structure.resolution}:</strong> Higher resolution design with very minimal confounding.
                 </span>
               )}
             </p>
@@ -446,6 +487,14 @@ const ResultCard = ({ result }) => {
       {/* Main Effects Plot (for Factorial Designs) */}
       {result.main_effects_plot_data && (
         <MainEffectsPlot data={result.main_effects_plot_data} />
+      )}
+
+      {/* Interaction Plots (for Factorial Designs with 2+ factors) */}
+      {result.interaction_plots_data && (
+        <InteractionPlotsGrid
+          data={result.interaction_plots_data}
+          responseName={result.response_name}
+        />
       )}
 
       {/* Cube Plot (for 2³ Factorial Designs) */}

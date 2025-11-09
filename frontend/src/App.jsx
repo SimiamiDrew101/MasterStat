@@ -7,6 +7,8 @@ import FactorialDesigns from './pages/FactorialDesigns'
 import BlockDesigns from './pages/BlockDesigns'
 import MixedModels from './pages/MixedModels'
 import RSM from './pages/RSM'
+import BayesianDOE from './pages/BayesianDOE'
+import ExperimentPlanning from './pages/ExperimentPlanning'
 import { Menu, X, BarChart3 } from 'lucide-react'
 
 function App() {
@@ -14,12 +16,14 @@ function App() {
 
   const menuItems = [
     { path: '/', label: 'Home', icon: '🏠' },
+    { path: '/planning', label: 'Experiment Planning', icon: '🎯' },
     { path: '/hypothesis', label: 'Hypothesis Testing', icon: '📊' },
     { path: '/anova', label: 'ANOVA', icon: '📈' },
     { path: '/factorial', label: 'Factorial Designs', icon: '🔬' },
     { path: '/blocks', label: 'Block Designs', icon: '🧱' },
     { path: '/mixed', label: 'Mixed Models', icon: '🔀' },
     { path: '/rsm', label: 'Response Surface', icon: '🗻' },
+    { path: '/bayesian-doe', label: 'Bayesian DOE', icon: '🎲' },
   ]
 
   return (
@@ -70,12 +74,14 @@ function App() {
             <div className="max-w-6xl mx-auto">
               <Routes>
                 <Route path="/" element={<Home />} />
+                <Route path="/planning" element={<ExperimentPlanning />} />
                 <Route path="/hypothesis" element={<HypothesisTesting />} />
                 <Route path="/anova" element={<ANOVA />} />
                 <Route path="/factorial" element={<FactorialDesigns />} />
                 <Route path="/blocks" element={<BlockDesigns />} />
                 <Route path="/mixed" element={<MixedModels />} />
                 <Route path="/rsm" element={<RSM />} />
+                <Route path="/bayesian-doe" element={<BayesianDOE />} />
               </Routes>
             </div>
           </main>
