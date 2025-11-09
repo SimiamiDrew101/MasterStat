@@ -965,17 +965,314 @@ async def nested_design_analysis(request: NestedDesignRequest):
     """
     Analyze nested (hierarchical) design
 
-    In nested designs, levels of B are unique to each level of A
-    Example: Students nested within Schools
+    In nested designs, levels of B are unique to each level of A.
+    For example: Teachers nested within Schools, Samples nested within Batches.
+
+    Provides:
+    - Expected Mean Squares (EMS) showing nesting structure
+    - Variance components for each hierarchical level
+    - Proper F-tests with correct error terms
+    - Intraclass correlation coefficient (ICC)
     """
     try:
         df = pd.DataFrame(request.data)
 
-        # Implementation will be enhanced next
+        # Validate data
+        required_cols = [request.factor_a, request.factor_b_nested, request.response]
+        for col in required_cols:
+            if col not in df.columns:
+                raise HTTPException(status_code=400, detail=f"Column '{col}' not found in data")
+
+        # Convert factors to categorical
+        df[request.factor_a] = df[request.factor_a].astype('category')
+        df[request.factor_b_nested] = df[request.factor_b_nested].astype('category')
+
+        # Get factor levels
+        a_levels = sorted(df[request.factor_a].unique())
+        n_a = len(a_levels)
+
+        # Count B levels nested within each A level
+        b_per_a = df.groupby(request.factor_a)[request.factor_b_nested].nunique().values
+        n_b_per_a = b_per_a[0]  # Assumes balanced (same number of B in each A)
+
+        # Count observations per B
+        n_per_b = df.groupby([request.factor_a, request.factor_b_nested]).size().values[0]
+
+        # Build ANOVA model for nested design
+        # Formula: Response ~ A + B(A)
+        # In statsmodels, we need to create unique labels for B within each A
+        df['B_in_A'] = df[request.factor_a].astype(str) + ':' + df[request.factor_b_nested].astype(str)
+
+        formula = f"{request.response} ~ C({request.factor_a}) + C(B_in_A)"
+        model = ols(formula, data=df).fit()
+        anova_table = sm.stats.anova_lm(model, typ=1)
+
+        # Calculate degrees of freedom
+        df_a = n_a - 1
+        df_b_in_a = n_a * (n_b_per_a - 1)
+        df_error = n_a * n_b_per_a * (n_per_b - 1)
+
+        # Extract sum of squares and mean squares
+        ss_a = anova_table.loc[f'C({request.factor_a})', 'sum_sq']
+        ss_b_in_a = anova_table.loc['C(B_in_A)', 'sum_sq']
+        ss_error = anova_table.loc['Residual', 'sum_sq']
+
+        ms_a = ss_a / df_a
+        ms_b_in_a = ss_b_in_a / df_b_in_a
+        ms_error = ss_error / df_error
+
+        # Expected Mean Squares for nested design:
+        # MS(A) = σ² + n*σ²(B(A)) + b*n*σ²(A)
+        # MS(B(A)) = σ² + n*σ²(B(A))
+        # MS(Error) = σ²
+
+        # Estimate variance components using ANOVA method
+        sigma2_error = ms_error
+        sigma2_b_in_a = (ms_b_in_a - ms_error) / n_per_b
+        sigma2_a = (ms_a - ms_b_in_a) / (n_b_per_a * n_per_b)
+
+        # Ensure non-negative variance components
+        sigma2_b_in_a = max(0, sigma2_b_in_a)
+        sigma2_a = max(0, sigma2_a)
+
+        # Calculate F-statistics with proper error terms
+        # For nested design:
+        # F(A) = MS(A) / MS(B(A))  [test A against B nested in A]
+        # F(B(A)) = MS(B(A)) / MS(Error)  [test B(A) against residual]
+
+        f_a = ms_a / ms_b_in_a if ms_b_in_a > 0 else None
+        p_a = 1 - stats.f.cdf(f_a, df_a, df_b_in_a) if f_a is not None else None
+
+        f_b_in_a = ms_b_in_a / ms_error if ms_error > 0 else None
+        p_b_in_a = 1 - stats.f.cdf(f_b_in_a, df_b_in_a, df_error) if f_b_in_a is not None else None
+
+        # Build ANOVA results table
+        anova_results = {
+            request.factor_a: {
+                "sum_sq": float(ss_a),
+                "df": int(df_a),
+                "mean_sq": float(ms_a),
+                "ems": f"σ² + {n_per_b}σ²({request.factor_b_nested}({request.factor_a})) + {n_b_per_a * n_per_b}σ²({request.factor_a})",
+                "F": float(f_a) if f_a is not None else None,
+                "p_value": float(p_a) if p_a is not None else None,
+                "error_term": f"{request.factor_b_nested}({request.factor_a})"
+            },
+            f"{request.factor_b_nested}({request.factor_a})": {
+                "sum_sq": float(ss_b_in_a),
+                "df": int(df_b_in_a),
+                "mean_sq": float(ms_b_in_a),
+                "ems": f"σ² + {n_per_b}σ²({request.factor_b_nested}({request.factor_a}))",
+                "F": float(f_b_in_a) if f_b_in_a is not None else None,
+                "p_value": float(p_b_in_a) if p_b_in_a is not None else None,
+                "error_term": "Error"
+            },
+            "Error": {
+                "sum_sq": float(ss_error),
+                "df": int(df_error),
+                "mean_sq": float(ms_error),
+                "ems": "σ²",
+                "F": None,
+                "p_value": None
+            }
+        }
+
+        # Variance components
+        variance_components = {
+            "σ²_error": float(sigma2_error),
+            f"σ²_{request.factor_b_nested}({request.factor_a})": float(sigma2_b_in_a),
+            f"σ²_{request.factor_a}": float(sigma2_a)
+        }
+
+        # Calculate variance percentages
+        total_var = sigma2_error + sigma2_b_in_a + sigma2_a
+        variance_percentages = {}
+        if total_var > 0:
+            variance_percentages = {
+                "σ²_error": round((sigma2_error / total_var) * 100, 2),
+                f"σ²_{request.factor_b_nested}({request.factor_a})": round((sigma2_b_in_a / total_var) * 100, 2),
+                f"σ²_{request.factor_a}": round((sigma2_a / total_var) * 100, 2)
+            }
+
+        # Intraclass Correlation Coefficient (ICC)
+        # ICC measures the proportion of variance due to grouping structure
+        # ICC(A) = σ²(A) / (σ²(A) + σ²(B(A)) + σ²(error))
+        icc_a = sigma2_a / total_var if total_var > 0 else 0
+        icc_b_in_a = (sigma2_a + sigma2_b_in_a) / total_var if total_var > 0 else 0
+
+        # Model fit statistics
+        model_summary = {
+            "r_squared": float(model.rsquared),
+            "adj_r_squared": float(model.rsquared_adj),
+            "f_statistic": float(model.fvalue),
+            "aic": float(model.aic),
+            "bic": float(model.bic)
+        }
+
+        # Calculate plot data
+        plot_data = calculate_plot_data_nested(
+            df,
+            model,
+            request.factor_a,
+            request.factor_b_nested,
+            request.response
+        )
+
+        # Generate interpretation
+        interpretation = generate_nested_interpretation(
+            request.factor_a,
+            request.factor_b_nested,
+            anova_results,
+            variance_components,
+            variance_percentages,
+            icc_a,
+            icc_b_in_a,
+            request.alpha
+        )
+
         return {
-            "message": "Nested design analysis - full implementation coming soon",
-            "model_type": "Nested Design"
+            "model_type": "Nested Design",
+            "factor_a": request.factor_a,
+            "factor_b_nested": request.factor_b_nested,
+            "anova_table": anova_results,
+            "variance_components": variance_components,
+            "variance_percentages": variance_percentages,
+            "icc": {
+                f"ICC({request.factor_a})": round(icc_a, 4),
+                f"ICC(Total)": round(icc_b_in_a, 4)
+            },
+            "model_summary": model_summary,
+            "plot_data": plot_data,
+            "interpretation": interpretation
         }
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+def calculate_plot_data_nested(df: pd.DataFrame, model, factor_a: str,
+                                 factor_b_nested: str, response: str) -> Dict:
+    """
+    Calculate all data needed for nested design visualizations
+    """
+    def safe_float(value):
+        """Convert value to float, handling NaN/inf by returning None"""
+        if pd.isna(value) or np.isinf(value):
+            return None
+        return float(value)
+
+    plot_data = {}
+
+    # Extract fitted values and residuals from model
+    plot_data["fitted_values"] = [safe_float(v) for v in model.fittedvalues.tolist()]
+    plot_data["residuals"] = [safe_float(v) for v in model.resid.tolist()]
+
+    # Get factor levels
+    plot_data["factor_levels"] = {
+        factor_a: sorted(df[factor_a].unique().tolist()),
+        factor_b_nested: sorted(df[factor_b_nested].unique().tolist())
+    }
+
+    # Calculate means for factor A (higher level)
+    marginal_means_a = []
+    for level in sorted(df[factor_a].unique()):
+        level_data = df[df[factor_a] == level][response]
+        marginal_means_a.append({
+            "level": str(level),
+            "mean": safe_float(level_data.mean()),
+            "std": safe_float(level_data.std()),
+            "n": int(len(level_data))
+        })
+    plot_data["marginal_means_a"] = marginal_means_a
+
+    # Calculate means for B nested within each A
+    nested_means = []
+    for a_level in sorted(df[factor_a].unique()):
+        a_data = df[df[factor_a] == a_level]
+        for b_level in sorted(a_data[factor_b_nested].unique()):
+            cell_data = a_data[a_data[factor_b_nested] == b_level][response]
+            if len(cell_data) > 0:
+                nested_means.append({
+                    factor_a: str(a_level),
+                    factor_b_nested: str(b_level),
+                    "mean": safe_float(cell_data.mean()),
+                    "std": safe_float(cell_data.std()),
+                    "n": int(len(cell_data))
+                })
+    plot_data["nested_means"] = nested_means
+
+    # Prepare box plot data for factor A
+    box_data_a = []
+    for level in sorted(df[factor_a].unique()):
+        level_values = df[df[factor_a] == level][response].tolist()
+        box_data_a.append({
+            "level": str(level),
+            "values": [safe_float(v) for v in level_values]
+        })
+    plot_data["box_plot_data_a"] = box_data_a
+
+    # Prepare box plot data for B within each A
+    box_data_nested = {}
+    for a_level in sorted(df[factor_a].unique()):
+        a_data = df[df[factor_a] == a_level]
+        box_data = []
+        for b_level in sorted(a_data[factor_b_nested].unique()):
+            b_values = a_data[a_data[factor_b_nested] == b_level][response].tolist()
+            box_data.append({
+                "level": str(b_level),
+                "values": [safe_float(v) for v in b_values]
+            })
+        box_data_nested[str(a_level)] = box_data
+    plot_data["box_plot_data_nested"] = box_data_nested
+
+    return plot_data
+
+
+def generate_nested_interpretation(factor_a: str, factor_b_nested: str,
+                                    anova_results: Dict, variance_components: Dict,
+                                    variance_percentages: Dict, icc_a: float,
+                                    icc_b_in_a: float, alpha: float) -> List[str]:
+    """
+    Generate human-readable interpretation of nested design results
+    """
+    interpretations = ["Nested Design Analysis:", f"• Higher-level factor: {factor_a}",
+                      f"• Nested factor: {factor_b_nested} nested within {factor_a}", ""]
+
+    # Test results
+    p_a = anova_results[factor_a]["p_value"]
+    p_b_in_a = anova_results[f"{factor_b_nested}({factor_a})"]["p_value"]
+
+    if p_a is not None:
+        sig_a = "Significant" if p_a < alpha else "Not significant"
+        interpretations.append(f"{factor_a}: {sig_a} (p = {p_a:.4f}, tested against {factor_b_nested}({factor_a}))")
+
+    if p_b_in_a is not None:
+        sig_b = "Significant" if p_b_in_a < alpha else "Not significant"
+        interpretations.append(f"{factor_b_nested}({factor_a}): {sig_b} (p = {p_b_in_a:.4f}, tested against Error)")
+
+    interpretations.append("")
+
+    # Variance components
+    interpretations.append("Variance Components:")
+    for component, value in variance_components.items():
+        if component in variance_percentages:
+            pct = variance_percentages[component]
+            interpretations.append(f"  {component}: {value:.6f} ({pct:.1f}%)")
+
+    interpretations.append("")
+
+    # Intraclass correlation
+    interpretations.append("Intraclass Correlation Coefficients (ICC):")
+    interpretations.append(f"  ICC({factor_a}): {icc_a:.4f}")
+    interpretations.append(f"    - Proportion of variance due to {factor_a} differences")
+    interpretations.append(f"  ICC(Total): {icc_b_in_a:.4f}")
+    interpretations.append(f"    - Proportion of variance due to {factor_a} and {factor_b_nested}({factor_a}) combined")
+
+    interpretations.append("")
+    interpretations.append("Interpretation:")
+    if icc_a > 0.1:
+        interpretations.append(f"  - Substantial variability exists between different {factor_a} levels")
+    if icc_b_in_a - icc_a > 0.1:
+        interpretations.append(f"  - Additional variability exists between {factor_b_nested} levels within {factor_a}")
+    if icc_b_in_a < 0.3:
+        interpretations.append(f"  - Most variability is at the individual observation level (within {factor_b_nested})")
+
+    return interpretations

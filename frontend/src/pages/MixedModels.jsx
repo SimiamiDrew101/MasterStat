@@ -29,6 +29,12 @@ const MixedModels = () => {
   const [blockName, setBlockName] = useState('Block')
   const [includeBlocks, setIncludeBlocks] = useState(true)
 
+  // Nested Design state
+  const [nestedTableData, setNestedTableData] = useState(
+    Array(15).fill(null).map(() => Array(3).fill('')) // Factor A, Factor B (nested), Response
+  )
+  const [nestedFactorNames, setNestedFactorNames] = useState(['School', 'Teacher'])
+
   // Shared state
   const [responseName, setResponseName] = useState('Response')
   const [includeInteractions, setIncludeInteractions] = useState(true)
@@ -40,11 +46,16 @@ const MixedModels = () => {
   const [error, setError] = useState(null)
 
   // Get current data based on analysis type
-  const tableData = analysisType === 'mixed-anova' ? mixedTableData : splitPlotTableData
-  const setTableData = analysisType === 'mixed-anova' ? setMixedTableData : setSplitPlotTableData
-  const factorNames = analysisType === 'mixed-anova' ? mixedFactorNames : splitPlotFactorNames
-  const setFactorNames = analysisType === 'mixed-anova' ? setMixedFactorNames : setSplitPlotFactorNames
-  const numColumns = analysisType === 'mixed-anova' ? 3 : 4
+  const tableData = analysisType === 'mixed-anova' ? mixedTableData :
+                    analysisType === 'split-plot' ? splitPlotTableData : nestedTableData
+  const setTableData = analysisType === 'mixed-anova' ? setMixedTableData :
+                       analysisType === 'split-plot' ? setSplitPlotTableData : setNestedTableData
+  const factorNames = analysisType === 'mixed-anova' ? mixedFactorNames :
+                      analysisType === 'split-plot' ? splitPlotFactorNames : nestedFactorNames
+  const setFactorNames = analysisType === 'mixed-anova' ? setMixedFactorNames :
+                         analysisType === 'split-plot' ? setSplitPlotFactorNames : setNestedFactorNames
+  const numColumns = analysisType === 'mixed-anova' ? 3 :
+                     analysisType === 'split-plot' ? 4 : 3
 
   // Handle cell changes
   const handleCellChange = (rowIndex, colIndex, value) => {
@@ -91,7 +102,7 @@ const MixedModels = () => {
           [factorNames[1]]: row[1],
           [responseName]: parseFloat(row[2])
         }))
-    } else {
+    } else if (analysisType === 'split-plot') {
       // Split-plot
       return tableData
         .filter(row => {
@@ -112,6 +123,15 @@ const MixedModels = () => {
           }
           return dataRow
         })
+    } else {
+      // Nested design
+      return tableData
+        .filter(row => row[0] && row[1] && row[2])
+        .map(row => ({
+          [factorNames[0]]: row[0], // Factor A (higher level)
+          [factorNames[1]]: row[1], // Factor B (nested in A)
+          [responseName]: parseFloat(row[2])
+        }))
     }
   }
 
@@ -144,7 +164,7 @@ const MixedModels = () => {
         }
 
         response = await axios.post(`${API_URL}/api/mixed/mixed-model-anova`, payload)
-      } else {
+      } else if (analysisType === 'split-plot') {
         // Split-plot
         const payload = {
           data: data,
@@ -156,6 +176,17 @@ const MixedModels = () => {
         }
 
         response = await axios.post(`${API_URL}/api/mixed/split-plot`, payload)
+      } else {
+        // Nested design
+        const payload = {
+          data: data,
+          factor_a: factorNames[0],
+          factor_b_nested: factorNames[1],
+          response: responseName,
+          alpha: alpha
+        }
+
+        response = await axios.post(`${API_URL}/api/mixed/nested-design`, payload)
       }
 
       setResult(response.data)
@@ -212,7 +243,7 @@ const MixedModels = () => {
       setMixedFactorNames(['Treatment', 'Subject'])
       setFactorTypes({ 'Treatment': 'fixed', 'Subject': 'random' })
       setResponseName('Response')
-    } else {
+    } else if (analysisType === 'split-plot') {
       // Generate random data for Split-Plot Design
       // Design: 3 blocks × 2 irrigation levels × 3 varieties
       const blocks = ['B1', 'B2', 'B3']
@@ -255,6 +286,42 @@ const MixedModels = () => {
       setBlockName('Block')
       setIncludeBlocks(true)
       setResponseName('Yield')
+    } else {
+      // Generate random data for Nested Design
+      // Design: 3 schools × 4 teachers per school × 3 students per teacher
+      const schools = ['S1', 'S2', 'S3']
+      const teachersPerSchool = 4
+      const studentsPerTeacher = 3
+
+      const exampleData = []
+
+      schools.forEach((school, sIdx) => {
+        for (let t = 1; t <= teachersPerSchool; t++) {
+          const teacher = `T${t}` // Teacher labels are unique within each school
+
+          // School effect
+          const schoolEffect = (sIdx - 1) * 5
+
+          // Teacher within school effect
+          const teacherEffect = (t - 2) * 2
+
+          for (let st = 0; st < studentsPerTeacher; st++) {
+            const baseMean = 75 + schoolEffect + teacherEffect
+            const response = randomNormal(baseMean, 3)
+
+            exampleData.push([
+              school,
+              teacher,
+              response.toFixed(1)
+            ])
+          }
+        }
+      })
+
+      const newTableData = [...exampleData, ...Array(Math.max(0, 15 - exampleData.length)).fill(null).map(() => Array(3).fill(''))]
+      setNestedTableData(newTableData)
+      setNestedFactorNames(['School', 'Teacher'])
+      setResponseName('Score')
     }
   }
 
@@ -274,7 +341,7 @@ const MixedModels = () => {
       {/* Analysis Type Selection */}
       <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
         <h3 className="text-xl font-bold text-gray-100 mb-4">Analysis Type</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button
             onClick={() => {
               setAnalysisType('mixed-anova')
@@ -307,6 +374,23 @@ const MixedModels = () => {
             <h4 className="text-lg font-semibold text-gray-100 mb-2">Split-Plot Design</h4>
             <p className="text-sm text-gray-300">
               Hierarchical design with whole-plot and sub-plot factors. Uses two error terms.
+            </p>
+          </button>
+          <button
+            onClick={() => {
+              setAnalysisType('nested')
+              setResult(null)
+              setError(null)
+            }}
+            className={`p-4 rounded-lg border-2 transition ${
+              analysisType === 'nested'
+                ? 'border-indigo-500 bg-indigo-500/20'
+                : 'border-slate-600 hover:border-indigo-400'
+            }`}
+          >
+            <h4 className="text-lg font-semibold text-gray-100 mb-2">Nested Design</h4>
+            <p className="text-sm text-gray-300">
+              Factor B nested within Factor A. Analyzes hierarchical structures like students within schools.
             </p>
           </button>
         </div>
@@ -489,10 +573,14 @@ const MixedModels = () => {
                     <th className="px-4 py-2 text-left text-gray-200 font-medium">{blockName}</th>
                   )}
                   <th className="px-4 py-2 text-left text-gray-200 font-medium">
-                    {analysisType === 'split-plot' ? `${factorNames[0]} (WP)` : factorNames[0]}
+                    {analysisType === 'split-plot' ? `${factorNames[0]} (WP)` :
+                     analysisType === 'nested' ? `${factorNames[0]}` :
+                     factorNames[0]}
                   </th>
                   <th className="px-4 py-2 text-left text-gray-200 font-medium">
-                    {analysisType === 'split-plot' ? `${factorNames[1]} (SP)` : factorNames[1]}
+                    {analysisType === 'split-plot' ? `${factorNames[1]} (SP)` :
+                     analysisType === 'nested' ? `${factorNames[1]}(${factorNames[0]})` :
+                     factorNames[1]}
                   </th>
                   <th className="px-4 py-2 text-left text-gray-200 font-medium">{responseName}</th>
                 </tr>
