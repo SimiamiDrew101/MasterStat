@@ -974,6 +974,12 @@ async def nested_design_analysis(request: NestedDesignRequest):
     - Proper F-tests with correct error terms
     - Intraclass correlation coefficient (ICC)
     """
+    def safe_float(value):
+        """Convert value to float, handling NaN/inf by returning None"""
+        if pd.isna(value) or np.isinf(value):
+            return None
+        return float(value)
+
     try:
         df = pd.DataFrame(request.data)
 
@@ -1049,27 +1055,27 @@ async def nested_design_analysis(request: NestedDesignRequest):
         # Build ANOVA results table
         anova_results = {
             request.factor_a: {
-                "sum_sq": float(ss_a),
+                "sum_sq": safe_float(ss_a),
                 "df": int(df_a),
-                "mean_sq": float(ms_a),
+                "mean_sq": safe_float(ms_a),
                 "ems": f"σ² + {n_per_b}σ²({request.factor_b_nested}({request.factor_a})) + {n_b_per_a * n_per_b}σ²({request.factor_a})",
-                "F": float(f_a) if f_a is not None else None,
-                "p_value": float(p_a) if p_a is not None else None,
+                "F": safe_float(f_a) if f_a is not None else None,
+                "p_value": safe_float(p_a) if p_a is not None else None,
                 "error_term": f"{request.factor_b_nested}({request.factor_a})"
             },
             f"{request.factor_b_nested}({request.factor_a})": {
-                "sum_sq": float(ss_b_in_a),
+                "sum_sq": safe_float(ss_b_in_a),
                 "df": int(df_b_in_a),
-                "mean_sq": float(ms_b_in_a),
+                "mean_sq": safe_float(ms_b_in_a),
                 "ems": f"σ² + {n_per_b}σ²({request.factor_b_nested}({request.factor_a}))",
-                "F": float(f_b_in_a) if f_b_in_a is not None else None,
-                "p_value": float(p_b_in_a) if p_b_in_a is not None else None,
+                "F": safe_float(f_b_in_a) if f_b_in_a is not None else None,
+                "p_value": safe_float(p_b_in_a) if p_b_in_a is not None else None,
                 "error_term": "Error"
             },
             "Error": {
-                "sum_sq": float(ss_error),
+                "sum_sq": safe_float(ss_error),
                 "df": int(df_error),
-                "mean_sq": float(ms_error),
+                "mean_sq": safe_float(ms_error),
                 "ems": "σ²",
                 "F": None,
                 "p_value": None
@@ -1078,34 +1084,39 @@ async def nested_design_analysis(request: NestedDesignRequest):
 
         # Variance components
         variance_components = {
-            "σ²_error": float(sigma2_error),
-            f"σ²_{request.factor_b_nested}({request.factor_a})": float(sigma2_b_in_a),
-            f"σ²_{request.factor_a}": float(sigma2_a)
+            "σ²_error": safe_float(sigma2_error),
+            f"σ²_{request.factor_b_nested}({request.factor_a})": safe_float(sigma2_b_in_a),
+            f"σ²_{request.factor_a}": safe_float(sigma2_a)
         }
 
         # Calculate variance percentages
         total_var = sigma2_error + sigma2_b_in_a + sigma2_a
         variance_percentages = {}
         if total_var > 0:
+            err_pct = safe_float((sigma2_error / total_var) * 100)
+            b_pct = safe_float((sigma2_b_in_a / total_var) * 100)
+            a_pct = safe_float((sigma2_a / total_var) * 100)
             variance_percentages = {
-                "σ²_error": round((sigma2_error / total_var) * 100, 2),
-                f"σ²_{request.factor_b_nested}({request.factor_a})": round((sigma2_b_in_a / total_var) * 100, 2),
-                f"σ²_{request.factor_a}": round((sigma2_a / total_var) * 100, 2)
+                "σ²_error": round(err_pct, 2) if err_pct is not None else 0,
+                f"σ²_{request.factor_b_nested}({request.factor_a})": round(b_pct, 2) if b_pct is not None else 0,
+                f"σ²_{request.factor_a}": round(a_pct, 2) if a_pct is not None else 0
             }
 
         # Intraclass Correlation Coefficient (ICC)
         # ICC measures the proportion of variance due to grouping structure
         # ICC(A) = σ²(A) / (σ²(A) + σ²(B(A)) + σ²(error))
-        icc_a = sigma2_a / total_var if total_var > 0 else 0
-        icc_b_in_a = (sigma2_a + sigma2_b_in_a) / total_var if total_var > 0 else 0
+        icc_a_val = sigma2_a / total_var if total_var > 0 else 0
+        icc_b_in_a_val = (sigma2_a + sigma2_b_in_a) / total_var if total_var > 0 else 0
+        icc_a = safe_float(icc_a_val) if icc_a_val is not None else 0
+        icc_b_in_a = safe_float(icc_b_in_a_val) if icc_b_in_a_val is not None else 0
 
         # Model fit statistics
         model_summary = {
-            "r_squared": float(model.rsquared),
-            "adj_r_squared": float(model.rsquared_adj),
-            "f_statistic": float(model.fvalue),
-            "aic": float(model.aic),
-            "bic": float(model.bic)
+            "r_squared": safe_float(model.rsquared),
+            "adj_r_squared": safe_float(model.rsquared_adj),
+            "f_statistic": safe_float(model.fvalue),
+            "aic": safe_float(model.aic),
+            "bic": safe_float(model.bic)
         }
 
         # Calculate plot data
@@ -1137,8 +1148,8 @@ async def nested_design_analysis(request: NestedDesignRequest):
             "variance_components": variance_components,
             "variance_percentages": variance_percentages,
             "icc": {
-                f"ICC({request.factor_a})": round(icc_a, 4),
-                f"ICC(Total)": round(icc_b_in_a, 4)
+                f"ICC({request.factor_a})": round(icc_a, 4) if icc_a is not None else 0,
+                f"ICC(Total)": round(icc_b_in_a, 4) if icc_b_in_a is not None else 0
             },
             "model_summary": model_summary,
             "plot_data": plot_data,

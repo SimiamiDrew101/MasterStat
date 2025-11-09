@@ -5,6 +5,9 @@ import InteractionPlot from '../components/InteractionPlot'
 import MainEffectsPlot from '../components/MainEffectsPlot'
 import ResidualPlots from '../components/ResidualPlots'
 import BoxPlot from '../components/BoxPlot'
+import VarianceComponentsChart from '../components/VarianceComponentsChart'
+import HierarchicalMeansPlot from '../components/HierarchicalMeansPlot'
+import NestedBoxPlots from '../components/NestedBoxPlots'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -1023,6 +1026,75 @@ const MixedModels = () => {
                   </div>
                 )
               })()}
+
+              {/* Nested Design Specific Visualizations */}
+              {analysisType === 'nested' && (
+                <>
+                  {/* Variance Components Pie Chart */}
+                  {result.variance_percentages && (
+                    <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+                      <VarianceComponentsChart
+                        variancePercentages={result.variance_percentages}
+                        title="Variance Components Distribution"
+                      />
+                    </div>
+                  )}
+
+                  {/* Hierarchical Means Plot */}
+                  {result.plot_data.marginal_means_a && result.plot_data.nested_means && (
+                    <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+                      <HierarchicalMeansPlot
+                        marginalMeansA={result.plot_data.marginal_means_a}
+                        nestedMeans={result.plot_data.nested_means}
+                        factorA={result.factor_a}
+                        factorB={result.factor_b_nested}
+                      />
+                    </div>
+                  )}
+
+                  {/* Nested Box Plots */}
+                  {result.plot_data.box_plot_data_nested && (
+                    <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+                      <NestedBoxPlots
+                        boxPlotDataNested={result.plot_data.box_plot_data_nested}
+                        factorA={result.factor_a}
+                      />
+                    </div>
+                  )}
+
+                  {/* ICC Interpretation Card */}
+                  {result.icc && (
+                    <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+                      <h3 className="text-xl font-bold text-gray-100 mb-4">Intraclass Correlation (ICC)</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {Object.entries(result.icc).map(([key, value]) => (
+                          <div key={key} className="bg-slate-700/50 rounded-lg p-4">
+                            <div className="text-gray-400 text-sm mb-1">{key}</div>
+                            <div className="text-3xl font-bold text-indigo-400 mb-2">
+                              {(value * 100).toFixed(1)}%
+                            </div>
+                            <div className="w-full bg-slate-600 rounded-full h-2">
+                              <div
+                                className="bg-indigo-500 h-2 rounded-full transition-all"
+                                style={{ width: `${value * 100}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-4 bg-slate-700/30 rounded-lg p-4">
+                        <p className="text-gray-300 text-sm">
+                          <strong className="text-gray-100">Interpretation:</strong> ICC measures the proportion of total variance
+                          attributable to grouping. Higher ICC values indicate stronger clustering effects.
+                          {result.icc[`ICC(${result.factor_a})`] > 0.3 && (
+                            <span className="text-indigo-300"> The high ICC({result.factor_a}) suggests substantial between-{result.factor_a} variability.</span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </>
           )}
 
