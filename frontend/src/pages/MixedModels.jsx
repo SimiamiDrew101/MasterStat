@@ -167,22 +167,45 @@ const MixedModels = () => {
   }
 
   // Load example data
+  // Generate random number from normal distribution using Box-Muller transform
+  const randomNormal = (mean = 50, stdDev = 5) => {
+    const u1 = Math.random()
+    const u2 = Math.random()
+    const z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2)
+    return mean + z0 * stdDev
+  }
+
   const loadExampleData = () => {
     if (analysisType === 'mixed-anova') {
-      const exampleData = [
-        ['A1', 'S1', '12.5'],
-        ['A1', 'S1', '13.2'],
-        ['A1', 'S2', '14.8'],
-        ['A1', 'S2', '15.1'],
-        ['A1', 'S3', '11.9'],
-        ['A1', 'S3', '12.3'],
-        ['A2', 'S1', '18.4'],
-        ['A2', 'S1', '19.1'],
-        ['A2', 'S2', '20.2'],
-        ['A2', 'S2', '19.8'],
-        ['A2', 'S3', '17.6'],
-        ['A2', 'S3', '18.2']
-      ]
+      // Generate random data for Mixed Model ANOVA
+      // Design: 2 treatments × 3 subjects × 2 replicates
+      const treatments = ['A1', 'A2']
+      const subjects = ['S1', 'S2', 'S3']
+      const replicates = 2
+
+      const exampleData = []
+
+      // Generate data with treatment and subject effects
+      treatments.forEach((treatment, tIdx) => {
+        subjects.forEach((subject, sIdx) => {
+          // Base mean for this treatment
+          const treatmentEffect = tIdx * 5 // A2 has higher response than A1
+
+          // Random subject effect
+          const subjectEffect = (sIdx - 1) * 2
+
+          // Generate replicates
+          for (let rep = 0; rep < replicates; rep++) {
+            const baseMean = 50 + treatmentEffect + subjectEffect
+            const response = randomNormal(baseMean, 1.5)
+            exampleData.push([
+              treatment,
+              subject,
+              response.toFixed(1)
+            ])
+          }
+        })
+      })
 
       const newTableData = [...exampleData, ...Array(Math.max(0, 15 - exampleData.length)).fill(null).map(() => Array(3).fill(''))]
       setMixedTableData(newTableData)
@@ -190,27 +213,41 @@ const MixedModels = () => {
       setFactorTypes({ 'Treatment': 'fixed', 'Subject': 'random' })
       setResponseName('Response')
     } else {
-      // Split-plot example data
-      const exampleData = [
-        ['B1', 'I1', 'V1', '45.2'],
-        ['B1', 'I1', 'V2', '48.5'],
-        ['B1', 'I1', 'V3', '42.8'],
-        ['B1', 'I2', 'V1', '52.3'],
-        ['B1', 'I2', 'V2', '55.7'],
-        ['B1', 'I2', 'V3', '49.1'],
-        ['B2', 'I1', 'V1', '43.9'],
-        ['B2', 'I1', 'V2', '47.2'],
-        ['B2', 'I1', 'V3', '41.5'],
-        ['B2', 'I2', 'V1', '51.6'],
-        ['B2', 'I2', 'V2', '54.9'],
-        ['B2', 'I2', 'V3', '48.3'],
-        ['B3', 'I1', 'V1', '44.5'],
-        ['B3', 'I1', 'V2', '47.9'],
-        ['B3', 'I1', 'V3', '42.1'],
-        ['B3', 'I2', 'V1', '52.0'],
-        ['B3', 'I2', 'V2', '55.3'],
-        ['B3', 'I2', 'V3', '48.7']
-      ]
+      // Generate random data for Split-Plot Design
+      // Design: 3 blocks × 2 irrigation levels × 3 varieties
+      const blocks = ['B1', 'B2', 'B3']
+      const irrigations = ['I1', 'I2']
+      const varieties = ['V1', 'V2', 'V3']
+
+      const exampleData = []
+
+      blocks.forEach((block, bIdx) => {
+        irrigations.forEach((irrigation, iIdx) => {
+          varieties.forEach((variety, vIdx) => {
+            // Whole-plot effect (irrigation)
+            const irrigationEffect = iIdx * 7 // I2 gives higher yield
+
+            // Sub-plot effect (variety)
+            const varietyEffect = (vIdx - 1) * 3 // V2 highest, V3 lowest
+
+            // Interaction effect
+            const interactionEffect = iIdx === 1 && vIdx === 1 ? 2 : 0
+
+            // Block effect (small random variation)
+            const blockEffect = (bIdx - 1) * 0.5
+
+            const baseMean = 45 + irrigationEffect + varietyEffect + interactionEffect + blockEffect
+            const response = randomNormal(baseMean, 0.8)
+
+            exampleData.push([
+              block,
+              irrigation,
+              variety,
+              response.toFixed(1)
+            ])
+          })
+        })
+      })
 
       const newTableData = [...exampleData, ...Array(Math.max(0, 15 - exampleData.length)).fill(null).map(() => Array(4).fill(''))]
       setSplitPlotTableData(newTableData)
