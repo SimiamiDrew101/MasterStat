@@ -8,6 +8,8 @@ import BoxPlot from '../components/BoxPlot'
 import VarianceComponentsChart from '../components/VarianceComponentsChart'
 import HierarchicalMeansPlot from '../components/HierarchicalMeansPlot'
 import NestedBoxPlots from '../components/NestedBoxPlots'
+import ProfilePlot from '../components/ProfilePlot'
+import WithinSubjectVariabilityPlot from '../components/WithinSubjectVariabilityPlot'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -38,6 +40,13 @@ const MixedModels = () => {
   )
   const [nestedFactorNames, setNestedFactorNames] = useState(['School', 'Teacher'])
 
+  // Repeated Measures state
+  const [repeatedTableData, setRepeatedTableData] = useState(
+    Array(15).fill(null).map(() => Array(3).fill('')) // Subject, Condition, Response
+  )
+  const [subjectName, setSubjectName] = useState('Subject')
+  const [withinFactorName, setWithinFactorName] = useState('Time')
+
   // Shared state
   const [responseName, setResponseName] = useState('Response')
   const [includeInteractions, setIncludeInteractions] = useState(true)
@@ -50,9 +59,11 @@ const MixedModels = () => {
 
   // Get current data based on analysis type
   const tableData = analysisType === 'mixed-anova' ? mixedTableData :
-                    analysisType === 'split-plot' ? splitPlotTableData : nestedTableData
+                    analysisType === 'split-plot' ? splitPlotTableData :
+                    analysisType === 'nested' ? nestedTableData : repeatedTableData
   const setTableData = analysisType === 'mixed-anova' ? setMixedTableData :
-                       analysisType === 'split-plot' ? setSplitPlotTableData : setNestedTableData
+                       analysisType === 'split-plot' ? setSplitPlotTableData :
+                       analysisType === 'nested' ? setNestedTableData : setRepeatedTableData
   const factorNames = analysisType === 'mixed-anova' ? mixedFactorNames :
                       analysisType === 'split-plot' ? splitPlotFactorNames : nestedFactorNames
   const setFactorNames = analysisType === 'mixed-anova' ? setMixedFactorNames :
@@ -126,13 +137,22 @@ const MixedModels = () => {
           }
           return dataRow
         })
-    } else {
+    } else if (analysisType === 'nested') {
       // Nested design
       return tableData
         .filter(row => row[0] && row[1] && row[2])
         .map(row => ({
           [factorNames[0]]: row[0], // Factor A (higher level)
           [factorNames[1]]: row[1], // Factor B (nested in A)
+          [responseName]: parseFloat(row[2])
+        }))
+    } else {
+      // Repeated measures
+      return tableData
+        .filter(row => row[0] && row[1] && row[2])
+        .map(row => ({
+          [subjectName]: row[0], // Subject ID
+          [withinFactorName]: row[1], // Within-subjects factor (Time, Condition, etc.)
           [responseName]: parseFloat(row[2])
         }))
     }
@@ -179,7 +199,7 @@ const MixedModels = () => {
         }
 
         response = await axios.post(`${API_URL}/api/mixed/split-plot`, payload)
-      } else {
+      } else if (analysisType === 'nested') {
         // Nested design
         const payload = {
           data: data,
@@ -190,6 +210,17 @@ const MixedModels = () => {
         }
 
         response = await axios.post(`${API_URL}/api/mixed/nested-design`, payload)
+      } else {
+        // Repeated measures
+        const payload = {
+          data: data,
+          subject: subjectName,
+          within_factor: withinFactorName,
+          response: responseName,
+          alpha: alpha
+        }
+
+        response = await axios.post(`${API_URL}/api/mixed/repeated-measures`, payload)
       }
 
       setResult(response.data)
@@ -289,7 +320,7 @@ const MixedModels = () => {
       setBlockName('Block')
       setIncludeBlocks(true)
       setResponseName('Yield')
-    } else {
+    } else if (analysisType === 'nested') {
       // Generate random data for Nested Design
       // Design: 3 schools × 4 teachers per school × 3 students per teacher
       const schools = ['S1', 'S2', 'S3']
@@ -325,6 +356,39 @@ const MixedModels = () => {
       setNestedTableData(newTableData)
       setNestedFactorNames(['School', 'Teacher'])
       setResponseName('Score')
+    } else {
+      // Generate random data for Repeated Measures ANOVA
+      // Design: 5 subjects × 4 time points with systematic increase
+      const subjects = ['S1', 'S2', 'S3', 'S4', 'S5']
+      const timePoints = ['T1', 'T2', 'T3', 'T4']
+
+      const exampleData = []
+
+      subjects.forEach((subject, sIdx) => {
+        // Random baseline for each subject
+        const subjectBaseline = 60 + (sIdx - 2) * 4
+
+        timePoints.forEach((time, tIdx) => {
+          // Time effect: systematic increase over time
+          const timeEffect = tIdx * 5
+
+          // Within-subject variability
+          const baseMean = subjectBaseline + timeEffect
+          const response = randomNormal(baseMean, 2)
+
+          exampleData.push([
+            subject,
+            time,
+            response.toFixed(1)
+          ])
+        })
+      })
+
+      const newTableData = [...exampleData, ...Array(Math.max(0, 15 - exampleData.length)).fill(null).map(() => Array(3).fill(''))]
+      setRepeatedTableData(newTableData)
+      setSubjectName('Subject')
+      setWithinFactorName('Time')
+      setResponseName('Score')
     }
   }
 
@@ -344,7 +408,7 @@ const MixedModels = () => {
       {/* Analysis Type Selection */}
       <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
         <h3 className="text-xl font-bold text-gray-100 mb-4">Analysis Type</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <button
             onClick={() => {
               setAnalysisType('mixed-anova')
@@ -394,6 +458,23 @@ const MixedModels = () => {
             <h4 className="text-lg font-semibold text-gray-100 mb-2">Nested Design</h4>
             <p className="text-sm text-gray-300">
               Factor B nested within Factor A. Analyzes hierarchical structures like students within schools.
+            </p>
+          </button>
+          <button
+            onClick={() => {
+              setAnalysisType('repeated-measures')
+              setResult(null)
+              setError(null)
+            }}
+            className={`p-4 rounded-lg border-2 transition ${
+              analysisType === 'repeated-measures'
+                ? 'border-indigo-500 bg-indigo-500/20'
+                : 'border-slate-600 hover:border-indigo-400'
+            }`}
+          >
+            <h4 className="text-lg font-semibold text-gray-100 mb-2">Repeated Measures ANOVA</h4>
+            <p className="text-sm text-gray-300">
+              Within-subjects design with multiple measurements per subject. Includes sphericity tests and corrections.
             </p>
           </button>
         </div>
@@ -481,7 +562,7 @@ const MixedModels = () => {
               </p>
             </div>
           </div>
-          ) : (
+          ) : analysisType === 'split-plot' ? (
             /* Split-Plot Configuration */
             <div className="space-y-4">
               {/* Include Blocks */}
@@ -541,6 +622,72 @@ const MixedModels = () => {
                 </div>
               </div>
             </div>
+          ) : analysisType === 'nested' ? (
+            /* Nested Design Configuration */
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Factor A (Higher level) */}
+              <div className="bg-slate-700/30 rounded-lg p-4">
+                <label className="block text-gray-200 font-medium mb-2">Factor A (Higher Level)</label>
+                <input
+                  type="text"
+                  value={factorNames[0]}
+                  onChange={(e) => handleFactorNameChange(0, e.target.value)}
+                  className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g., School"
+                />
+                <p className="text-xs text-gray-400 mt-2">
+                  The grouping factor (e.g., schools, clinics, fields)
+                </p>
+              </div>
+
+              {/* Factor B (Nested in A) */}
+              <div className="bg-slate-700/30 rounded-lg p-4">
+                <label className="block text-gray-200 font-medium mb-2">Factor B (Nested in A)</label>
+                <input
+                  type="text"
+                  value={factorNames[1]}
+                  onChange={(e) => handleFactorNameChange(1, e.target.value)}
+                  className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g., Teacher"
+                />
+                <p className="text-xs text-gray-400 mt-2">
+                  Nested within each level of Factor A (e.g., teachers within schools)
+                </p>
+              </div>
+            </div>
+          ) : (
+            /* Repeated Measures Configuration */
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Subject Identifier */}
+              <div className="bg-slate-700/30 rounded-lg p-4">
+                <label className="block text-gray-200 font-medium mb-2">Subject Identifier</label>
+                <input
+                  type="text"
+                  value={subjectName}
+                  onChange={(e) => setSubjectName(e.target.value)}
+                  className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g., Subject, Participant"
+                />
+                <p className="text-xs text-gray-400 mt-2">
+                  The column identifying each participant/subject
+                </p>
+              </div>
+
+              {/* Within-Subjects Factor */}
+              <div className="bg-slate-700/30 rounded-lg p-4">
+                <label className="block text-gray-200 font-medium mb-2">Within-Subjects Factor</label>
+                <input
+                  type="text"
+                  value={withinFactorName}
+                  onChange={(e) => setWithinFactorName(e.target.value)}
+                  className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g., Time, Condition"
+                />
+                <p className="text-xs text-gray-400 mt-2">
+                  The repeated factor (e.g., time points, conditions measured within each subject)
+                </p>
+              </div>
+            </div>
           )}
 
           {/* Response Variable Name */}
@@ -578,11 +725,13 @@ const MixedModels = () => {
                   <th className="px-4 py-2 text-left text-gray-200 font-medium">
                     {analysisType === 'split-plot' ? `${factorNames[0]} (WP)` :
                      analysisType === 'nested' ? `${factorNames[0]}` :
+                     analysisType === 'repeated-measures' ? subjectName :
                      factorNames[0]}
                   </th>
                   <th className="px-4 py-2 text-left text-gray-200 font-medium">
                     {analysisType === 'split-plot' ? `${factorNames[1]} (SP)` :
                      analysisType === 'nested' ? `${factorNames[1]}(${factorNames[0]})` :
+                     analysisType === 'repeated-measures' ? withinFactorName :
                      factorNames[1]}
                   </th>
                   <th className="px-4 py-2 text-left text-gray-200 font-medium">{responseName}</th>
@@ -681,7 +830,11 @@ const MixedModels = () => {
           disabled={loading}
           className="w-full bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-bold py-3 px-6 rounded-lg hover:from-indigo-600 hover:to-purple-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? 'Analyzing...' : analysisType === 'mixed-anova' ? 'Run Mixed Model ANOVA' : 'Run Split-Plot Analysis'}
+          {loading ? 'Analyzing...' :
+           analysisType === 'mixed-anova' ? 'Run Mixed Model ANOVA' :
+           analysisType === 'split-plot' ? 'Run Split-Plot Analysis' :
+           analysisType === 'nested' ? 'Run Nested Design Analysis' :
+           'Run Repeated Measures ANOVA'}
         </button>
       </div>
 
@@ -697,23 +850,131 @@ const MixedModels = () => {
       {result && (
         <div className="space-y-6">
           {/* Model Summary */}
-          <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
-            <h3 className="text-xl font-bold text-gray-100 mb-4">Model Summary</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div className="bg-gradient-to-r from-indigo-500/20 to-purple-500/20 rounded-lg p-4">
-                <p className="text-gray-400 text-sm">R²</p>
-                <p className="text-2xl font-bold text-indigo-400">{result.model_summary.r_squared}</p>
-              </div>
-              <div className="bg-gradient-to-r from-indigo-500/20 to-purple-500/20 rounded-lg p-4">
-                <p className="text-gray-400 text-sm">Adj. R²</p>
-                <p className="text-2xl font-bold text-indigo-400">{result.model_summary.adj_r_squared}</p>
-              </div>
-              <div className="bg-gradient-to-r from-indigo-500/20 to-purple-500/20 rounded-lg p-4">
-                <p className="text-gray-400 text-sm">F-statistic</p>
-                <p className="text-2xl font-bold text-indigo-400">{result.model_summary.f_statistic}</p>
+          {result.model_summary && (
+            <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+              <h3 className="text-xl font-bold text-gray-100 mb-4">Model Summary</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="bg-gradient-to-r from-indigo-500/20 to-purple-500/20 rounded-lg p-4">
+                  <p className="text-gray-400 text-sm">R²</p>
+                  <p className="text-2xl font-bold text-indigo-400">{result.model_summary.r_squared}</p>
+                </div>
+                <div className="bg-gradient-to-r from-indigo-500/20 to-purple-500/20 rounded-lg p-4">
+                  <p className="text-gray-400 text-sm">Adj. R²</p>
+                  <p className="text-2xl font-bold text-indigo-400">{result.model_summary.adj_r_squared}</p>
+                </div>
+                <div className="bg-gradient-to-r from-indigo-500/20 to-purple-500/20 rounded-lg p-4">
+                  <p className="text-gray-400 text-sm">F-statistic</p>
+                  <p className="text-2xl font-bold text-indigo-400">{result.model_summary.f_statistic}</p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
+
+          {/* Sphericity Test Results (Repeated Measures only) */}
+          {analysisType === 'repeated-measures' && result.sphericity && (
+            <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+              <h3 className="text-xl font-bold text-gray-100 mb-4">Sphericity Test (Mauchly's)</h3>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Test Statistics */}
+                <div>
+                  <div className="bg-slate-900/50 rounded-lg p-4 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-300">W Statistic:</span>
+                      <span className="text-gray-100 font-semibold">{result.sphericity.w_statistic?.toFixed(4)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-300">p-value:</span>
+                      <span className="text-gray-100 font-semibold">
+                        {result.sphericity.p_value < 0.001 ? '<0.001' : result.sphericity.p_value?.toFixed(4)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 border-t border-slate-700">
+                      <span className="text-gray-300">Decision:</span>
+                      <span className={`font-semibold ${result.sphericity.sphericity_assumed ? 'text-green-400' : 'text-yellow-400'}`}>
+                        {result.sphericity.sphericity_assumed ? '✓ Sphericity Met' : '⚠ Sphericity Violated'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-gray-400 text-sm mt-3">
+                    {result.sphericity.sphericity_assumed ? (
+                      'The sphericity assumption is met (p ≥ 0.05). Use uncorrected F-tests.'
+                    ) : (
+                      'Sphericity assumption violated (p < 0.05). Use corrected F-tests (GG or HF).'
+                    )}
+                  </p>
+                </div>
+
+                {/* Correction Factors */}
+                <div>
+                  <h4 className="text-lg font-semibold text-gray-200 mb-3">Correction Factors (ε)</h4>
+                  <div className="space-y-3">
+                    <div className="bg-slate-900/50 rounded-lg p-3">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-gray-300">Greenhouse-Geisser:</span>
+                        <span className="text-indigo-400 font-semibold">{result.sphericity.epsilon_gg?.toFixed(4)}</span>
+                      </div>
+                      <p className="text-gray-400 text-xs">Conservative correction</p>
+                    </div>
+                    <div className="bg-slate-900/50 rounded-lg p-3">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-gray-300">Huynh-Feldt:</span>
+                        <span className="text-purple-400 font-semibold">{result.sphericity.epsilon_hf?.toFixed(4)}</span>
+                      </div>
+                      <p className="text-gray-400 text-xs">Less conservative correction</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 bg-indigo-900/20 rounded-lg p-3">
+                    <p className="text-indigo-300 text-sm font-medium">
+                      📋 {result.sphericity.recommendation}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Corrected Tests (if sphericity violated) */}
+              {!result.sphericity.sphericity_assumed && result.corrected_tests && (
+                <div className="mt-4 overflow-x-auto bg-slate-900/50 rounded-lg border border-slate-600">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-slate-700/50">
+                        <th className="px-4 py-3 text-left text-gray-200 font-medium">Correction</th>
+                        <th className="px-4 py-3 text-right text-gray-200 font-medium">F</th>
+                        <th className="px-4 py-3 text-right text-gray-200 font-medium">df (num)</th>
+                        <th className="px-4 py-3 text-right text-gray-200 font-medium">df (denom)</th>
+                        <th className="px-4 py-3 text-right text-gray-200 font-medium">p-value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="border-t border-slate-700">
+                        <td className="px-4 py-3 text-gray-300">Greenhouse-Geisser</td>
+                        <td className="px-4 py-3 text-right text-gray-300">{result.corrected_tests.greenhouse_geisser.F?.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right text-gray-300">{result.corrected_tests.greenhouse_geisser.df_numerator?.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right text-gray-300">{result.corrected_tests.greenhouse_geisser.df_denominator?.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right text-gray-300">
+                          {result.corrected_tests.greenhouse_geisser.p_value < 0.001
+                            ? '<0.001'
+                            : result.corrected_tests.greenhouse_geisser.p_value?.toFixed(4)}
+                        </td>
+                      </tr>
+                      <tr className="border-t border-slate-700">
+                        <td className="px-4 py-3 text-gray-300">Huynh-Feldt</td>
+                        <td className="px-4 py-3 text-right text-gray-300">{result.corrected_tests.huynh_feldt.F?.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right text-gray-300">{result.corrected_tests.huynh_feldt.df_numerator?.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right text-gray-300">{result.corrected_tests.huynh_feldt.df_denominator?.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right text-gray-300">
+                          {result.corrected_tests.huynh_feldt.p_value < 0.001
+                            ? '<0.001'
+                            : result.corrected_tests.huynh_feldt.p_value?.toFixed(4)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* ANOVA Table with EMS */}
           <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
@@ -1092,6 +1353,30 @@ const MixedModels = () => {
                         </p>
                       </div>
                     </div>
+                  )}
+                </>
+              )}
+
+              {/* Repeated Measures Specific Visualizations */}
+              {analysisType === 'repeated-measures' && result.plot_data && (
+                <>
+                  {/* Profile Plot */}
+                  {result.plot_data.profile_data && (
+                    <ProfilePlot
+                      profileData={result.plot_data.profile_data}
+                      withinFactor={result.within_factor || withinFactorName}
+                      responseName={responseName}
+                    />
+                  )}
+
+                  {/* Individual Trajectories */}
+                  {result.plot_data.trajectories && result.plot_data.profile_data && (
+                    <WithinSubjectVariabilityPlot
+                      trajectories={result.plot_data.trajectories}
+                      profileData={result.plot_data.profile_data}
+                      withinFactor={result.within_factor || withinFactorName}
+                      responseName={responseName}
+                    />
                   )}
                 </>
               )}
