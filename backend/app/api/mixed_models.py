@@ -1287,3 +1287,331 @@ def generate_nested_interpretation(factor_a: str, factor_b_nested: str,
         interpretations.append(f"  - Most variability is at the individual observation level (within {factor_b_nested})")
 
     return interpretations
+
+
+# ============================================================================
+# REPEATED MEASURES ANOVA
+# ============================================================================
+
+class RepeatedMeasuresRequest(BaseModel):
+    """Request for Repeated Measures ANOVA"""
+    data: List[Dict] = Field(..., description="Experimental data with repeated measurements")
+    subject: str = Field(..., description="Subject/participant identifier")
+    within_factor: str = Field(..., description="Within-subjects factor (e.g., Time, Condition)")
+    response: str = Field(..., description="Response variable name")
+    alpha: float = Field(0.05, description="Significance level")
+
+
+@router.post("/repeated-measures")
+async def repeated_measures_anova(request: RepeatedMeasuresRequest):
+    """
+    Repeated Measures ANOVA for within-subjects designs
+
+    Features:
+    - Mauchly's test for sphericity
+    - Greenhouse-Geisser and Huynh-Feldt corrections
+    - Effect sizes (partial eta squared)
+    - Profile plots and within-subject variability
+    """
+    def safe_float(value):
+        """Convert value to float, handling NaN/inf by returning None"""
+        if pd.isna(value) or np.isinf(value):
+            return None
+        return float(value)
+
+    try:
+        df = pd.DataFrame(request.data)
+
+        # Validate data
+        required_cols = [request.subject, request.within_factor, request.response]
+        for col in required_cols:
+            if col not in df.columns:
+                raise HTTPException(status_code=400, detail=f"Column '{col}' not found in data")
+
+        # Convert to wide format for repeated measures
+        # Each row = one subject, columns = different time points/conditions
+        df_wide = df.pivot(index=request.subject, columns=request.within_factor, values=request.response)
+
+        # Get number of subjects and conditions
+        n_subjects = len(df_wide)
+        conditions = df_wide.columns.tolist()
+        n_conditions = len(conditions)
+
+        if n_conditions < 2:
+            raise HTTPException(status_code=400, detail="Need at least 2 conditions for repeated measures")
+
+        # Calculate means for each condition
+        condition_means = df_wide.mean()
+        grand_mean = df_wide.values.flatten().mean()
+
+        # Calculate Sum of Squares
+        # Between-subjects SS
+        subject_means = df_wide.mean(axis=1)
+        ss_subjects = n_conditions * np.sum((subject_means - grand_mean) ** 2)
+
+        # Within-subjects SS (condition effect)
+        ss_within = n_subjects * np.sum((condition_means - grand_mean) ** 2)
+
+        # Error SS (residual)
+        ss_error = 0
+        for subj_idx in range(n_subjects):
+            for cond_idx in range(n_conditions):
+                observed = df_wide.iloc[subj_idx, cond_idx]
+                expected = subject_means.iloc[subj_idx] + condition_means.iloc[cond_idx] - grand_mean
+                ss_error += (observed - expected) ** 2
+
+        # Total SS
+        ss_total = np.sum((df_wide.values - grand_mean) ** 2)
+
+        # Degrees of freedom
+        df_within = n_conditions - 1
+        df_subjects = n_subjects - 1
+        df_error = (n_subjects - 1) * (n_conditions - 1)
+        df_total = n_subjects * n_conditions - 1
+
+        # Mean Squares
+        ms_within = ss_within / df_within
+        ms_error = ss_error / df_error
+        ms_subjects = ss_subjects / df_subjects
+
+        # F-statistic and p-value
+        f_statistic = ms_within / ms_error if ms_error > 0 else None
+        p_value = 1 - stats.f.cdf(f_statistic, df_within, df_error) if f_statistic is not None else None
+
+        # Effect size (partial eta squared)
+        partial_eta_sq = ss_within / (ss_within + ss_error) if (ss_within + ss_error) > 0 else 0
+
+        # Mauchly's Test for Sphericity (only if k >= 3)
+        sphericity_test = None
+        sphericity_p = None
+        epsilon_gg = 1.0  # Greenhouse-Geisser epsilon
+        epsilon_hf = 1.0  # Huynh-Feldt epsilon
+
+        if n_conditions >= 3:
+            # Calculate difference scores for all pairs
+            diff_matrix = np.zeros((n_subjects, n_conditions - 1))
+            for i in range(n_conditions - 1):
+                diff_matrix[:, i] = df_wide.iloc[:, i] - df_wide.iloc[:, i + 1]
+
+            # Covariance matrix of differences
+            cov_matrix = np.cov(diff_matrix.T)
+
+            # Mauchly's W statistic
+            det_cov = np.linalg.det(cov_matrix)
+            trace_cov = np.trace(cov_matrix)
+            k = n_conditions - 1
+
+            if trace_cov > 0 and k > 0:
+                w_statistic = det_cov / ((trace_cov / k) ** k)
+
+                # Chi-square approximation
+                chi_sq = -(n_subjects - 1 - (2 * k + 5) / 6) * np.log(w_statistic)
+                df_chi = k * (k + 1) / 2 - 1
+                sphericity_p = 1 - stats.chi2.cdf(chi_sq, df_chi)
+                sphericity_test = safe_float(w_statistic)
+
+                # Greenhouse-Geisser epsilon
+                eigenvalues = np.linalg.eigvals(cov_matrix)
+                lambda_sum = np.sum(eigenvalues)
+                lambda_sq_sum = np.sum(eigenvalues ** 2)
+                epsilon_gg = (lambda_sum ** 2) / (k * lambda_sq_sum) if lambda_sq_sum > 0 else 1.0
+                epsilon_gg = max(1 / k, min(1.0, epsilon_gg))  # Bound between 1/k and 1
+
+                # Huynh-Feldt epsilon
+                n = n_subjects
+                epsilon_hf = (n * k * epsilon_gg - 2) / (k * (n - 1 - k * epsilon_gg))
+                epsilon_hf = max(1 / k, min(1.0, epsilon_hf))
+
+        # Corrected tests
+        f_gg = f_statistic
+        df_within_gg = df_within * epsilon_gg
+        df_error_gg = df_error * epsilon_gg
+        p_value_gg = 1 - stats.f.cdf(f_gg, df_within_gg, df_error_gg) if f_gg is not None else None
+
+        f_hf = f_statistic
+        df_within_hf = df_within * epsilon_hf
+        df_error_hf = df_error * epsilon_hf
+        p_value_hf = 1 - stats.f.cdf(f_hf, df_within_hf, df_error_hf) if f_hf is not None else None
+
+        # Build ANOVA table
+        anova_table = {
+            request.within_factor: {
+                "sum_sq": safe_float(ss_within),
+                "df": int(df_within),
+                "mean_sq": safe_float(ms_within),
+                "F": safe_float(f_statistic),
+                "p_value": safe_float(p_value),
+                "partial_eta_sq": safe_float(partial_eta_sq)
+            },
+            "Error": {
+                "sum_sq": safe_float(ss_error),
+                "df": int(df_error),
+                "mean_sq": safe_float(ms_error),
+                "F": None,
+                "p_value": None
+            },
+            "Subjects": {
+                "sum_sq": safe_float(ss_subjects),
+                "df": int(df_subjects),
+                "mean_sq": safe_float(ms_subjects),
+                "F": None,
+                "p_value": None
+            }
+        }
+
+        # Sphericity results
+        spher_assumed = bool(sphericity_p is None or sphericity_p >= request.alpha)
+        sphericity_results = {
+            "w_statistic": sphericity_test,
+            "p_value": safe_float(sphericity_p) if sphericity_p is not None else None,
+            "epsilon_gg": safe_float(epsilon_gg),
+            "epsilon_hf": safe_float(epsilon_hf),
+            "sphericity_assumed": spher_assumed,
+            "recommendation": "Use uncorrected test" if spher_assumed else "Use Greenhouse-Geisser or Huynh-Feldt correction"
+        }
+
+        # Corrected tests
+        corrected_tests = {
+            "greenhouse_geisser": {
+                "F": safe_float(f_gg),
+                "df_numerator": safe_float(df_within_gg),
+                "df_denominator": safe_float(df_error_gg),
+                "p_value": safe_float(p_value_gg)
+            },
+            "huynh_feldt": {
+                "F": safe_float(f_hf),
+                "df_numerator": safe_float(df_within_hf),
+                "df_denominator": safe_float(df_error_hf),
+                "p_value": safe_float(p_value_hf)
+            }
+        }
+
+        # Calculate plot data
+        plot_data = calculate_plot_data_repeated_measures(df, request.subject, request.within_factor, request.response, condition_means, conditions)
+
+        # Generate interpretation
+        interpretation = generate_repeated_measures_interpretation(
+            request.within_factor,
+            anova_table,
+            sphericity_results,
+            corrected_tests,
+            request.alpha
+        )
+
+        return {
+            "model_type": "Repeated Measures ANOVA",
+            "within_factor": request.within_factor,
+            "n_subjects": n_subjects,
+            "n_conditions": n_conditions,
+            "anova_table": anova_table,
+            "sphericity": sphericity_results,
+            "corrected_tests": corrected_tests,
+            "plot_data": plot_data,
+            "interpretation": interpretation
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def calculate_plot_data_repeated_measures(df: pd.DataFrame, subject: str,
+                                           within_factor: str, response: str,
+                                           condition_means: pd.Series, conditions: list) -> Dict:
+    """Calculate plot data for repeated measures visualizations"""
+    def safe_float(value):
+        if pd.isna(value) or np.isinf(value):
+            return None
+        return float(value)
+
+    plot_data = {}
+
+    # Profile plot data (mean and error bars)
+    profile_data = []
+    for condition in conditions:
+        cond_data = df[df[within_factor] == condition][response]
+        profile_data.append({
+            "condition": str(condition),
+            "mean": safe_float(cond_data.mean()),
+            "std": safe_float(cond_data.std()),
+            "sem": safe_float(cond_data.sem()),
+            "n": int(len(cond_data))
+        })
+    plot_data["profile_data"] = profile_data
+
+    # Individual trajectories (for spaghetti plot)
+    trajectories = []
+    for subj in df[subject].unique():
+        subj_data = df[df[subject] == subj].sort_values(within_factor)
+        trajectory = {
+            "subject": str(subj),
+            "values": [safe_float(v) for v in subj_data[response].values]
+        }
+        trajectories.append(trajectory)
+    plot_data["trajectories"] = trajectories
+
+    # Within-subject variability
+    df_wide = df.pivot(index=subject, columns=within_factor, values=response)
+    within_subj_std = df_wide.std(axis=1)
+    variability_data = {
+        "mean_within_subj_std": safe_float(within_subj_std.mean()),
+        "subjects": [
+            {
+                "subject": str(subj),
+                "std": safe_float(std_val)
+            }
+            for subj, std_val in within_subj_std.items()
+        ]
+    }
+    plot_data["within_subject_variability"] = variability_data
+
+    return plot_data
+
+
+def generate_repeated_measures_interpretation(within_factor: str, anova_table: Dict,
+                                               sphericity: Dict, corrected_tests: Dict,
+                                               alpha: float) -> List[str]:
+    """Generate interpretation for repeated measures ANOVA"""
+    interpretations = [
+        "Repeated Measures ANOVA Results:",
+        f"• Within-subjects factor: {within_factor}",
+        ""
+    ]
+
+    # Main effect
+    p_val = anova_table[within_factor]["p_value"]
+    eta_sq = anova_table[within_factor]["partial_eta_sq"]
+
+    if p_val is not None:
+        sig_status = "Significant" if p_val < alpha else "Not significant"
+        interpretations.append(f"Main Effect of {within_factor}: {sig_status}")
+        interpretations.append(f"  F = {anova_table[within_factor]['F']:.4f}, p = {p_val:.4f}")
+        interpretations.append(f"  Partial η² = {eta_sq:.4f}")
+
+        # Effect size interpretation
+        if eta_sq >= 0.14:
+            interpretations.append("  (Large effect size)")
+        elif eta_sq >= 0.06:
+            interpretations.append("  (Medium effect size)")
+        elif eta_sq >= 0.01:
+            interpretations.append("  (Small effect size)")
+
+    interpretations.append("")
+
+    # Sphericity
+    if sphericity["p_value"] is not None:
+        interpretations.append("Sphericity Test (Mauchly's):")
+        interpretations.append(f"  W = {sphericity['w_statistic']:.4f}, p = {sphericity['p_value']:.4f}")
+
+        if sphericity["sphericity_assumed"]:
+            interpretations.append("  ✓ Sphericity assumption met")
+        else:
+            interpretations.append("  ✗ Sphericity assumption violated")
+            interpretations.append(f"  Recommendation: {sphericity['recommendation']}")
+            interpretations.append("")
+            interpretations.append("Corrected Tests:")
+            interpretations.append(f"  Greenhouse-Geisser: F = {corrected_tests['greenhouse_geisser']['F']:.4f}, p = {corrected_tests['greenhouse_geisser']['p_value']:.4f}")
+            interpretations.append(f"  Huynh-Feldt: F = {corrected_tests['huynh_feldt']['F']:.4f}, p = {corrected_tests['huynh_feldt']['p_value']:.4f}")
+    else:
+        interpretations.append("Sphericity test not applicable (< 3 conditions)")
+
+    return interpretations

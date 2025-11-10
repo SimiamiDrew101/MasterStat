@@ -1,0 +1,28 @@
+{
+  "data": [
+    {"Subject": "S1", "Time": "T1", "Score": 65},
+    {"Subject": "S1", "Time": "T2", "Score": 72},
+    {"Subject": "S1", "Time": "T3", "Score": 78},
+    {"Subject": "S1", "Time": "T4", "Score": 82},
+    {"Subject": "S2", "Time": "T1", "Score": 58},
+    {"Subject": "S2", "Time": "T2", "Score": 64},
+    {"Subject": "S2", "Time": "T3", "Score": 70},
+    {"Subject": "S2", "Time": "T4", "Score": 75},
+    {"Subject": "S3", "Time": "T1", "Score": 72},
+    {"Subject": "S3", "Time": "T2", "Score": 78},
+    {"Subject": "S3", "Time": "T3", "Score": 85},
+    {"Subject": "S3", "Time": "T4", "Score": 90},
+    {"Subject": "S4", "Time": "T1", "Score": 60},
+    {"Subject": "S4", "Time": "T2", "Score": 68},
+    {"Subject": "S4", "Time": "T3", "Score": 73},
+    {"Subject": "S4", "Time": "T4", "Score": 79},
+    {"Subject": "S5", "Time": "T1", "Score": 68},
+    {"Subject": "S5", "Time": "T2", "Score": 75},
+    {"Subject": "S5", "Time": "T3", "Score": 80},
+    {"Subject": "S5", "Time": "T4", "Score": 86}
+  ],
+  "subject": "Subject",
+  "within_factor": "Time",
+  "response": "Score",
+  "alpha": 0.05
+}
