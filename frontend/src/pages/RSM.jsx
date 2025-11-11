@@ -34,8 +34,16 @@ const RSM = () => {
   // Update factor names when number changes
   useEffect(() => {
     const newFactorNames = Array.from({ length: numFactors }, (_, i) => `X${i + 1}`)
+    console.log('Setting factor names:', newFactorNames)
     setFactorNames(newFactorNames)
   }, [numFactors])
+
+  // Debug table data
+  useEffect(() => {
+    console.log('TableData updated:', tableData.length, 'rows')
+    console.log('Factor names:', factorNames)
+    console.log('Response name:', responseName)
+  }, [tableData, factorNames, responseName])
 
   // Generate design
   const handleGenerateDesign = async () => {
@@ -66,6 +74,9 @@ const RSM = () => {
         return tableRow
       })
 
+      console.log('Generated table data:', table)
+      console.log('Factor names:', factorNames)
+      console.log('Table row example:', table[0])
       setTableData(table)
     } catch (err) {
       setError(err.response?.data?.detail || err.message || 'Failed to generate design')
@@ -81,13 +92,18 @@ const RSM = () => {
 
     try {
       // Validate data - check if response column (last column) is filled
+      console.log('Table data:', tableData)
       const validRows = tableData.filter(row => {
         const responseValue = row[row.length - 1]
-        return responseValue !== '' && responseValue !== null && responseValue !== undefined
+        const isValid = responseValue !== '' && responseValue !== null && responseValue !== undefined
+        console.log('Row:', row, 'Response:', responseValue, 'Valid:', isValid)
+        return isValid
       })
 
+      console.log('Valid rows:', validRows.length, 'Total rows:', tableData.length)
+
       if (validRows.length < 5) {
-        throw new Error('Need at least 5 complete data points for RSM')
+        throw new Error(`Need at least 5 complete data points for RSM (found ${validRows.length} rows with response values)`)
       }
 
       // Convert to API format
@@ -243,6 +259,25 @@ const RSM = () => {
     if (tableData.length > 1) {
       setTableData(tableData.filter((_, idx) => idx !== rowIndex))
     }
+  }
+
+  // Fill test data for demonstration
+  const fillTestData = () => {
+    const newData = tableData.map(row => {
+      // Keep factor values, generate random response
+      const newRow = [...row]
+      const factors = row.slice(0, -1) // All except last column
+      // Generate response based on a simple quadratic model for testing
+      let response = 10
+      factors.forEach((factor, i) => {
+        response += 5 * factor + 2 * factor * factor
+      })
+      // Add some noise
+      response += (Math.random() - 0.5) * 5
+      newRow[newRow.length - 1] = response.toFixed(2)
+      return newRow
+    })
+    setTableData(newData)
   }
 
   return (
@@ -458,13 +493,24 @@ const RSM = () => {
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="text-gray-100 font-semibold text-lg">Experimental Data</h4>
-                  <button
-                    onClick={addRow}
-                    className="flex items-center space-x-1 px-3 py-1 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Add Row</span>
-                  </button>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={fillTestData}
+                      disabled={!designData}
+                      className="flex items-center space-x-1 px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Fill response column with test data"
+                    >
+                      <Target className="w-4 h-4" />
+                      <span>Fill Test Data</span>
+                    </button>
+                    <button
+                      onClick={addRow}
+                      className="flex items-center space-x-1 px-3 py-1 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors text-sm"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Add Row</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="overflow-x-auto bg-slate-700/30 rounded-lg border-2 border-slate-600">
