@@ -80,10 +80,11 @@ const RSM = () => {
     setError(null)
 
     try {
-      // Validate data
-      const validRows = tableData.filter(row =>
-        row.every(cell => cell !== '' && cell !== null && cell !== undefined)
-      )
+      // Validate data - check if response column (last column) is filled
+      const validRows = tableData.filter(row => {
+        const responseValue = row[row.length - 1]
+        return responseValue !== '' && responseValue !== null && responseValue !== undefined
+      })
 
       if (validRows.length < 5) {
         throw new Error('Need at least 5 complete data points for RSM')
