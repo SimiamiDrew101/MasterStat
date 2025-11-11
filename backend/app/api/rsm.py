@@ -54,14 +54,14 @@ async def fit_rsm_model(request: RSMRequest):
         # Fit model
         model = ols(formula, data=df).fit()
 
-        # Get coefficients
+        # Get coefficients (handle NaN values)
         coefficients = {}
         for param, coef in model.params.items():
             coefficients[param] = {
-                "estimate": round(float(coef), 4),
-                "std_error": round(float(model.bse[param]), 4),
-                "t_value": round(float(model.tvalues[param]), 4),
-                "p_value": round(float(model.pvalues[param]), 6)
+                "estimate": round(float(coef), 4) if not pd.isna(coef) else None,
+                "std_error": round(float(model.bse[param]), 4) if not pd.isna(model.bse[param]) else None,
+                "t_value": round(float(model.tvalues[param]), 4) if not pd.isna(model.tvalues[param]) else None,
+                "p_value": round(float(model.pvalues[param]), 6) if not pd.isna(model.pvalues[param]) else None
             }
 
         # ANOVA for regression
@@ -121,9 +121,9 @@ async def fit_rsm_model(request: RSMRequest):
             "model_type": "Response Surface Model (Second-Order)",
             "coefficients": coefficients,
             "anova_table": anova_results,
-            "r_squared": round(float(model.rsquared), 4),
-            "adj_r_squared": round(float(model.rsquared_adj), 4),
-            "rmse": round(float(np.sqrt(model.mse_resid)), 4),
+            "r_squared": round(float(model.rsquared), 4) if not pd.isna(model.rsquared) else None,
+            "adj_r_squared": round(float(model.rsquared_adj), 4) if not pd.isna(model.rsquared_adj) else None,
+            "rmse": round(float(np.sqrt(model.mse_resid)), 4) if not pd.isna(model.mse_resid) else None,
             "curvature_test": curvature_test
         }
 
