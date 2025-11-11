@@ -1060,3 +1060,330 @@ async def calculate_effects(data: dict):
         return results
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class FoldoverRequest(BaseModel):
+    data: List[Dict[str, Union[str, float]]] = Field(..., description="Original experimental data")
+    factors: List[str] = Field(..., description="List of factor names")
+    foldover_type: str = Field(..., description="Type of foldover: 'full' or 'partial'")
+    foldover_factor: Optional[str] = Field(None, description="Factor to fold over (for partial foldover)")
+    generators: Optional[List[str]] = Field(None, description="Generator relationships (for fractional designs)")
+
+
+class CombinedAnalysisRequest(BaseModel):
+    original_data: List[Dict[str, Union[str, float]]] = Field(..., description="Original experimental data")
+    foldover_data: List[Dict[str, Union[str, float]]] = Field(..., description="Foldover experimental data")
+    factors: List[str] = Field(..., description="List of factor names")
+    response: str = Field(..., description="Response variable name")
+    alpha: float = Field(0.05, description="Significance level")
+    generators: Optional[List[str]] = Field(None, description="Original generator relationships")
+    foldover_type: str = Field(..., description="Type of foldover used: 'full' or 'partial'")
+    foldover_factor: Optional[str] = Field(None, description="Factor that was folded (for partial foldover)")
+
+
+@router.post("/foldover/generate")
+async def generate_foldover(request: FoldoverRequest):
+    """
+    Generate foldover design by reversing factor signs
+    Full foldover: reverse all factors
+    Partial foldover: reverse only specified factor
+    """
+    try:
+        df = pd.DataFrame(request.data)
+
+        # Create foldover data by copying original
+        foldover_df = df.copy()
+
+        if request.foldover_type == "full":
+            # Full foldover: reverse signs of ALL factors
+            for factor in request.factors:
+                if factor in foldover_df.columns:
+                    # Check if factor is numeric (coded as +1/-1 or similar)
+                    if pd.api.types.is_numeric_dtype(foldover_df[factor]):
+                        foldover_df[factor] = -foldover_df[factor]
+                    else:
+                        # For categorical factors (e.g., "Low"/"High"), swap levels
+                        unique_levels = sorted(df[factor].unique())
+                        if len(unique_levels) == 2:
+                            level_map = {unique_levels[0]: unique_levels[1], unique_levels[1]: unique_levels[0]}
+                            foldover_df[factor] = foldover_df[factor].map(level_map)
+
+            # Calculate new alias structure for full foldover
+            # Full foldover de-aliases main effects from 2-way interactions
+            clearing_info = {
+                "type": "full",
+                "description": "Full foldover reverses all factor signs, de-aliasing main effects from two-factor interactions",
+                "cleared_aliases": "All main effects are now clear of two-factor interactions",
+                "new_resolution": "At least IV" if request.generators else "Full factorial"
+            }
+
+        elif request.foldover_type == "partial":
+            # Partial foldover: reverse signs of ONE factor only
+            if not request.foldover_factor:
+                raise ValueError("foldover_factor must be specified for partial foldover")
+
+            if request.foldover_factor not in request.factors:
+                raise ValueError(f"foldover_factor '{request.foldover_factor}' not in factors list")
+
+            factor = request.foldover_factor
+            if factor in foldover_df.columns:
+                if pd.api.types.is_numeric_dtype(foldover_df[factor]):
+                    foldover_df[factor] = -foldover_df[factor]
+                else:
+                    unique_levels = sorted(df[factor].unique())
+                    if len(unique_levels) == 2:
+                        level_map = {unique_levels[0]: unique_levels[1], unique_levels[1]: unique_levels[0]}
+                        foldover_df[factor] = foldover_df[factor].map(level_map)
+
+            # For partial foldover, determine which aliases are cleared
+            # Partial foldover of factor X clears aliases involving X
+            clearing_info = {
+                "type": "partial",
+                "folded_factor": request.foldover_factor,
+                "description": f"Partial foldover on {request.foldover_factor} clears aliases involving this factor",
+                "cleared_aliases": f"{request.foldover_factor} and all interactions with {request.foldover_factor}",
+                "benefit": "Uses fewer runs than full foldover while clearing specific aliases of interest"
+            }
+        else:
+            raise ValueError("foldover_type must be 'full' or 'partial'")
+
+        # Remove response column if it exists (will be measured in new runs)
+        response_cols = [col for col in foldover_df.columns if col not in request.factors]
+        for col in response_cols:
+            if col in foldover_df.columns:
+                foldover_df[col] = None  # Clear response values
+
+        return {
+            "foldover_type": request.foldover_type,
+            "foldover_factor": request.foldover_factor if request.foldover_type == "partial" else None,
+            "n_original_runs": len(df),
+            "n_foldover_runs": len(foldover_df),
+            "n_total_runs": len(df) + len(foldover_df),
+            "foldover_data": foldover_df.to_dict('records'),
+            "clearing_info": clearing_info,
+            "factors": request.factors
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/foldover/analyze")
+async def analyze_combined_design(request: CombinedAnalysisRequest):
+    """
+    Analyze combined design (original + foldover) showing de-aliased effects
+    """
+    try:
+        # Combine original and foldover data
+        df_original = pd.DataFrame(request.original_data)
+        df_foldover = pd.DataFrame(request.foldover_data)
+
+        # Add a column to track which runs are from foldover
+        df_original['run_type'] = 'original'
+        df_foldover['run_type'] = 'foldover'
+
+        # Combine datasets
+        df_combined = pd.concat([df_original, df_foldover], ignore_index=True)
+
+        # Calculate alias structure for original design
+        original_alias_info = None
+        if request.generators:
+            original_alias_info = calculate_alias_structure(request.factors, request.generators)
+
+        # Calculate new alias structure for combined design
+        # After foldover, we can estimate previously aliased effects
+        combined_alias_info = None
+        if request.foldover_type == "full":
+            # Full foldover de-aliases main effects from 2-way interactions
+            # The combined design is now at least Resolution IV
+            combined_alias_info = {
+                "resolution": "IV+ (after foldover)",
+                "description": "Main effects are now de-aliased from two-factor interactions",
+                "cleared_effects": "All main effects",
+                "remaining_confounding": "Some two-factor interactions may still be aliased with each other"
+            }
+        elif request.foldover_type == "partial":
+            # Partial foldover clears aliases involving the folded factor
+            combined_alias_info = {
+                "resolution": "Improved (partial foldover)",
+                "description": f"Effects involving {request.foldover_factor} are now de-aliased",
+                "cleared_effects": f"{request.foldover_factor} and interactions with {request.foldover_factor}",
+                "remaining_confounding": f"Aliases not involving {request.foldover_factor} remain confounded"
+            }
+
+        # Rename columns for modeling
+        column_mapping = {}
+        for factor in request.factors:
+            column_mapping[factor] = f"factor_{factor}"
+        column_mapping[request.response] = f"response_{request.response}"
+
+        df_renamed = df_combined.rename(columns=column_mapping)
+
+        # Build formula for combined analysis
+        renamed_factors = [f"factor_{f}" for f in request.factors]
+        renamed_response = f"response_{request.response}"
+        factor_terms = [f"C({f})" for f in renamed_factors]
+
+        # Include main effects and 2-way interactions
+        main_effects = " + ".join(factor_terms)
+        interactions = []
+        for i in range(len(factor_terms)):
+            for j in range(i+1, len(factor_terms)):
+                interactions.append(f"{factor_terms[i]}:{factor_terms[j]}")
+
+        if interactions:
+            formula = f"{renamed_response} ~ {main_effects} + {' + '.join(interactions)}"
+        else:
+            formula = f"{renamed_response} ~ {main_effects}"
+
+        # Fit model
+        try:
+            model = ols(formula, data=df_renamed).fit()
+            anova_table = sm.stats.anova_lm(model, typ=2)
+        except Exception as e:
+            # If full model doesn't fit, try main effects only
+            formula = f"{renamed_response} ~ {main_effects}"
+            model = ols(formula, data=df_renamed).fit()
+            anova_table = sm.stats.anova_lm(model, typ=2)
+
+        # Parse ANOVA results
+        results = {}
+        for idx, row in anova_table.iterrows():
+            source = str(idx)
+
+            # Clean up source names
+            for factor in request.factors:
+                source = source.replace(f"C(factor_{factor})", factor)
+                source = source.replace(f"factor_{factor}", factor)
+
+            results[source] = {
+                "sum_sq": round(float(row['sum_sq']), 4),
+                "df": int(row['df']),
+                "F": round(float(row['F']), 4) if not pd.isna(row['F']) else None,
+                "p_value": round(float(row['PR(>F)']), 6) if not pd.isna(row['PR(>F)']) else None,
+                "significant": bool(row['PR(>F)'] < request.alpha) if not pd.isna(row['PR(>F)']) else False
+            }
+
+        # Calculate effect estimates
+        effects = {}
+        for factor in request.factors:
+            if df_combined[factor].nunique() == 2:
+                levels = sorted(df_combined[factor].unique())
+                high = df_combined[df_combined[factor] == levels[1]][request.response].mean()
+                low = df_combined[df_combined[factor] == levels[0]][request.response].mean()
+
+                if pd.notna(high) and pd.notna(low):
+                    effects[factor] = round(float(high - low), 4)
+                else:
+                    effects[factor] = 0.0
+
+        # Calculate interaction effects
+        interaction_effects = {}
+        for i in range(len(request.factors)):
+            for j in range(i+1, len(request.factors)):
+                if df_combined[request.factors[i]].nunique() == 2 and df_combined[request.factors[j]].nunique() == 2:
+                    f1, f2 = request.factors[i], request.factors[j]
+                    levels_f1 = sorted(df_combined[f1].unique())
+                    levels_f2 = sorted(df_combined[f2].unique())
+
+                    try:
+                        high_high = df_combined[(df_combined[f1] == levels_f1[1]) & (df_combined[f2] == levels_f2[1])][request.response].mean()
+                        high_low = df_combined[(df_combined[f1] == levels_f1[1]) & (df_combined[f2] == levels_f2[0])][request.response].mean()
+                        low_high = df_combined[(df_combined[f1] == levels_f1[0]) & (df_combined[f2] == levels_f2[1])][request.response].mean()
+                        low_low = df_combined[(df_combined[f1] == levels_f1[0]) & (df_combined[f2] == levels_f2[0])][request.response].mean()
+
+                        if pd.notna(high_high) and pd.notna(high_low) and pd.notna(low_high) and pd.notna(low_low):
+                            interaction_effect = ((high_high + low_low) - (high_low + low_high)) / 2
+                            interaction_effects[f"{f1}×{f2}"] = round(float(interaction_effect), 4)
+                    except:
+                        pass
+
+        # Calculate residuals
+        fitted_values = model.fittedvalues.values
+        residuals = model.resid.values
+        mse = np.mean(residuals**2)
+
+        if mse > 0:
+            standardized_residuals = residuals / np.sqrt(mse)
+        else:
+            standardized_residuals = residuals
+
+        fitted_values = np.nan_to_num(fitted_values, nan=0.0, posinf=0.0, neginf=0.0)
+        residuals = np.nan_to_num(residuals, nan=0.0, posinf=0.0, neginf=0.0)
+        standardized_residuals = np.nan_to_num(standardized_residuals, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # Effect magnitudes for Pareto
+        effect_magnitudes = []
+        for name, value in effects.items():
+            effect_magnitudes.append({
+                "name": name,
+                "effect": value,
+                "abs_effect": abs(value)
+            })
+
+        for name, value in interaction_effects.items():
+            effect_magnitudes.append({
+                "name": name,
+                "effect": value,
+                "abs_effect": abs(value)
+            })
+
+        effect_magnitudes.sort(key=lambda x: x['abs_effect'], reverse=True)
+
+        # Main effects plot data
+        main_effects_plot_data = {}
+        for factor in request.factors:
+            levels = sorted(df_combined[factor].unique())
+            means = [df_combined[df_combined[factor] == level][request.response].mean() for level in levels]
+            valid_means = [round(float(m), 4) if pd.notna(m) else 0.0 for m in means]
+
+            main_effects_plot_data[factor] = {
+                "levels": [str(l) for l in levels],
+                "means": valid_means
+            }
+
+        # Generate interpretation
+        interpretation = generate_factorial_interpretation(
+            results=results,
+            factors=request.factors,
+            alpha=request.alpha,
+            r_squared=model.rsquared,
+            adj_r_squared=model.rsquared_adj,
+            has_replicates=False
+        )
+
+        # Add foldover-specific information
+        if request.foldover_type == "full":
+            interpretation['recommendations'].insert(0,
+                "✓ Full foldover completed: Main effects are now de-aliased from two-factor interactions. Effects can be interpreted without confounding.")
+        else:
+            interpretation['recommendations'].insert(0,
+                f"✓ Partial foldover on {request.foldover_factor}: Effects involving this factor are now de-aliased.")
+
+        return {
+            "test_type": f"Combined Design Analysis (Original + {request.foldover_type.title()} Foldover)",
+            "n_original_runs": len(df_original),
+            "n_foldover_runs": len(df_foldover),
+            "n_total_runs": len(df_combined),
+            "foldover_type": request.foldover_type,
+            "foldover_factor": request.foldover_factor,
+            "factors": request.factors,
+            "alpha": request.alpha,
+            "original_alias_structure": original_alias_info,
+            "combined_alias_structure": combined_alias_info,
+            "anova_table": results,
+            "main_effects": effects,
+            "interaction_effects": interaction_effects,
+            "model_r_squared": round(float(model.rsquared), 4),
+            "model_adj_r_squared": round(float(model.rsquared_adj), 4),
+            "residuals": [round(float(r), 4) for r in residuals],
+            "fitted_values": [round(float(f), 4) for f in fitted_values],
+            "standardized_residuals": [round(float(r), 4) for r in standardized_residuals],
+            "effect_magnitudes": effect_magnitudes,
+            "main_effects_plot_data": main_effects_plot_data,
+            "response_name": request.response,
+            "interpretation": interpretation
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

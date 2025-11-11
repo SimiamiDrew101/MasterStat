@@ -1,11 +1,12 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import numpy as np
 import pandas as pd
 from scipy import stats as scipy_stats
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
+from pyDOE3 import ccdesign, bbdesign
 
 router = APIRouter()
 
@@ -17,7 +18,7 @@ class RSMRequest(BaseModel):
 
 class CCDRequest(BaseModel):
     n_factors: int = Field(..., description="Number of factors")
-    alpha_distance: Optional[float] = Field(None, description="Axial distance (default: face-centered)")
+    design_type: str = Field('face-centered', description="CCD type: 'face-centered', 'rotatable', or 'inscribed'")
     n_center: int = Field(4, description="Number of center points")
 
 class SteepestAscentRequest(BaseModel):
@@ -133,23 +134,31 @@ async def fit_rsm_model(request: RSMRequest):
 async def generate_ccd(request: CCDRequest):
     """
     Generate Central Composite Design (CCD)
+    Supports face-centered, rotatable, and inscribed designs
     """
     try:
-        from pyDOE2 import ccdesign
+        from pyDOE3 import ccdesign
 
         k = request.n_factors
 
-        # Determine alpha (axial distance)
-        if request.alpha_distance:
-            alpha = request.alpha_distance
-            design_type = 'custom'
+        # Determine face and alpha parameters based on design type
+        if request.design_type == 'face-centered':
+            face_param = 'faced'  # Face-centered design
+            alpha_param = 'o'  # Use orthogonal
+            alpha = 1.0  # Axial distance for face-centered
+        elif request.design_type == 'rotatable':
+            face_param = 'circumscribed'  # Original CCD form
+            alpha_param = 'r'  # Rotatable
+            alpha = (2**k) ** 0.25  # Fourth root of 2^k for rotatability
+        elif request.design_type == 'inscribed':
+            face_param = 'inscribed'  # Inscribed design
+            alpha_param = 'o'  # Use orthogonal for inscribed
+            alpha = 1.0  # Axial distance for inscribed
         else:
-            # Face-centered design (alpha = 1)
-            alpha = 1.0
-            design_type = 'face-centered'
+            raise ValueError(f"Unknown design_type: {request.design_type}")
 
         # Generate CCD
-        design = ccdesign(k, center=(0, request.n_center), alpha='f' if alpha == 1.0 else alpha, face='ccf')
+        design = ccdesign(k, center=(0, request.n_center), alpha=alpha_param, face=face_param)
 
         # Create factor names
         factor_names = [f"X{i+1}" for i in range(k)]
@@ -164,7 +173,7 @@ async def generate_ccd(request: CCDRequest):
             factor_values = [abs(row[f]) for f in factor_names]
             if all(v < 0.1 for v in factor_values):
                 point_type = 'center'
-            elif all(v in [0.0, 1.0] or abs(v - 1.0) < 0.1 for v in factor_values):
+            elif all(abs(v) in [0.0, 1.0] or abs(abs(v) - 1.0) < 0.1 for v in factor_values):
                 point_type = 'factorial'
             else:
                 point_type = 'axial'
@@ -177,15 +186,34 @@ async def generate_ccd(request: CCDRequest):
         n_axial = 2*k
         n_total = len(design_df)
 
+        # Calculate rotatability property
+        is_rotatable = request.design_type == 'rotatable'
+
+        # Calculate orthogonality (simplified check)
+        design_matrix = design[:-request.n_center] if request.n_center > 0 else design
+        X = design_matrix
+        XtX = np.dot(X.T, X)
+
+        # Check if off-diagonal elements are close to zero (orthogonal)
+        off_diag = XtX - np.diag(np.diag(XtX))
+        is_orthogonal = np.allclose(off_diag, 0, atol=1e-10)
+
         return {
-            "design_type": f"Central Composite Design ({design_type})",
+            "design_type": f"Central Composite Design ({request.design_type})",
             "n_factors": k,
-            "alpha": alpha,
+            "alpha": round(float(alpha), 4),
             "n_runs": {
                 "factorial": n_factorial,
                 "axial": n_axial,
                 "center": request.n_center,
                 "total": n_total
+            },
+            "properties": {
+                "rotatable": is_rotatable,
+                "orthogonal": is_orthogonal,
+                "alpha_description": f"Face-centered (α=1)" if request.design_type == 'face-centered'
+                                   else f"Rotatable (α={(2**k)**0.25:.4f})" if request.design_type == 'rotatable'
+                                   else "Inscribed (α=1)"
             },
             "factor_names": factor_names,
             "design_matrix": design_df.to_dict('records')
@@ -295,6 +323,226 @@ async def lack_of_fit_test(data: dict):
                 "pure_error_df": df_pure_error,
                 "lof_df": df_lof
             }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class BoxBehnkenRequest(BaseModel):
+    n_factors: int = Field(..., description="Number of factors (3-7)")
+    n_center: int = Field(3, description="Number of center points")
+
+
+class CanonicalAnalysisRequest(BaseModel):
+    coefficients: Dict[str, Any] = Field(..., description="Model coefficients from second-order model")
+    factors: List[str] = Field(..., description="Factor names")
+
+
+class OptimizationRequest(BaseModel):
+    coefficients: Dict[str, Any] = Field(..., description="Model coefficients")
+    factors: List[str] = Field(..., description="Factor names")
+    target: str = Field('maximize', description="'maximize' or 'minimize'")
+    constraints: Optional[Dict[str, List[float]]] = Field(None, description="Factor constraints {factor: [min, max]}")
+
+
+@router.post("/box-behnken/generate")
+async def generate_box_behnken(request: BoxBehnkenRequest):
+    """
+    Generate Box-Behnken Design
+    Efficient three-level design for 3-7 factors
+    """
+    try:
+        from pyDOE3 import bbdesign
+
+        k = request.n_factors
+
+        if k < 3 or k > 7:
+            raise ValueError("Box-Behnken designs require 3-7 factors")
+
+        # Generate Box-Behnken design
+        design = bbdesign(k, center=request.n_center)
+
+        # Create factor names
+        factor_names = [f"X{i+1}" for i in range(k)]
+
+        # Convert to DataFrame
+        design_df = pd.DataFrame(design, columns=factor_names)
+        design_df['run'] = range(1, len(design_df) + 1)
+
+        # Identify point types
+        point_types = []
+        for idx, row in design_df.iterrows():
+            factor_values = [abs(row[f]) for f in factor_names]
+            if all(v < 0.1 for v in factor_values):
+                point_type = 'center'
+            else:
+                point_type = 'edge'  # Box-Behnken points are on edges of design space
+            point_types.append(point_type)
+
+        design_df['point_type'] = point_types
+
+        # Calculate number of runs
+        # Box-Behnken: 2k(k-1) + center points
+        n_edge = 2 * k * (k - 1)
+        n_total = len(design_df)
+
+        return {
+            "design_type": "Box-Behnken Design",
+            "n_factors": k,
+            "n_runs": {
+                "edge_points": n_edge,
+                "center": request.n_center,
+                "total": n_total
+            },
+            "properties": {
+                "levels": 3,
+                "rotatable": False,
+                "description": "Efficient three-level design with no corner points"
+            },
+            "factor_names": factor_names,
+            "design_matrix": design_df.to_dict('records')
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/canonical-analysis")
+async def canonical_analysis(request: CanonicalAnalysisRequest):
+    """
+    Perform canonical analysis to find stationary point and characterize surface
+    """
+    try:
+        k = len(request.factors)
+
+        # Extract linear coefficients (b)
+        b = np.array([request.coefficients.get(f, 0.0) for f in request.factors])
+
+        # Extract quadratic coefficients matrix (B)
+        B = np.zeros((k, k))
+        for i, f1 in enumerate(request.factors):
+            # Diagonal (pure quadratic)
+            quad_key = f"I({f1}**2)"
+            if quad_key in request.coefficients:
+                B[i, i] = request.coefficients[quad_key]
+
+            # Off-diagonal (interactions)
+            for j, f2 in enumerate(request.factors):
+                if i < j:
+                    int_key = f"{f1}:{f2}"
+                    if int_key in request.coefficients:
+                        # Divide by 2 because interaction appears once in model but twice in quadratic form
+                        B[i, j] = B[j, i] = request.coefficients[int_key] / 2
+
+        # Find stationary point: x_s = -0.5 * B^(-1) * b
+        try:
+            B_inv = np.linalg.inv(B)
+            x_s = -0.5 * np.dot(B_inv, b)
+
+            stationary_point = {request.factors[i]: round(float(x_s[i]), 4) for i in range(k)}
+
+            # Eigenanalysis to characterize the surface
+            eigenvalues, eigenvectors = np.linalg.eig(B)
+
+            # Sort by eigenvalue magnitude
+            idx = np.argsort(eigenvalues)[::-1]
+            eigenvalues = eigenvalues[idx]
+            eigenvectors = eigenvectors[:, idx]
+
+            # Characterize stationary point
+            if all(eigenvalues < 0):
+                surface_type = "Maximum"
+            elif all(eigenvalues > 0):
+                surface_type = "Minimum"
+            else:
+                surface_type = "Saddle Point"
+
+            # Canonical axes
+            canonical_axes = []
+            for i in range(k):
+                axis = {
+                    "eigenvalue": round(float(eigenvalues[i]), 4),
+                    "direction": {request.factors[j]: round(float(eigenvectors[j, i]), 4) for j in range(k)}
+                }
+                canonical_axes.append(axis)
+
+            return {
+                "stationary_point": stationary_point,
+                "surface_type": surface_type,
+                "eigenvalues": [round(float(e), 4) for e in eigenvalues],
+                "canonical_axes": canonical_axes,
+                "B_matrix": B.tolist(),
+                "interpretation": f"The response surface has a {surface_type.lower()} at the stationary point."
+            }
+
+        except np.linalg.LinAlgError:
+            return {
+                "error": "Singular matrix - cannot find stationary point",
+                "B_matrix": B.tolist()
+            }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/optimize")
+async def optimize_response(request: OptimizationRequest):
+    """
+    Find optimal factor settings to maximize or minimize response
+    Uses second-order model predictions
+    """
+    try:
+        from scipy.optimize import differential_evolution
+
+        k = len(request.factors)
+
+        # Build prediction function
+        def predict(x):
+            # Intercept
+            y = request.coefficients.get('Intercept', 0.0)
+
+            # Linear terms
+            for i, factor in enumerate(request.factors):
+                y += request.coefficients.get(factor, 0.0) * x[i]
+
+            # Quadratic terms
+            for i, factor in enumerate(request.factors):
+                quad_key = f"I({factor}**2)"
+                y += request.coefficients.get(quad_key, 0.0) * x[i]**2
+
+            # Interaction terms
+            for i in range(k):
+                for j in range(i+1, k):
+                    int_key = f"{request.factors[i]}:{request.factors[j]}"
+                    y += request.coefficients.get(int_key, 0.0) * x[i] * x[j]
+
+            return y
+
+        # Objective function
+        if request.target == 'maximize':
+            objective = lambda x: -predict(x)  # Negate for maximization
+        else:
+            objective = predict
+
+        # Bounds
+        if request.constraints:
+            bounds = [request.constraints.get(f, [-2, 2]) for f in request.factors]
+        else:
+            bounds = [(-2, 2)] * k  # Default coded bounds
+
+        # Optimize using differential evolution (global optimizer)
+        result = differential_evolution(objective, bounds, seed=42, maxiter=1000)
+
+        optimal_point = {request.factors[i]: round(float(result.x[i]), 4) for i in range(k)}
+        optimal_response = round(float(predict(result.x)), 4)
+
+        return {
+            "target": request.target,
+            "optimal_point": optimal_point,
+            "predicted_response": optimal_response,
+            "success": result.success,
+            "method": "Differential Evolution"
+        }
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

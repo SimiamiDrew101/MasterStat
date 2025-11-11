@@ -20,6 +20,15 @@ const FactorialDesigns = () => {
   const [error, setError] = useState(null)
   const isFirstRender = useRef(true)
 
+  // Foldover design state
+  const [showFoldover, setShowFoldover] = useState(false)
+  const [foldoverType, setFoldoverType] = useState('full')
+  const [foldoverFactor, setFoldoverFactor] = useState('')
+  const [foldoverData, setFoldoverData] = useState([])
+  const [foldoverTableData, setFoldoverTableData] = useState([])
+  const [combinedResult, setCombinedResult] = useState(null)
+  const [foldoverLoading, setFoldoverLoading] = useState(false)
+
   // Get factors array
   const factors = factorNames.split(',').map(f => f.trim()).filter(f => f.length > 0)
   const numCols = factors.length + 1 // factors + response
@@ -349,11 +358,127 @@ const FactorialDesigns = () => {
     }
   }
 
+  const handleGenerateFoldover = async () => {
+    setFoldoverLoading(true)
+    setError(null)
+
+    try {
+      // Convert original table data to API format
+      const validRows = tableData.filter(row =>
+        row.some(cell => cell !== null && cell !== undefined && cell.toString().trim() !== '')
+      )
+
+      const originalData = validRows.map((row) => {
+        const rowData = {}
+        factors.forEach((factor, i) => {
+          rowData[factor] = row[i].toString().trim()
+        })
+        const responseValue = parseFloat(row[row.length - 1])
+        rowData[responseName] = responseValue
+        return rowData
+      })
+
+      // Call foldover generation endpoint
+      const response = await axios.post(`${API_URL}/api/factorial/foldover/generate`, {
+        data: originalData,
+        factors: factors,
+        foldover_type: foldoverType,
+        foldover_factor: foldoverType === 'partial' ? foldoverFactor : null,
+        generators: generators.length > 0 ? generators : null
+      })
+
+      setFoldoverData(response.data)
+
+      // Convert foldover data to table format with empty responses
+      const foldoverRuns = response.data.foldover_data.map(run => {
+        const row = factors.map(factor => run[factor] || '')
+        // Generate sample response value for foldover runs
+        const sampleResponse = (Math.round(randomNormal(65, 15) * 10) / 10).toFixed(1)
+        row.push(sampleResponse) // Add sample response
+        return row
+      })
+
+      setFoldoverTableData(foldoverRuns)
+      setShowFoldover(true)
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'Failed to generate foldover')
+    } finally {
+      setFoldoverLoading(false)
+    }
+  }
+
+  const handleAnalyzeCombined = async () => {
+    setFoldoverLoading(true)
+    setError(null)
+    setCombinedResult(null)
+
+    try {
+      // Convert original table data to API format
+      const validOriginalRows = tableData.filter(row =>
+        row.some(cell => cell !== null && cell !== undefined && cell.toString().trim() !== '')
+      )
+
+      const originalData = validOriginalRows.map((row) => {
+        const rowData = {}
+        factors.forEach((factor, i) => {
+          rowData[factor] = row[i].toString().trim()
+        })
+        const responseValue = parseFloat(row[row.length - 1])
+        rowData[responseName] = responseValue
+        return rowData
+      })
+
+      // Convert foldover table data to API format
+      const validFoldoverRows = foldoverTableData.filter(row =>
+        row.some(cell => cell !== null && cell !== undefined && cell.toString().trim() !== '')
+      )
+
+      const foldoverResponseData = validFoldoverRows.map((row) => {
+        const rowData = {}
+        factors.forEach((factor, i) => {
+          rowData[factor] = row[i].toString().trim()
+        })
+        const responseValue = parseFloat(row[row.length - 1])
+        if (isNaN(responseValue)) {
+          throw new Error('All foldover runs must have response values')
+        }
+        rowData[responseName] = responseValue
+        return rowData
+      })
+
+      // Call combined analysis endpoint
+      const response = await axios.post(`${API_URL}/api/factorial/foldover/analyze`, {
+        original_data: originalData,
+        foldover_data: foldoverResponseData,
+        factors: factors,
+        response: responseName,
+        alpha: alpha,
+        generators: generators.length > 0 ? generators : null,
+        foldover_type: foldoverType,
+        foldover_factor: foldoverType === 'partial' ? foldoverFactor : null
+      })
+
+      setCombinedResult(response.data)
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'Failed to analyze combined design')
+    } finally {
+      setFoldoverLoading(false)
+    }
+  }
+
+  const handleFoldoverCellChange = (rowIndex, colIndex, value) => {
+    const newData = [...foldoverTableData]
+    newData[rowIndex][colIndex] = value
+    setFoldoverTableData(newData)
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
     setResult(null)
+    setShowFoldover(false)
+    setCombinedResult(null)
 
     try {
       // Convert table data to API format
@@ -853,6 +978,196 @@ const FactorialDesigns = () => {
 
       {/* Results Display */}
       {result && <ResultCard result={result} />}
+
+      {/* Foldover Design Section */}
+      {result && designType === 'fractional' && result.alias_structure && (
+        <div className="bg-gradient-to-br from-indigo-900/30 to-purple-900/30 backdrop-blur-lg rounded-2xl p-6 border border-indigo-700/50">
+          <h3 className="text-2xl font-bold text-gray-100 mb-4">Foldover Design</h3>
+          <p className="text-gray-300 mb-4">
+            Use foldover designs to de-alias confounded effects. A <strong>full foldover</strong> reverses all factor signs and de-aliases main effects from two-factor interactions. A <strong>partial foldover</strong> reverses one factor to clear specific aliases involving that factor.
+          </p>
+
+          {!showFoldover ? (
+            <>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-gray-100 font-medium mb-2">
+                    Foldover Type
+                  </label>
+                  <select
+                    value={foldoverType}
+                    onChange={(e) => {
+                      setFoldoverType(e.target.value)
+                      if (e.target.value === 'partial' && factors.length > 0) {
+                        setFoldoverFactor(factors[0])
+                      }
+                    }}
+                    className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="full">Full Foldover (reverse all factors)</option>
+                    <option value="partial">Partial Foldover (reverse one factor)</option>
+                  </select>
+                </div>
+
+                {foldoverType === 'partial' && (
+                  <div>
+                    <label className="block text-gray-100 font-medium mb-2">
+                      Factor to Fold Over
+                    </label>
+                    <select
+                      value={foldoverFactor}
+                      onChange={(e) => setFoldoverFactor(e.target.value)}
+                      className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      {factors.map(factor => (
+                        <option key={factor} value={factor}>{factor}</option>
+                      ))}
+                    </select>
+                    <p className="text-gray-400 text-xs mt-1">
+                      Partial foldover on {foldoverFactor || 'this factor'} will de-alias effects involving {foldoverFactor || 'this factor'}
+                    </p>
+                  </div>
+                )}
+
+                <div className="bg-indigo-900/20 rounded-lg p-4 border border-indigo-700/30">
+                  <h4 className="text-indigo-200 font-semibold mb-2">What will be cleared:</h4>
+                  {foldoverType === 'full' ? (
+                    <ul className="text-gray-300 text-sm space-y-1 list-disc list-inside">
+                      <li>All main effects will be de-aliased from two-factor interactions</li>
+                      <li>Combined design will have at least Resolution IV</li>
+                      <li>Total runs will be: {tableData.length} (original) + {tableData.length} (foldover) = {tableData.length * 2}</li>
+                    </ul>
+                  ) : (
+                    <ul className="text-gray-300 text-sm space-y-1 list-disc list-inside">
+                      <li>{foldoverFactor || 'Selected factor'} will be de-aliased from interactions</li>
+                      <li>All interactions involving {foldoverFactor || 'selected factor'} will be cleared</li>
+                      <li>More economical than full foldover: same {tableData.length} additional runs</li>
+                      <li>Other aliases not involving {foldoverFactor || 'selected factor'} remain confounded</li>
+                    </ul>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGenerateFoldover}
+                  disabled={foldoverLoading}
+                  className="w-full bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {foldoverLoading ? 'Generating...' : `Generate ${foldoverType === 'full' ? 'Full' : 'Partial'} Foldover`}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="bg-green-900/20 rounded-lg p-4 border border-green-700/30 mb-4">
+                <h4 className="text-green-200 font-semibold mb-2">
+                  {foldoverData.foldover_type === 'full' ? 'Full Foldover' : 'Partial Foldover'} Generated
+                </h4>
+                <p className="text-gray-300 text-sm mb-2">
+                  {foldoverData.clearing_info?.description}
+                </p>
+                <ul className="text-gray-300 text-sm space-y-1">
+                  <li><strong>Original runs:</strong> {foldoverData.n_original_runs}</li>
+                  <li><strong>Foldover runs:</strong> {foldoverData.n_foldover_runs}</li>
+                  <li><strong>Total runs:</strong> {foldoverData.n_total_runs}</li>
+                  {foldoverData.foldover_factor && (
+                    <li><strong>Folded factor:</strong> {foldoverData.foldover_factor}</li>
+                  )}
+                </ul>
+              </div>
+
+              <div className="mb-4">
+                <h4 className="text-gray-100 font-semibold mb-2">Foldover Run Table</h4>
+                <p className="text-gray-400 text-sm mb-2">
+                  Enter or modify response values for the foldover runs below, then analyze the combined design.
+                </p>
+                <div className="overflow-x-auto bg-slate-700/30 rounded-lg border-2 border-indigo-600">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-indigo-700/70">
+                        <th className="px-3 py-2 text-center text-gray-100 font-semibold text-sm border-b-2 border-r border-indigo-600 w-14">
+                          #
+                        </th>
+                        {factors.map((factor, idx) => (
+                          <th
+                            key={idx}
+                            className="px-3 py-2 text-center text-gray-100 font-semibold text-sm border-b-2 border-r border-indigo-600 min-w-[100px]"
+                          >
+                            {factor}
+                          </th>
+                        ))}
+                        <th className="px-3 py-2 text-center text-gray-100 font-semibold text-sm border-b-2 border-indigo-600 min-w-[100px] bg-indigo-900/20">
+                          {responseName}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {foldoverTableData.map((row, rowIndex) => (
+                        <tr
+                          key={rowIndex}
+                          className="border-b border-slate-700/30 hover:bg-slate-600/10"
+                        >
+                          <td className="px-3 py-2 text-center text-gray-300 text-sm font-medium bg-indigo-700/30 border-r border-indigo-600">
+                            {rowIndex + 1}
+                          </td>
+                          {row.map((cell, colIndex) => (
+                            <td key={colIndex} className="px-1 py-1 border-r border-slate-700/20">
+                              <input
+                                id={`foldover-cell-${rowIndex}-${colIndex}`}
+                                type="text"
+                                value={cell}
+                                onChange={(e) => handleFoldoverCellChange(rowIndex, colIndex, e.target.value)}
+                                onKeyDown={(e) => handleKeyDown(e, rowIndex, colIndex)}
+                                onClick={handleCellClick}
+                                className="w-full px-2 py-1.5 bg-slate-800/50 text-gray-100 border border-slate-600/50 focus:border-indigo-500 focus:bg-slate-700/50 hover:border-slate-500 rounded-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 text-sm transition-all"
+                                placeholder={colIndex === row.length - 1 ? '0.0' : 'Level'}
+                                autoComplete="off"
+                                disabled={colIndex < row.length - 1}
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-gray-400 text-xs mt-2">
+                  Factor levels are automatically set based on foldover type. You can only edit response values.
+                </p>
+              </div>
+
+              <div className="flex space-x-3">
+                <button
+                  type="button"
+                  onClick={handleAnalyzeCombined}
+                  disabled={foldoverLoading}
+                  className="flex-1 bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {foldoverLoading ? 'Analyzing...' : 'Analyze Combined Design'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowFoldover(false)
+                    setFoldoverTableData([])
+                    setCombinedResult(null)
+                  }}
+                  className="px-6 py-3 bg-slate-600 text-white font-medium rounded-lg hover:bg-slate-700 transition-colors"
+                >
+                  Reset
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Combined Analysis Results */}
+      {combinedResult && (
+        <div>
+          <ResultCard result={combinedResult} />
+        </div>
+      )}
     </div>
   )
 }
