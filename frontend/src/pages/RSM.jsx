@@ -4,6 +4,9 @@ import { Mountain, Plus, Trash2, Target, TrendingUp } from 'lucide-react'
 import ResultCard from '../components/ResultCard'
 import ResponseSurface3D from '../components/ResponseSurface3D'
 import ContourPlot from '../components/ContourPlot'
+import SlicedVisualization from '../components/SlicedVisualization'
+import ResidualAnalysis from '../components/ResidualAnalysis'
+import EnhancedANOVA from '../components/EnhancedANOVA'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -44,6 +47,11 @@ const RSM = () => {
     console.log('Factor names:', factorNames)
     console.log('Response name:', responseName)
   }, [tableData, factorNames, responseName])
+
+  // Debug surface data
+  useEffect(() => {
+    console.log('surfaceData state changed:', surfaceData ? `${surfaceData.length} points` : 'null')
+  }, [surfaceData])
 
   // Generate design
   const handleGenerateDesign = async () => {
@@ -136,9 +144,19 @@ const RSM = () => {
         setCanonicalResult(canonicalResponse.data)
       }
 
-      // Generate surface data for visualization (2 factors only)
+      // Generate surface data for visualization (2 factors for simple viz)
       if (numFactors === 2) {
-        generateSurfaceData(response.data.coefficients)
+        console.log('Generating surface data for 2-factor visualization...')
+        console.log('Coefficients:', response.data.coefficients)
+        try {
+          generateSurfaceData(response.data.coefficients)
+          console.log('Surface data generated successfully')
+        } catch (surfaceError) {
+          console.error('Error generating surface data:', surfaceError)
+          setError('Visualization data generation failed: ' + surfaceError.message)
+        }
+      } else {
+        console.log('Multi-factor design - will use sliced visualization')
       }
 
       setActiveTab('model')
@@ -151,11 +169,14 @@ const RSM = () => {
 
   // Generate surface data for visualization
   const generateSurfaceData = (coefficients) => {
+    console.log('generateSurfaceData called with coefficients:', coefficients)
     const points = []
     const steps = 20
     const coefObj = Object.fromEntries(
       Object.entries(coefficients).map(([k, v]) => [k, v.estimate || v])
     )
+    console.log('Coefficient object:', coefObj)
+    console.log('Factor names:', factorNames)
 
     for (let i = 0; i <= steps; i++) {
       for (let j = 0; j <= steps; j++) {
@@ -174,7 +195,10 @@ const RSM = () => {
       }
     }
 
+    console.log('Generated surface points:', points.length, 'points')
+    console.log('First few points:', points.slice(0, 3))
     setSurfaceData(points)
+    console.log('surfaceData state updated')
   }
 
   // Optimize response
@@ -332,9 +356,12 @@ const RSM = () => {
           className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
             activeTab === 'visualize'
               ? 'bg-orange-600 text-white'
+              : !modelResult
+              ? 'bg-slate-700/50 text-gray-500 cursor-not-allowed'
               : 'bg-slate-700/50 text-gray-300 hover:bg-slate-700'
           }`}
-          disabled={!surfaceData}
+          disabled={!modelResult}
+          title={!modelResult ? 'Fit a model first' : 'View response surface visualization'}
         >
           4. Visualize
         </button>
@@ -704,6 +731,23 @@ const RSM = () => {
               </div>
             </div>
           )}
+
+          {/* Enhanced ANOVA Table */}
+          {modelResult.enhanced_anova && (
+            <EnhancedANOVA
+              enhancedAnova={modelResult.enhanced_anova}
+              lackOfFitTest={modelResult.lack_of_fit_test}
+              alpha={alpha}
+            />
+          )}
+
+          {/* Residual Analysis */}
+          {modelResult.diagnostics && (
+            <ResidualAnalysis
+              diagnostics={modelResult.diagnostics}
+              responseName={responseName}
+            />
+          )}
         </div>
       )}
 
@@ -819,20 +863,66 @@ const RSM = () => {
         </div>
       )}
 
-      {activeTab === 'visualize' && surfaceData && numFactors === 2 && (
+      {activeTab === 'visualize' && modelResult && (
         <div className="space-y-6">
-          <ResponseSurface3D
-            surfaceData={surfaceData}
-            factor1={factorNames[0]}
-            factor2={factorNames[1]}
-            responseName={responseName}
-          />
-          <ContourPlot
-            surfaceData={surfaceData}
-            factor1={factorNames[0]}
-            factor2={factorNames[1]}
-            responseName={responseName}
-          />
+          {numFactors === 2 && surfaceData ? (
+            // Simple 2-factor visualization
+            <>
+              <ResponseSurface3D
+                surfaceData={surfaceData}
+                factor1={factorNames[0]}
+                factor2={factorNames[1]}
+                responseName={responseName}
+              />
+              <ContourPlot
+                surfaceData={surfaceData}
+                factor1={factorNames[0]}
+                factor2={factorNames[1]}
+                responseName={responseName}
+                experimentalData={(() => {
+                  // Convert tableData to experimental data format
+                  const validRows = tableData.filter(row => {
+                    const responseValue = row[row.length - 1]
+                    return responseValue !== '' && responseValue !== null && responseValue !== undefined
+                  })
+                  return validRows.map(row => {
+                    const point = {}
+                    factorNames.forEach((factor, i) => {
+                      point[factor] = parseFloat(row[i])
+                    })
+                    point[responseName] = parseFloat(row[row.length - 1])
+                    return point
+                  })
+                })()}
+                optimizationResult={optimizationResult}
+                canonicalResult={canonicalResult}
+              />
+            </>
+          ) : (
+            // Sliced visualization for any number of factors
+            <SlicedVisualization
+              factorNames={factorNames}
+              responseName={responseName}
+              coefficients={modelResult.coefficients}
+              experimentalData={(() => {
+                // Convert tableData to experimental data format
+                const validRows = tableData.filter(row => {
+                  const responseValue = row[row.length - 1]
+                  return responseValue !== '' && responseValue !== null && responseValue !== undefined
+                })
+                return validRows.map(row => {
+                  const point = {}
+                  factorNames.forEach((factor, i) => {
+                    point[factor] = parseFloat(row[i])
+                  })
+                  point[responseName] = parseFloat(row[row.length - 1])
+                  return point
+                })
+              })()}
+              optimizationResult={optimizationResult}
+              canonicalResult={canonicalResult}
+            />
+          )}
         </div>
       )}
     </div>

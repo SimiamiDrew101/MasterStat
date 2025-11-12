@@ -117,14 +117,133 @@ async def fit_rsm_model(request: RSMRequest):
                     "significant_curvature": bool(p_curvature < request.alpha) if not pd.isna(p_curvature) else None
                 }
 
+        # Calculate diagnostic statistics for residual analysis
+        residuals = model.resid
+        fitted_values = model.fittedvalues
+        standardized_residuals = model.resid_pearson
+
+        # Studentized residuals
+        influence = model.get_influence()
+        studentized_residuals = influence.resid_studentized_internal
+
+        # Leverage values (hat matrix diagonal)
+        leverage = influence.hat_matrix_diag
+
+        # Cook's distance
+        cooks_d = influence.cooks_distance[0]
+
+        # Durbin-Watson test for autocorrelation
+        from statsmodels.stats.stattools import durbin_watson
+        dw_statistic = durbin_watson(residuals)
+
+        # Shapiro-Wilk test for normality
+        shapiro_stat, shapiro_p = scipy_stats.shapiro(residuals)
+
+        # Prepare diagnostic data
+        diagnostics = {
+            "residuals": [round(float(r), 4) for r in residuals],
+            "fitted_values": [round(float(f), 4) for f in fitted_values],
+            "standardized_residuals": [round(float(r), 4) for r in standardized_residuals],
+            "studentized_residuals": [round(float(r), 4) for r in studentized_residuals],
+            "leverage": [round(float(l), 4) for l in leverage],
+            "cooks_distance": [round(float(c), 4) for c in cooks_d],
+            "observed_values": [round(float(y), 4) for y in df[request.response]],
+            "factor_values": df[request.factors].to_dict('list'),
+            "tests": {
+                "shapiro_wilk": {
+                    "statistic": round(float(shapiro_stat), 4),
+                    "p_value": round(float(shapiro_p), 6),
+                    "interpretation": "Residuals are normally distributed" if shapiro_p > request.alpha else "Residuals are NOT normally distributed"
+                },
+                "durbin_watson": {
+                    "statistic": round(float(dw_statistic), 4),
+                    "interpretation": "No autocorrelation" if 1.5 < dw_statistic < 2.5 else "Possible autocorrelation detected"
+                }
+            }
+        }
+
+        # Enhanced ANOVA table with more details
+        enhanced_anova = {
+            "model": {
+                "ss": round(float(model.ess), 4),  # Explained sum of squares
+                "df": int(model.df_model),
+                "ms": round(float(model.ess / model.df_model), 4),
+                "f": round(float(model.fvalue), 4) if not pd.isna(model.fvalue) else None,
+                "p_value": round(float(model.f_pvalue), 6) if not pd.isna(model.f_pvalue) else None
+            },
+            "residual": {
+                "ss": round(float(model.ssr), 4),  # Residual sum of squares
+                "df": int(model.df_resid),
+                "ms": round(float(model.mse_resid), 4)
+            },
+            "total": {
+                "ss": round(float(model.centered_tss), 4),  # Total sum of squares
+                "df": int(model.df_model + model.df_resid)
+            },
+            "terms": anova_results  # Detailed breakdown by term
+        }
+
+        # Lack of fit test (if replicates exist)
+        lof_test = None
+        try:
+            # Group by factor combinations to find replicates
+            grouped = df.groupby(request.factors)[request.response]
+
+            ss_pure_error = 0
+            df_pure_error = 0
+
+            for name, group in grouped:
+                if len(group) > 1:
+                    ss_pure_error += np.sum((group - group.mean())**2)
+                    df_pure_error += len(group) - 1
+
+            if df_pure_error > 0:
+                ss_residual = model.ssr
+                df_residual = model.df_resid
+
+                ss_lof = ss_residual - ss_pure_error
+                df_lof = df_residual - df_pure_error
+
+                if df_lof > 0:
+                    ms_lof = ss_lof / df_lof
+                    ms_pure_error = ss_pure_error / df_pure_error
+
+                    f_lof = ms_lof / ms_pure_error
+                    p_lof = 1 - scipy_stats.f.cdf(f_lof, df_lof, df_pure_error)
+
+                    lof_test = {
+                        "lack_of_fit": {
+                            "ss": round(float(ss_lof), 4),
+                            "df": int(df_lof),
+                            "ms": round(float(ms_lof), 4)
+                        },
+                        "pure_error": {
+                            "ss": round(float(ss_pure_error), 4),
+                            "df": int(df_pure_error),
+                            "ms": round(float(ms_pure_error), 4)
+                        },
+                        "f_statistic": round(float(f_lof), 4),
+                        "p_value": round(float(p_lof), 6),
+                        "significant_lof": bool(p_lof < request.alpha)
+                    }
+
+                    # Add to enhanced ANOVA
+                    enhanced_anova["lack_of_fit"] = lof_test["lack_of_fit"]
+                    enhanced_anova["pure_error"] = lof_test["pure_error"]
+        except:
+            pass  # No replicates or error in calculation
+
         return {
             "model_type": "Response Surface Model (Second-Order)",
             "coefficients": coefficients,
-            "anova_table": anova_results,
+            "anova_table": anova_results,  # Keep for backward compatibility
+            "enhanced_anova": enhanced_anova,
             "r_squared": round(float(model.rsquared), 4) if not pd.isna(model.rsquared) else None,
             "adj_r_squared": round(float(model.rsquared_adj), 4) if not pd.isna(model.rsquared_adj) else None,
             "rmse": round(float(np.sqrt(model.mse_resid)), 4) if not pd.isna(model.mse_resid) else None,
-            "curvature_test": curvature_test
+            "curvature_test": curvature_test,
+            "diagnostics": diagnostics,
+            "lack_of_fit_test": lof_test
         }
 
     except Exception as e:
