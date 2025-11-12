@@ -111,10 +111,10 @@ async def fit_rsm_model(request: RSMRequest):
                 p_curvature = 1 - scipy_stats.f.cdf(f_curvature, 1, df_pure_error)
 
                 curvature_test = {
-                    "ss_curvature": round(float(ss_curvature), 4),
-                    "f_statistic": round(float(f_curvature), 4),
-                    "p_value": round(float(p_curvature), 6),
-                    "significant_curvature": p_curvature < request.alpha
+                    "ss_curvature": round(float(ss_curvature), 4) if not pd.isna(ss_curvature) else None,
+                    "f_statistic": round(float(f_curvature), 4) if not pd.isna(f_curvature) else None,
+                    "p_value": round(float(p_curvature), 6) if not pd.isna(p_curvature) else None,
+                    "significant_curvature": bool(p_curvature < request.alpha) if not pd.isna(p_curvature) else None
                 }
 
         return {
