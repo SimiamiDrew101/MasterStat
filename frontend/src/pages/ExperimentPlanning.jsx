@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { Target, Calculator, HelpCircle, RefreshCw, Beaker, Zap } from 'lucide-react'
+import { Target, Calculator, HelpCircle, RefreshCw, Beaker, Zap, DollarSign, Scale } from 'lucide-react'
 import axios from 'axios'
 import PowerCurveChart from '../components/PowerCurveChart'
 import ForestPlot from '../components/ForestPlot'
 import SensitivityCurve from '../components/SensitivityCurve'
+import CostBenefitAnalysis from '../components/CostBenefitAnalysis'
+import OptimalAllocationChart from '../components/OptimalAllocationChart'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -89,6 +91,32 @@ const ExperimentPlanning = () => {
   const [minNumLevelsB, setMinNumLevelsB] = useState(2)
   const [minResult, setMinResult] = useState(null)
   const [minLoading, setMinLoading] = useState(false)
+
+  // Cost-Benefit Analysis
+  const [cbTestFamily, setCbTestFamily] = useState('t-test')
+  const [cbTestType, setCbTestType] = useState('two-sample')
+  const [cbEffectSize, setCbEffectSize] = useState(0.5)
+  const [cbCostPerParticipant, setCbCostPerParticipant] = useState(100)
+  const [cbPower, setCbPower] = useState(0.8)
+  const [cbAlpha, setCbAlpha] = useState(0.05)
+  const [cbMaxBudget, setCbMaxBudget] = useState('')
+  const [cbNumGroups, setCbNumGroups] = useState(3)
+  const [cbResult, setCbResult] = useState(null)
+  const [cbLoading, setCbLoading] = useState(false)
+
+  // Optimal Allocation
+  const [oaTestType, setOaTestType] = useState('t-test')
+  const [oaEffectSize, setOaEffectSize] = useState(0.5)
+  const [oaPower, setOaPower] = useState(0.8)
+  const [oaAlpha, setOaAlpha] = useState(0.05)
+  const [oaCostGroup1, setOaCostGroup1] = useState(100)
+  const [oaCostGroup2, setOaCostGroup2] = useState(150)
+  const [oaTotalBudget, setOaTotalBudget] = useState(10000)
+  const [oaResult, setOaResult] = useState(null)
+  const [oaLoading, setOaLoading] = useState(false)
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState('sample-size')
 
   const handleCalculate = async () => {
     setLoading(true)
@@ -273,18 +301,124 @@ const ExperimentPlanning = () => {
     }
   }
 
+  const handleCalculateCostBenefit = async () => {
+    setCbLoading(true)
+    setCbResult(null)
+
+    try {
+      let payload = {
+        test_family: cbTestFamily,
+        test_type: cbTestType,
+        effect_size: parseFloat(cbEffectSize),
+        cost_per_participant: parseFloat(cbCostPerParticipant),
+        power: parseFloat(cbPower),
+        alpha: parseFloat(cbAlpha)
+      }
+
+      if (cbMaxBudget && cbMaxBudget !== '') {
+        payload.max_budget = parseFloat(cbMaxBudget)
+      }
+
+      if (cbTestFamily === 'anova') {
+        payload.num_groups = parseInt(cbNumGroups)
+      }
+
+      const response = await axios.post(`${API_URL}/api/power/cost-benefit-analysis`, payload)
+      setCbResult(response.data)
+    } catch (err) {
+      setCbResult({ error: err.response?.data?.detail || err.message })
+    } finally {
+      setCbLoading(false)
+    }
+  }
+
+  const handleCalculateOptimalAllocation = async () => {
+    setOaLoading(true)
+    setOaResult(null)
+
+    try {
+      const payload = {
+        test_family: oaTestType,
+        effect_size: parseFloat(oaEffectSize),
+        power: parseFloat(oaPower),
+        alpha: parseFloat(oaAlpha),
+        alternative: 'two-sided',
+        cost_group1: parseFloat(oaCostGroup1),
+        cost_group2: parseFloat(oaCostGroup2),
+        max_budget: parseFloat(oaTotalBudget)
+      }
+
+      const response = await axios.post(`${API_URL}/api/power/optimal-allocation`, payload)
+      setOaResult(response.data)
+    } catch (err) {
+      setOaResult({ error: err.response?.data?.detail || err.message })
+    } finally {
+      setOaLoading(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
         <div className="flex items-center space-x-3 mb-4">
           <Target className="w-8 h-8 text-cyan-400" />
-          <h2 className="text-3xl font-bold text-gray-100">Sample Size Calculator</h2>
+          <h2 className="text-3xl font-bold text-gray-100">Experiment Planning</h2>
         </div>
         <p className="text-gray-300">
-          Calculate the required sample size for your study based on desired power, significance level, and effect size.
+          Comprehensive tools for planning your statistical study: calculate sample sizes, analyze effect sizes, optimize costs, and determine optimal group allocation.
         </p>
       </div>
+
+      {/* Tab Navigation */}
+      <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl border border-slate-700/50 overflow-hidden">
+        <div className="grid grid-cols-2 md:grid-cols-4">
+          <button
+            onClick={() => setActiveTab('sample-size')}
+            className={`px-6 py-4 font-semibold text-sm transition-all ${
+              activeTab === 'sample-size'
+                ? 'bg-cyan-500/20 text-cyan-400 border-b-2 border-cyan-500'
+                : 'text-gray-400 hover:text-gray-300 hover:bg-slate-700/30'
+            }`}
+          >
+            Sample Size Calculator
+          </button>
+          <button
+            onClick={() => setActiveTab('effect-size')}
+            className={`px-6 py-4 font-semibold text-sm transition-all ${
+              activeTab === 'effect-size'
+                ? 'bg-purple-500/20 text-purple-400 border-b-2 border-purple-500'
+                : 'text-gray-400 hover:text-gray-300 hover:bg-slate-700/30'
+            }`}
+          >
+            Effect Size Tools
+          </button>
+          <button
+            onClick={() => setActiveTab('cost-benefit')}
+            className={`px-6 py-4 font-semibold text-sm transition-all ${
+              activeTab === 'cost-benefit'
+                ? 'bg-green-500/20 text-green-400 border-b-2 border-green-500'
+                : 'text-gray-400 hover:text-gray-300 hover:bg-slate-700/30'
+            }`}
+          >
+            Cost-Benefit Analysis
+          </button>
+          <button
+            onClick={() => setActiveTab('optimal-allocation')}
+            className={`px-6 py-4 font-semibold text-sm transition-all ${
+              activeTab === 'optimal-allocation'
+                ? 'bg-pink-500/20 text-pink-400 border-b-2 border-pink-500'
+                : 'text-gray-400 hover:text-gray-300 hover:bg-slate-700/30'
+            }`}
+          >
+            Optimal Allocation
+          </button>
+        </div>
+      </div>
+
+      {/* Sample Size Calculator Tab */}
+      {activeTab === 'sample-size' && (
+        <>
 
       {/* Calculator Type Selector */}
       <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
@@ -1033,11 +1167,15 @@ const ExperimentPlanning = () => {
           correlation={correlation}
         />
       )}
+        </>
+      )}
 
-      {/* Effect Size Tools Section */}
+      {/* Effect Size Tools Tab */}
+      {activeTab === 'effect-size' && (
+        <>
       <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
         <div className="flex items-center space-x-3 mb-4">
-          <Zap className="w-8 h-8 text-cyan-400" />
+          <Zap className="w-8 h-8 text-purple-400" />
           <h2 className="text-3xl font-bold text-gray-100">Effect Size Tools</h2>
         </div>
         <p className="text-gray-300 mb-6">
@@ -1682,6 +1820,327 @@ const ExperimentPlanning = () => {
           </div>
         )}
       </div>
+        </>
+      )}
+
+      {/* Cost-Benefit Analysis Tab */}
+      {activeTab === 'cost-benefit' && (
+        <>
+      <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+        <div className="flex items-center space-x-3 mb-4">
+          <DollarSign className="w-8 h-8 text-green-400" />
+          <h2 className="text-3xl font-bold text-gray-100">Cost-Benefit Analysis</h2>
+        </div>
+        <p className="text-gray-300 mb-6">
+          Analyze the trade-off between statistical power and study cost. Find the optimal sample size given budget constraints.
+        </p>
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-gray-200 font-medium mb-2">Test Family</label>
+              <select
+                value={cbTestFamily}
+                onChange={(e) => {
+                  setCbTestFamily(e.target.value)
+                  setCbTestType(e.target.value === 't-test' ? 'two-sample' : 'one-way')
+                }}
+                className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              >
+                <option value="t-test">t-Test</option>
+                <option value="anova">ANOVA</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-gray-200 font-medium mb-2">Test Type</label>
+              <select
+                value={cbTestType}
+                onChange={(e) => setCbTestType(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              >
+                {cbTestFamily === 't-test' ? (
+                  <>
+                    <option value="one-sample">One-Sample</option>
+                    <option value="two-sample">Two-Sample</option>
+                    <option value="paired">Paired</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="one-way">One-Way</option>
+                    <option value="two-way">Two-Way</option>
+                  </>
+                )}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-gray-200 font-medium mb-2">
+                Effect Size ({cbTestFamily === 't-test' ? "Cohen's d" : "Cohen's f"})
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={cbEffectSize}
+                onChange={(e) => setCbEffectSize(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+              <p className="text-gray-400 text-xs mt-1">
+                {cbTestFamily === 't-test' ? 'Small: 0.2, Medium: 0.5, Large: 0.8' : 'Small: 0.1, Medium: 0.25, Large: 0.4'}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-gray-200 font-medium mb-2">Cost per Participant ($)</label>
+              <input
+                type="number"
+                step="1"
+                min="1"
+                value={cbCostPerParticipant}
+                onChange={(e) => setCbCostPerParticipant(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+              <p className="text-gray-400 text-xs mt-1">Cost to recruit and measure each participant</p>
+            </div>
+
+            <div>
+              <label className="block text-gray-200 font-medium mb-2">Maximum Budget ($)</label>
+              <input
+                type="number"
+                step="100"
+                min="0"
+                value={cbMaxBudget}
+                onChange={(e) => setCbMaxBudget(e.target.value)}
+                placeholder="Optional"
+                className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+              <p className="text-gray-400 text-xs mt-1">Leave empty for no budget constraint</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-gray-200 font-medium mb-2">Target Power</label>
+              <div className="flex items-center space-x-4">
+                <input
+                  type="range"
+                  min="0.5"
+                  max="0.99"
+                  step="0.01"
+                  value={cbPower}
+                  onChange={(e) => setCbPower(parseFloat(e.target.value))}
+                  className="flex-1"
+                />
+                <input
+                  type="number"
+                  min="0.5"
+                  max="0.99"
+                  step="0.01"
+                  value={cbPower}
+                  onChange={(e) => setCbPower(parseFloat(e.target.value))}
+                  className="w-20 px-3 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-gray-200 font-medium mb-2">Significance Level (α)</label>
+              <select
+                value={cbAlpha}
+                onChange={(e) => setCbAlpha(parseFloat(e.target.value))}
+                className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              >
+                <option value="0.001">0.001</option>
+                <option value="0.01">0.01</option>
+                <option value="0.05">0.05</option>
+                <option value="0.10">0.10</option>
+              </select>
+            </div>
+          </div>
+
+          {cbTestFamily === 'anova' && (
+            <div>
+              <label className="block text-gray-200 font-medium mb-2">Number of Groups</label>
+              <input
+                type="number"
+                min="2"
+                max="20"
+                value={cbNumGroups}
+                onChange={(e) => setCbNumGroups(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+            </div>
+          )}
+
+          <button
+            onClick={handleCalculateCostBenefit}
+            disabled={cbLoading}
+            className="w-full bg-gradient-to-r from-green-500 to-emerald-500 text-white font-bold py-3 px-6 rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+          >
+            <Calculator className="w-5 h-5" />
+            <span>{cbLoading ? 'Analyzing...' : 'Analyze Cost-Benefit'}</span>
+          </button>
+
+          {cbResult && !cbResult.error && (
+            <CostBenefitAnalysis costBenefitData={cbResult} />
+          )}
+
+          {cbResult && cbResult.error && (
+            <div className="bg-red-900/30 backdrop-blur-lg rounded-xl p-4 border border-red-700/50">
+              <p className="text-red-200 font-medium">Error: {cbResult.error}</p>
+            </div>
+          )}
+        </div>
+      </div>
+        </>
+      )}
+
+      {/* Optimal Allocation Tab */}
+      {activeTab === 'optimal-allocation' && (
+        <>
+      <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+        <div className="flex items-center space-x-3 mb-4">
+          <Scale className="w-8 h-8 text-pink-400" />
+          <h2 className="text-3xl font-bold text-gray-100">Optimal Group Allocation</h2>
+        </div>
+        <p className="text-gray-300 mb-6">
+          Find the optimal allocation of participants between two groups when recruitment costs differ. Uses Neyman allocation to minimize variance for a given budget.
+        </p>
+
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-gray-200 font-medium mb-2">Test Type</label>
+              <select
+                value={oaTestType}
+                onChange={(e) => setOaTestType(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              >
+                <option value="t-test">Independent t-Test</option>
+                <option value="proportion">Two-Sample Proportion Test</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-gray-200 font-medium mb-2">Effect Size</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                value={oaEffectSize}
+                onChange={(e) => setOaEffectSize(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+              <p className="text-gray-400 text-xs mt-1">Cohen's d or effect size</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-gray-200 font-medium mb-2">Cost Group 1 ($)</label>
+              <input
+                type="number"
+                step="1"
+                min="1"
+                value={oaCostGroup1}
+                onChange={(e) => setOaCostGroup1(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+              <p className="text-gray-400 text-xs mt-1">Cost per participant in control/group 1</p>
+            </div>
+
+            <div>
+              <label className="block text-gray-200 font-medium mb-2">Cost Group 2 ($)</label>
+              <input
+                type="number"
+                step="1"
+                min="1"
+                value={oaCostGroup2}
+                onChange={(e) => setOaCostGroup2(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+              <p className="text-gray-400 text-xs mt-1">Cost per participant in treatment/group 2</p>
+            </div>
+
+            <div>
+              <label className="block text-gray-200 font-medium mb-2">Total Budget ($)</label>
+              <input
+                type="number"
+                step="100"
+                min="100"
+                value={oaTotalBudget}
+                onChange={(e) => setOaTotalBudget(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+              <p className="text-gray-400 text-xs mt-1">Total available budget for the study</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-gray-200 font-medium mb-2">Target Power</label>
+              <div className="flex items-center space-x-4">
+                <input
+                  type="range"
+                  min="0.5"
+                  max="0.99"
+                  step="0.01"
+                  value={oaPower}
+                  onChange={(e) => setOaPower(parseFloat(e.target.value))}
+                  className="flex-1"
+                />
+                <input
+                  type="number"
+                  min="0.5"
+                  max="0.99"
+                  step="0.01"
+                  value={oaPower}
+                  onChange={(e) => setOaPower(parseFloat(e.target.value))}
+                  className="w-20 px-3 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-gray-200 font-medium mb-2">Significance Level (α)</label>
+              <select
+                value={oaAlpha}
+                onChange={(e) => setOaAlpha(parseFloat(e.target.value))}
+                className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              >
+                <option value="0.001">0.001</option>
+                <option value="0.01">0.01</option>
+                <option value="0.05">0.05</option>
+                <option value="0.10">0.10</option>
+              </select>
+            </div>
+          </div>
+
+          <button
+            onClick={handleCalculateOptimalAllocation}
+            disabled={oaLoading}
+            className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold py-3 px-6 rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+          >
+            <Calculator className="w-5 h-5" />
+            <span>{oaLoading ? 'Calculating...' : 'Calculate Optimal Allocation'}</span>
+          </button>
+
+          {oaResult && !oaResult.error && (
+            <OptimalAllocationChart allocationData={oaResult} />
+          )}
+
+          {oaResult && oaResult.error && (
+            <div className="bg-red-900/30 backdrop-blur-lg rounded-xl p-4 border border-red-700/50">
+              <p className="text-red-200 font-medium">Error: {oaResult.error}</p>
+            </div>
+          )}
+        </div>
+      </div>
+        </>
+      )}
     </div>
   )
 }

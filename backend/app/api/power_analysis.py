@@ -1282,3 +1282,440 @@ def classify_cohens_h(h: float) -> dict:
         "description": description,
         "cohens_h": round(abs_h, 4)
     }
+
+
+class CostBenefitRequest(BaseModel):
+    test_family: Literal["t-test", "anova", "proportion"] = Field(..., description="Test family")
+    test_type: str = Field(..., description="Specific test type")
+    effect_size: float = Field(..., description="Expected effect size")
+    alpha: float = Field(0.05, description="Significance level")
+    alternative: Optional[str] = Field("two-sided", description="Alternative hypothesis")
+    cost_per_participant: float = Field(..., gt=0, description="Cost per participant")
+    max_budget: Optional[float] = Field(None, gt=0, description="Maximum budget available")
+    min_power: float = Field(0.5, ge=0.5, le=0.99, description="Minimum acceptable power")
+    max_power: float = Field(0.95, ge=0.5, le=0.99, description="Maximum desired power")
+
+    # Test-specific parameters
+    ratio: Optional[float] = Field(1.0, description="Ratio for two-sample tests")
+    correlation: Optional[float] = Field(0.5, description="Correlation for paired tests")
+    num_groups: Optional[int] = Field(3, description="Number of groups for ANOVA")
+    num_levels_a: Optional[int] = Field(2, description="Levels of factor A for two-way ANOVA")
+    num_levels_b: Optional[int] = Field(2, description="Levels of factor B for two-way ANOVA")
+
+
+@router.post("/cost-benefit-analysis")
+def calculate_cost_benefit(request: CostBenefitRequest):
+    """
+    Calculate cost-benefit analysis for study design
+    Shows total cost, cost per unit power, and optimal sample size given budget
+    """
+    try:
+        # Generate power curve data for different sample sizes
+        power_levels = np.linspace(request.min_power, request.max_power, 10)
+        sample_sizes = []
+        total_costs = []
+        cost_per_power_unit = []
+
+        for power in power_levels:
+            # Calculate sample size for this power level
+            if request.test_family == "t-test":
+                power_obj = TTestIndPower() if request.test_type == "two-sample" else TTestPower()
+
+                if request.test_type == "two-sample":
+                    n = power_obj.solve_power(
+                        effect_size=abs(request.effect_size),
+                        alpha=request.alpha,
+                        power=power,
+                        ratio=request.ratio,
+                        alternative=request.alternative or "two-sided"
+                    )
+                    total_n = int(np.ceil(n * (1 + request.ratio)))
+                else:
+                    n = power_obj.solve_power(
+                        effect_size=abs(request.effect_size),
+                        alpha=request.alpha,
+                        power=power,
+                        alternative=request.alternative or "two-sided"
+                    )
+                    total_n = int(np.ceil(n))
+
+            elif request.test_family == "anova":
+                power_obj = FTestAnovaPower()
+
+                if request.test_type == "one-way":
+                    k = request.num_groups
+                else:
+                    k = request.num_levels_a * request.num_levels_b
+
+                n_per_group = power_obj.solve_power(
+                    effect_size=abs(request.effect_size),
+                    alpha=request.alpha,
+                    power=power,
+                    k_groups=k
+                )
+                total_n = int(np.ceil(n_per_group * k))
+            else:
+                # Proportions - simplified calculation
+                from statsmodels.stats.power import zt_ind_solve_power
+                n = zt_ind_solve_power(
+                    effect_size=abs(request.effect_size),
+                    alpha=request.alpha,
+                    power=power,
+                    ratio=request.ratio or 1.0,
+                    alternative=request.alternative or "two-sided"
+                )
+                total_n = int(np.ceil(n * (1 + (request.ratio or 1.0))))
+
+            sample_sizes.append(total_n)
+            cost = total_n * request.cost_per_participant
+            total_costs.append(cost)
+            cost_per_power_unit.append(cost / power if power > 0 else 0)
+
+        # Find optimal sample size given budget constraint
+        optimal_sample_size = None
+        optimal_power = None
+        optimal_cost = None
+        budget_exceeded = False
+
+        if request.max_budget:
+            max_affordable_n = int(request.max_budget / request.cost_per_participant)
+
+            # Find the highest power achievable within budget
+            for i, (n, power, cost) in enumerate(zip(sample_sizes, power_levels, total_costs)):
+                if n <= max_affordable_n:
+                    optimal_sample_size = n
+                    optimal_power = power
+                    optimal_cost = cost
+
+            if optimal_sample_size is None:
+                # Even minimum power exceeds budget
+                budget_exceeded = True
+                optimal_sample_size = sample_sizes[0]
+                optimal_power = power_levels[0]
+                optimal_cost = total_costs[0]
+        else:
+            # No budget constraint - use 80% power as default
+            target_power = 0.8
+            closest_idx = np.argmin([abs(p - target_power) for p in power_levels])
+            optimal_sample_size = sample_sizes[closest_idx]
+            optimal_power = power_levels[closest_idx]
+            optimal_cost = total_costs[closest_idx]
+
+        # Calculate cost efficiency metrics
+        min_cost_idx = np.argmin(cost_per_power_unit[1:]) + 1  # Skip first to avoid div by small power
+        most_efficient_n = sample_sizes[min_cost_idx]
+        most_efficient_power = power_levels[min_cost_idx]
+        most_efficient_cost = total_costs[min_cost_idx]
+
+        return {
+            "cost_curve": {
+                "sample_sizes": [int(n) for n in sample_sizes],
+                "power_levels": [round(float(p), 4) for p in power_levels],
+                "total_costs": [round(float(c), 2) for c in total_costs],
+                "cost_per_power_unit": [round(float(c), 2) for c in cost_per_power_unit]
+            },
+            "optimal_design": {
+                "sample_size": int(optimal_sample_size),
+                "power": round(float(optimal_power), 4),
+                "total_cost": round(float(optimal_cost), 2),
+                "cost_per_participant": request.cost_per_participant,
+                "budget_exceeded": budget_exceeded
+            },
+            "most_efficient_design": {
+                "sample_size": int(most_efficient_n),
+                "power": round(float(most_efficient_power), 4),
+                "total_cost": round(float(most_efficient_cost), 2),
+                "cost_per_power_unit": round(float(cost_per_power_unit[min_cost_idx]), 2),
+                "description": "Best balance of power vs. cost"
+            },
+            "budget_info": {
+                "max_budget": request.max_budget,
+                "has_constraint": request.max_budget is not None,
+                "max_affordable_participants": int(request.max_budget / request.cost_per_participant) if request.max_budget else None
+            },
+            "recommendations": generate_cost_recommendations(
+                optimal_sample_size,
+                optimal_power,
+                optimal_cost,
+                request.max_budget,
+                budget_exceeded,
+                most_efficient_n,
+                most_efficient_power
+            )
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def generate_cost_recommendations(
+    optimal_n, optimal_power, optimal_cost,
+    max_budget, budget_exceeded,
+    efficient_n, efficient_power
+):
+    """Generate recommendations for cost-benefit trade-offs"""
+    recommendations = []
+
+    if budget_exceeded:
+        recommendations.append(
+            f"⚠ Your budget constraint limits you to {optimal_power*100:.1f}% power. "
+            f"Consider increasing budget or accepting lower effect size detection."
+        )
+    else:
+        if max_budget and optimal_cost < max_budget * 0.7:
+            recommendations.append(
+                f"✓ You have {max_budget - optimal_cost:.2f} remaining in your budget. "
+                f"You could increase power to {min(optimal_power + 0.1, 0.95)*100:.1f}% for better sensitivity."
+            )
+
+    if optimal_n != efficient_n:
+        savings = optimal_cost - (efficient_n * (optimal_cost / optimal_n))
+        recommendations.append(
+            f"💡 Most cost-efficient design: n={efficient_n} ({efficient_power*100:.1f}% power) "
+            f"could save ${abs(savings):.2f} while maintaining good statistical properties."
+        )
+
+    if optimal_power < 0.8:
+        recommendations.append(
+            "⚠ Power is below the conventional 80% threshold. "
+            "Consider if this aligns with your tolerance for Type II errors."
+        )
+
+    return recommendations
+
+
+class OptimalAllocationRequest(BaseModel):
+    test_family: Literal["t-test", "proportion"] = Field(..., description="Test family (only t-test and proportion support unequal allocation)")
+    effect_size: float = Field(..., description="Expected effect size")
+    alpha: float = Field(0.05, description="Significance level")
+    power: float = Field(0.8, ge=0.5, le=0.99, description="Desired power")
+    alternative: str = Field("two-sided", description="Alternative hypothesis")
+
+    # Cost parameters
+    cost_group1: float = Field(..., gt=0, description="Cost per participant in group 1")
+    cost_group2: float = Field(..., gt=0, description="Cost per participant in group 2")
+
+    # Optional constraints
+    max_budget: Optional[float] = Field(None, gt=0, description="Maximum total budget")
+    max_n_group1: Optional[int] = Field(None, gt=0, description="Maximum participants in group 1")
+    max_n_group2: Optional[int] = Field(None, gt=0, description="Maximum participants in group 2")
+
+
+@router.post("/optimal-allocation")
+def calculate_optimal_allocation(request: OptimalAllocationRequest):
+    """
+    Calculate optimal allocation of participants to groups when costs differ
+    Uses Neyman allocation: n1/n2 = sqrt(c2/c1) for minimum variance given total cost
+    """
+    try:
+        # Calculate optimal allocation ratio (minimizes variance for fixed cost)
+        # For equal variances: n1/n2 = sqrt(c2/c1)
+        optimal_ratio = np.sqrt(request.cost_group2 / request.cost_group1)
+
+        # Calculate sample sizes with equal allocation (1:1 ratio)
+        if request.test_family == "t-test":
+            power_obj = TTestIndPower()
+            n_equal = power_obj.solve_power(
+                effect_size=abs(request.effect_size),
+                alpha=request.alpha,
+                power=request.power,
+                ratio=1.0,
+                alternative=request.alternative
+            )
+            n1_equal = int(np.ceil(n_equal))
+            n2_equal = int(np.ceil(n_equal))
+            total_n_equal = n1_equal + n2_equal
+            cost_equal = n1_equal * request.cost_group1 + n2_equal * request.cost_group2
+
+            # Calculate sample sizes with optimal allocation
+            n_optimal = power_obj.solve_power(
+                effect_size=abs(request.effect_size),
+                alpha=request.alpha,
+                power=request.power,
+                ratio=optimal_ratio,
+                alternative=request.alternative
+            )
+            n1_optimal = int(np.ceil(n_optimal))
+            n2_optimal = int(np.ceil(n_optimal * optimal_ratio))
+            total_n_optimal = n1_optimal + n2_optimal
+            cost_optimal = n1_optimal * request.cost_group1 + n2_optimal * request.cost_group2
+
+        else:  # proportion
+            from statsmodels.stats.power import zt_ind_solve_power
+            n_equal = zt_ind_solve_power(
+                effect_size=abs(request.effect_size),
+                alpha=request.alpha,
+                power=request.power,
+                ratio=1.0,
+                alternative=request.alternative
+            )
+            n1_equal = int(np.ceil(n_equal))
+            n2_equal = int(np.ceil(n_equal))
+            total_n_equal = n1_equal + n2_equal
+            cost_equal = n1_equal * request.cost_group1 + n2_equal * request.cost_group2
+
+            # Optimal allocation
+            n_optimal = zt_ind_solve_power(
+                effect_size=abs(request.effect_size),
+                alpha=request.alpha,
+                power=request.power,
+                ratio=optimal_ratio,
+                alternative=request.alternative
+            )
+            n1_optimal = int(np.ceil(n_optimal))
+            n2_optimal = int(np.ceil(n_optimal * optimal_ratio))
+            total_n_optimal = n1_optimal + n2_optimal
+            cost_optimal = n1_optimal * request.cost_group1 + n2_optimal * request.cost_group2
+
+        # Calculate cost savings
+        cost_savings = cost_equal - cost_optimal
+        cost_savings_percent = (cost_savings / cost_equal) * 100 if cost_equal > 0 else 0
+
+        # Check budget constraints
+        budget_feasible = True
+        budget_message = None
+        if request.max_budget:
+            if cost_optimal > request.max_budget:
+                budget_feasible = False
+                budget_message = f"Optimal design exceeds budget by ${cost_optimal - request.max_budget:.2f}"
+
+        # Check sample size constraints
+        constraints_met = True
+        constraint_messages = []
+        if request.max_n_group1 and n1_optimal > request.max_n_group1:
+            constraints_met = False
+            constraint_messages.append(f"Group 1 size ({n1_optimal}) exceeds maximum ({request.max_n_group1})")
+        if request.max_n_group2 and n2_optimal > request.max_n_group2:
+            constraints_met = False
+            constraint_messages.append(f"Group 2 size ({n2_optimal}) exceeds maximum ({request.max_n_group2})")
+
+        # Generate allocation comparison data for visualization
+        ratios = np.linspace(0.5, 2.0, 20)
+        costs_by_ratio = []
+        power_by_ratio = []
+
+        for ratio in ratios:
+            try:
+                if request.test_family == "t-test":
+                    n = power_obj.solve_power(
+                        effect_size=abs(request.effect_size),
+                        alpha=request.alpha,
+                        power=request.power,
+                        ratio=ratio,
+                        alternative=request.alternative
+                    )
+                else:
+                    n = zt_ind_solve_power(
+                        effect_size=abs(request.effect_size),
+                        alpha=request.alpha,
+                        power=request.power,
+                        ratio=ratio,
+                        alternative=request.alternative
+                    )
+                n1 = int(np.ceil(n))
+                n2 = int(np.ceil(n * ratio))
+                cost = n1 * request.cost_group1 + n2 * request.cost_group2
+                costs_by_ratio.append(cost)
+                power_by_ratio.append(request.power)
+            except:
+                costs_by_ratio.append(None)
+                power_by_ratio.append(None)
+
+        return {
+            "equal_allocation": {
+                "n_group1": n1_equal,
+                "n_group2": n2_equal,
+                "total_n": total_n_equal,
+                "ratio": 1.0,
+                "total_cost": round(cost_equal, 2),
+                "cost_per_group1": request.cost_group1,
+                "cost_per_group2": request.cost_group2
+            },
+            "optimal_allocation": {
+                "n_group1": n1_optimal,
+                "n_group2": n2_optimal,
+                "total_n": total_n_optimal,
+                "ratio": round(optimal_ratio, 4),
+                "total_cost": round(cost_optimal, 2),
+                "cost_per_group1": request.cost_group1,
+                "cost_per_group2": request.cost_group2,
+                "cost_savings": round(cost_savings, 2),
+                "cost_savings_percent": round(cost_savings_percent, 2)
+            },
+            "comparison_curve": {
+                "ratios": [round(float(r), 2) for r in ratios],
+                "total_costs": [round(float(c), 2) if c is not None else None for c in costs_by_ratio],
+                "power_levels": [round(float(p), 4) if p is not None else None for p in power_by_ratio]
+            },
+            "feasibility": {
+                "budget_feasible": budget_feasible,
+                "budget_message": budget_message,
+                "constraints_met": constraints_met,
+                "constraint_messages": constraint_messages
+            },
+            "interpretation": {
+                "formula": f"Optimal ratio n₁/n₂ = √(c₂/c₁) = √({request.cost_group2}/{request.cost_group1}) = {optimal_ratio:.3f}",
+                "explanation": (
+                    f"When group 2 costs {request.cost_group2/request.cost_group1:.2f}x more than group 1, "
+                    f"the optimal allocation is to have {optimal_ratio:.2f}x more participants in the cheaper group. "
+                    f"This minimizes total cost while maintaining statistical power."
+                ),
+                "savings_summary": (
+                    f"Optimal allocation saves ${cost_savings:.2f} ({cost_savings_percent:.1f}%) "
+                    f"compared to equal allocation, while achieving the same {request.power*100:.0f}% power."
+                )
+            },
+            "recommendations": generate_allocation_recommendations(
+                n1_optimal, n2_optimal, cost_savings, cost_savings_percent,
+                budget_feasible, constraints_met, optimal_ratio
+            )
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def generate_allocation_recommendations(
+    n1, n2, savings, savings_percent,
+    budget_feasible, constraints_met, ratio
+):
+    """Generate recommendations for optimal allocation"""
+    recommendations = []
+
+    if savings_percent > 10:
+        recommendations.append(
+            f"💰 Significant cost savings: Using optimal allocation saves {savings_percent:.1f}% "
+            f"(${savings:.2f}) compared to equal group sizes."
+        )
+    elif savings_percent > 0:
+        recommendations.append(
+            f"💡 Modest cost savings: Optimal allocation saves {savings_percent:.1f}% "
+            f"(${savings:.2f}). Consider if the complexity of unequal groups is worth the savings."
+        )
+    else:
+        recommendations.append(
+            "✓ Equal allocation is already optimal when costs are similar."
+        )
+
+    if not budget_feasible:
+        recommendations.append(
+            "⚠ Budget constraint exceeded. Consider reducing power, accepting smaller effect size detection, "
+            "or increasing budget."
+        )
+
+    if not constraints_met:
+        recommendations.append(
+            "⚠ Sample size constraints cannot be met. Consider relaxing constraints or adjusting power requirements."
+        )
+
+    if ratio > 1.5 or ratio < 0.67:
+        recommendations.append(
+            f"⚠ Large allocation imbalance (ratio = {ratio:.2f}). Ensure this is practical for your study design. "
+            "Severely unequal groups may raise concerns about bias or generalizability."
+        )
+
+    recommendations.append(
+        "📊 Use the comparison curve to explore trade-offs between different allocation ratios and total costs."
+    )
+
+    return recommendations

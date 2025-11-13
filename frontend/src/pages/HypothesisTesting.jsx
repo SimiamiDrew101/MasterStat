@@ -1,7 +1,10 @@
 import { useState } from 'react'
 import axios from 'axios'
 import ResultCard from '../components/ResultCard'
-import { Calculator } from 'lucide-react'
+import DistributionPlot from '../components/DistributionPlot'
+import AssumptionsPanel from '../components/AssumptionsPanel'
+import EffectSizeCard from '../components/EffectSizeCard'
+import { Calculator, AlertCircle } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -15,6 +18,7 @@ const HypothesisTesting = () => {
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [activeTab, setActiveTab] = useState('results') // 'results', 'diagnostics', 'visualization'
 
   // Table data for samples
   const [sample1TableData, setSample1TableData] = useState(Array(15).fill(''))
@@ -408,8 +412,107 @@ const HypothesisTesting = () => {
         </div>
       )}
 
-      {/* Results Display */}
-      {result && <ResultCard result={result} />}
+      {/* Assumptions Warning (if violated) */}
+      {result && result.assumptions && !result.assumptions.check?.all_assumptions_met && (
+        <div className="bg-orange-900/20 backdrop-blur-lg rounded-xl p-5 border border-orange-700/50">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-6 h-6 text-orange-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-orange-200 mb-2">Assumptions Violated</h3>
+              <p className="text-orange-100 text-sm mb-3">
+                Some statistical assumptions for this test may be violated. Review the Diagnostics tab for details.
+              </p>
+              {result.assumptions.check.recommendations && result.assumptions.check.recommendations.length > 0 && (
+                <div className="bg-orange-950/50 rounded-lg p-3 mt-3">
+                  <p className="text-orange-200 font-semibold text-sm mb-2">Recommendations:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    {result.assumptions.check.recommendations.map((rec, idx) => (
+                      <li key={idx} className="text-orange-100 text-sm">{rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Results Display with Tabs */}
+      {result && (
+        <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+          {/* Tab Navigation */}
+          <div className="flex border-b border-slate-600 mb-6">
+            <button
+              onClick={() => setActiveTab('results')}
+              className={`px-6 py-3 font-semibold transition-colors ${
+                activeTab === 'results'
+                  ? 'text-blue-400 border-b-2 border-blue-400'
+                  : 'text-gray-400 hover:text-gray-300'
+              }`}
+            >
+              Results & Effect Size
+            </button>
+            {result.assumptions && (
+              <button
+                onClick={() => setActiveTab('diagnostics')}
+                className={`px-6 py-3 font-semibold transition-colors ${
+                  activeTab === 'diagnostics'
+                    ? 'text-purple-400 border-b-2 border-purple-400'
+                    : 'text-gray-400 hover:text-gray-300'
+                }`}
+              >
+                Diagnostics
+                {!result.assumptions.check?.all_assumptions_met && (
+                  <span className="ml-2 px-2 py-0.5 text-xs bg-orange-600 text-white rounded-full">!</span>
+                )}
+              </button>
+            )}
+            {result.distribution_plot_data && (
+              <button
+                onClick={() => setActiveTab('visualization')}
+                className={`px-6 py-3 font-semibold transition-colors ${
+                  activeTab === 'visualization'
+                    ? 'text-cyan-400 border-b-2 border-cyan-400'
+                    : 'text-gray-400 hover:text-gray-300'
+                }`}
+              >
+                Visualization
+              </button>
+            )}
+          </div>
+
+          {/* Tab Content */}
+          <div className="space-y-6">
+            {activeTab === 'results' && (
+              <>
+                <ResultCard result={result} />
+                {result.effect_size && (
+                  <EffectSizeCard
+                    effectSize={result.effect_size}
+                    powerAnalysis={result.power_analysis}
+                  />
+                )}
+              </>
+            )}
+
+            {activeTab === 'diagnostics' && result.assumptions && (
+              <AssumptionsPanel
+                assumptions={result.assumptions}
+                alpha={alpha}
+              />
+            )}
+
+            {activeTab === 'visualization' && result.distribution_plot_data && (
+              <DistributionPlot
+                distributionData={result.distribution_plot_data}
+                pValue={result.p_value}
+                testType={result.test_type}
+                alpha={alpha}
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
