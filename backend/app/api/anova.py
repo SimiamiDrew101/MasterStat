@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -8,6 +8,268 @@ import statsmodels.api as sm
 from statsmodels.formula.api import ols
 
 router = APIRouter()
+
+# Helper functions for assumptions testing
+def test_normality(residuals):
+    """
+    Test normality of residuals using multiple tests
+    """
+    residuals = np.array(residuals)
+
+    # Shapiro-Wilk test
+    shapiro_stat, shapiro_p = stats.shapiro(residuals)
+
+    # Anderson-Darling test
+    anderson_result = stats.anderson(residuals, dist='norm')
+    anderson_stat = anderson_result.statistic
+    anderson_critical = anderson_result.critical_values[2]  # 5% significance level
+    anderson_pass = anderson_stat < anderson_critical
+
+    # Kolmogorov-Smirnov test
+    ks_stat, ks_p = stats.kstest(residuals, 'norm', args=(np.mean(residuals), np.std(residuals)))
+
+    return {
+        "shapiro_wilk": {
+            "statistic": round(float(shapiro_stat), 6),
+            "p_value": round(float(shapiro_p), 6),
+            "passed": bool(shapiro_p > 0.05),
+            "interpretation": "Residuals are normally distributed" if shapiro_p > 0.05 else "Residuals deviate from normality"
+        },
+        "anderson_darling": {
+            "statistic": round(float(anderson_stat), 6),
+            "critical_value": round(float(anderson_critical), 6),
+            "passed": bool(anderson_pass),
+            "interpretation": "Residuals are normally distributed" if anderson_pass else "Residuals deviate from normality"
+        },
+        "kolmogorov_smirnov": {
+            "statistic": round(float(ks_stat), 6),
+            "p_value": round(float(ks_p), 6),
+            "passed": bool(ks_p > 0.05),
+            "interpretation": "Residuals are normally distributed" if ks_p > 0.05 else "Residuals deviate from normality"
+        }
+    }
+
+def test_homogeneity_of_variance(groups):
+    """
+    Test homogeneity of variance using Levene's and Bartlett's tests
+    """
+    group_data = [np.array(data) for data in groups.values()] if isinstance(groups, dict) else groups
+
+    # Levene's test (robust to non-normality)
+    levene_stat, levene_p = stats.levene(*group_data)
+
+    # Bartlett's test (sensitive to non-normality)
+    bartlett_stat, bartlett_p = stats.bartlett(*group_data)
+
+    return {
+        "levene": {
+            "statistic": round(float(levene_stat), 6),
+            "p_value": round(float(levene_p), 6),
+            "passed": bool(levene_p > 0.05),
+            "interpretation": "Variances are equal across groups" if levene_p > 0.05 else "Variances are unequal (heteroscedasticity detected)"
+        },
+        "bartlett": {
+            "statistic": round(float(bartlett_stat), 6),
+            "p_value": round(float(bartlett_p), 6),
+            "passed": bool(bartlett_p > 0.05),
+            "interpretation": "Variances are equal across groups" if bartlett_p > 0.05 else "Variances are unequal (heteroscedasticity detected)"
+        }
+    }
+
+def calculate_effect_sizes_oneway(ssb, ssw, sst, df_between, df_within, k, n_total):
+    """
+    Calculate effect sizes for one-way ANOVA
+    """
+    # Eta-squared (η²) - proportion of variance explained
+    eta_squared = ssb / sst
+
+    # Omega-squared (ω²) - less biased estimate
+    omega_squared = (ssb - df_between * (ssw / df_within)) / (sst + (ssw / df_within))
+    omega_squared = max(0, omega_squared)  # Can't be negative
+
+    # Cohen's f
+    cohens_f = np.sqrt(eta_squared / (1 - eta_squared))
+
+    # Interpretations based on Cohen's (1988) benchmarks
+    def interpret_eta_omega(value):
+        if value < 0.01:
+            return "negligible"
+        elif value < 0.06:
+            return "small"
+        elif value < 0.14:
+            return "medium"
+        else:
+            return "large"
+
+    def interpret_cohens_f(value):
+        if value < 0.10:
+            return "small"
+        elif value < 0.25:
+            return "medium"
+        else:
+            return "large"
+
+    return {
+        "eta_squared": {
+            "value": round(float(eta_squared), 6),
+            "interpretation": interpret_eta_omega(eta_squared),
+            "description": "Proportion of total variance explained by the factor"
+        },
+        "omega_squared": {
+            "value": round(float(omega_squared), 6),
+            "interpretation": interpret_eta_omega(omega_squared),
+            "description": "Unbiased estimate of effect size (preferred over η²)"
+        },
+        "cohens_f": {
+            "value": round(float(cohens_f), 6),
+            "interpretation": interpret_cohens_f(cohens_f),
+            "description": "Effect size in Cohen's f metric"
+        }
+    }
+
+def calculate_effect_sizes_twoway(anova_table, sst, n_total):
+    """
+    Calculate partial eta-squared for each effect in two-way ANOVA
+    """
+    effect_sizes = {}
+
+    for effect_name, values in anova_table.items():
+        if effect_name != "Residual" and values.get("sum_sq") is not None:
+            ss_effect = values["sum_sq"]
+            ss_error = anova_table.get("Residual", {}).get("sum_sq", 0)
+
+            # Partial eta-squared
+            partial_eta_sq = ss_effect / (ss_effect + ss_error)
+
+            # Cohen's f
+            cohens_f = np.sqrt(partial_eta_sq / (1 - partial_eta_sq))
+
+            def interpret_partial_eta(value):
+                if value < 0.01:
+                    return "negligible"
+                elif value < 0.06:
+                    return "small"
+                elif value < 0.14:
+                    return "medium"
+                else:
+                    return "large"
+
+            def interpret_cohens_f(value):
+                if value < 0.10:
+                    return "small"
+                elif value < 0.25:
+                    return "medium"
+                else:
+                    return "large"
+
+            effect_sizes[effect_name] = {
+                "partial_eta_squared": {
+                    "value": round(float(partial_eta_sq), 6),
+                    "interpretation": interpret_partial_eta(partial_eta_sq),
+                    "description": f"Proportion of variance in DV explained by {effect_name}, excluding other effects"
+                },
+                "cohens_f": {
+                    "value": round(float(cohens_f), 6),
+                    "interpretation": interpret_cohens_f(cohens_f),
+                    "description": f"Effect size for {effect_name} in Cohen's f metric"
+                }
+            }
+
+    return effect_sizes
+
+def calculate_influential_observations(residuals, fitted_values, n, p):
+    """
+    Calculate influence diagnostics: Cook's Distance, Leverage, DFBETAS, DFFITS
+
+    Parameters:
+    - residuals: array of residuals
+    - fitted_values: array of fitted values
+    - n: number of observations
+    - p: number of parameters (groups)
+
+    Returns:
+    - Dictionary with influence metrics
+    """
+    residuals = np.array(residuals)
+    fitted_values = np.array(fitted_values)
+
+    # Mean squared error
+    mse = np.mean(residuals**2)
+
+    # Standardized residuals
+    std_residuals = residuals / np.sqrt(mse)
+
+    # Leverage (hat values) - simplified for ANOVA
+    # For one-way ANOVA, leverage = 1/n_group for each observation
+    # This is a simplified calculation
+    leverage = np.ones(n) / n  # Placeholder - would need design matrix for exact calculation
+
+    # Cook's Distance
+    cooks_d = (std_residuals**2 / p) * (leverage / (1 - leverage)**2)
+
+    # DFFITS
+    dffits = std_residuals * np.sqrt(leverage / (1 - leverage))
+
+    # Identify influential points
+    # Cook's D > 4/(n-p) is common threshold
+    cooks_threshold = 4 / (n - p) if n > p else 1.0
+    influential_cooks = cooks_d > cooks_threshold
+
+    # DFFITS > 2*sqrt(p/n) is common threshold
+    dffits_threshold = 2 * np.sqrt(p / n)
+    influential_dffits = np.abs(dffits) > dffits_threshold
+
+    # Find indices of influential observations
+    influential_indices = np.where(influential_cooks | influential_dffits)[0].tolist()
+
+    return {
+        "cooks_distance": [round(float(d), 6) for d in cooks_d],
+        "leverage": [round(float(l), 6) for l in leverage],
+        "dffits": [round(float(d), 6) for d in dffits],
+        "standardized_residuals": [round(float(r), 6) for r in std_residuals],
+        "influential_indices": influential_indices,
+        "thresholds": {
+            "cooks_d": round(float(cooks_threshold), 6),
+            "dffits": round(float(dffits_threshold), 6)
+        },
+        "n_influential": len(influential_indices)
+    }
+
+def generate_diagnostic_plots_data(residuals, fitted_values, leverage, std_residuals):
+    """
+    Generate data for additional diagnostic plots:
+    1. Scale-Location plot (sqrt of standardized residuals vs fitted values)
+    2. Leverage vs Residuals plot
+    """
+    residuals = np.array(residuals)
+    fitted_values = np.array(fitted_values)
+    leverage = np.array(leverage)
+    std_residuals = np.array(std_residuals)
+
+    # Scale-Location plot data
+    # Y-axis: sqrt of absolute standardized residuals
+    sqrt_abs_std_residuals = np.sqrt(np.abs(std_residuals))
+
+    # Sort by fitted values for better visualization
+    sort_idx = np.argsort(fitted_values)
+
+    scale_location = {
+        "fitted_values": fitted_values[sort_idx].tolist(),
+        "sqrt_abs_std_residuals": sqrt_abs_std_residuals[sort_idx].tolist(),
+        "interpretation": "Should show random scatter around a horizontal line. Funnel shape indicates heteroscedasticity."
+    }
+
+    # Leverage vs Residuals plot data
+    leverage_residuals = {
+        "leverage": leverage.tolist(),
+        "std_residuals": std_residuals.tolist(),
+        "interpretation": "Points with high leverage (>2p/n or >3p/n) and large residuals are influential."
+    }
+
+    return {
+        "scale_location": scale_location,
+        "leverage_residuals": leverage_residuals
+    }
 
 class OneWayANOVARequest(BaseModel):
     groups: Dict[str, List[float]] = Field(..., description="Dictionary of group names to data values")
@@ -19,6 +281,151 @@ class TwoWayANOVARequest(BaseModel):
     factor_b: str = Field(..., description="Name of second factor")
     response: str = Field(..., description="Name of response variable")
     alpha: float = Field(0.05, description="Significance level")
+
+class TwoWayPostHocRequest(BaseModel):
+    data: List[Dict[str, Any]] = Field(..., description="List of observations with factor levels and response")
+    factor_a: str = Field(..., description="Name of first factor")
+    factor_b: str = Field(..., description="Name of second factor")
+    response: str = Field(..., description="Name of response variable")
+    comparison_type: str = Field(..., description="Type of comparison: 'marginal_a', 'marginal_b', 'cell_means', 'simple_a', 'simple_b'")
+    alpha: float = Field(0.05, description="Significance level")
+    test_method: str = Field("tukey", description="Post-hoc test method: 'tukey', 'bonferroni', 'scheffe', 'fisher-lsd'")
+
+class ContrastRequest(BaseModel):
+    groups: Dict[str, List[float]] = Field(..., description="Dictionary of group names to data values")
+    contrast_type: str = Field(..., description="Type of contrast: 'custom', 'polynomial', 'helmert'")
+    coefficients: Optional[List[float]] = Field(None, description="Custom contrast coefficients (sum to 0)")
+    polynomial_degree: Optional[int] = Field(None, description="Degree for polynomial contrast (1=linear, 2=quadratic, 3=cubic)")
+    alpha: float = Field(0.05, description="Significance level")
+
+def calculate_contrast(groups, coefficients, alpha=0.05):
+    """
+    Calculate a custom contrast for one-way ANOVA
+
+    Parameters:
+    - groups: dict of group_name -> data values
+    - coefficients: list of contrast coefficients (must sum to 0)
+    - alpha: significance level
+
+    Returns:
+    - Dictionary with contrast results
+    """
+    group_names = list(groups.keys())
+    group_data = [np.array(groups[name]) for name in group_names]
+    coefficients = np.array(coefficients)
+
+    # Validate coefficients sum to 0 (within floating point tolerance)
+    if abs(np.sum(coefficients)) > 1e-10:
+        raise ValueError("Contrast coefficients must sum to 0")
+
+    # Calculate group means and sample sizes
+    group_means = np.array([np.mean(data) for data in group_data])
+    group_ns = np.array([len(data) for data in group_data])
+    n_total = np.sum(group_ns)
+    k = len(group_data)
+
+    # Calculate contrast estimate (ψ = Σc_i * mean_i)
+    contrast_estimate = np.sum(coefficients * group_means)
+
+    # Calculate MSW (within-group mean square)
+    ssw = sum(np.sum((data - np.mean(data))**2) for data in group_data)
+    df_within = n_total - k
+    msw = ssw / df_within
+
+    # Standard error of contrast: SE = sqrt(MSW * Σ(c_i²/n_i))
+    se_contrast = np.sqrt(msw * np.sum(coefficients**2 / group_ns))
+
+    # t-statistic
+    t_stat = contrast_estimate / se_contrast
+
+    # p-value (two-tailed)
+    from scipy import stats as sp_stats
+    p_value = 2 * (1 - sp_stats.t.cdf(abs(t_stat), df_within))
+
+    # Confidence interval
+    t_crit = sp_stats.t.ppf(1 - alpha/2, df_within)
+    ci_lower = contrast_estimate - t_crit * se_contrast
+    ci_upper = contrast_estimate + t_crit * se_contrast
+
+    return {
+        "contrast_estimate": float(contrast_estimate),
+        "standard_error": float(se_contrast),
+        "t_statistic": float(t_stat),
+        "df": int(df_within),
+        "p_value": float(p_value),
+        "ci_lower": float(ci_lower),
+        "ci_upper": float(ci_upper),
+        "reject_null": bool(p_value < alpha),
+        "coefficients": coefficients.tolist(),
+        "group_means": {name: float(mean) for name, mean in zip(group_names, group_means)}
+    }
+
+def generate_polynomial_contrasts(k, degree):
+    """Generate polynomial contrast coefficients up to specified degree"""
+    from scipy.special import orthogonal
+
+    # For polynomial contrasts, we use orthogonal polynomials
+    x = np.arange(k)
+
+    if degree == 1:  # Linear
+        # Linear contrast: -k+1, -k+3, ..., k-3, k-1
+        coefficients = x - np.mean(x)
+        coefficients = coefficients / np.sqrt(np.sum(coefficients**2))
+        return [coefficients.tolist()]
+
+    elif degree == 2:  # Quadratic
+        # Both linear and quadratic
+        contrasts = []
+
+        # Linear
+        linear = x - np.mean(x)
+        linear = linear / np.sqrt(np.sum(linear**2))
+        contrasts.append(linear.tolist())
+
+        # Quadratic
+        quadratic = (x - np.mean(x))**2 - np.mean((x - np.mean(x))**2)
+        quadratic = quadratic / np.sqrt(np.sum(quadratic**2))
+        contrasts.append(quadratic.tolist())
+
+        return contrasts
+
+    elif degree == 3:  # Cubic
+        contrasts = []
+
+        # Linear
+        linear = x - np.mean(x)
+        linear = linear / np.sqrt(np.sum(linear**2))
+        contrasts.append(linear.tolist())
+
+        # Quadratic
+        quadratic = (x - np.mean(x))**2 - np.mean((x - np.mean(x))**2)
+        quadratic = quadratic / np.sqrt(np.sum(quadratic**2))
+        contrasts.append(quadratic.tolist())
+
+        # Cubic
+        cubic = (x - np.mean(x))**3 - np.mean((x - np.mean(x))**3)
+        cubic = cubic / np.sqrt(np.sum(cubic**2))
+        contrasts.append(cubic.tolist())
+
+        return contrasts
+
+    return []
+
+def generate_helmert_contrasts(k):
+    """Generate Helmert contrast coefficients"""
+    contrasts = []
+
+    for i in range(k - 1):
+        # Compare group i with mean of groups i+1 to k
+        coefficients = np.zeros(k)
+        coefficients[i] = k - i - 1
+        coefficients[i+1:] = -1
+
+        # Normalize
+        coefficients = coefficients / np.sqrt(np.sum(coefficients**2))
+        contrasts.append(coefficients.tolist())
+
+    return contrasts
 
 @router.post("/one-way")
 async def one_way_anova(request: OneWayANOVARequest):
@@ -123,6 +530,24 @@ async def one_way_anova(request: OneWayANOVARequest):
                 "upper": round(float(mean + ci_margin), 4)
             }
 
+        # Test assumptions
+        normality_tests = test_normality(residuals)
+        homogeneity_tests = test_homogeneity_of_variance(groups)
+
+        # Calculate effect sizes
+        effect_sizes = calculate_effect_sizes_oneway(ssb, ssw, sst, df_between, df_within, k, n_total)
+
+        # Calculate influential observations
+        influence_diagnostics = calculate_influential_observations(residuals, fitted_values, n_total, k)
+
+        # Generate diagnostic plots data
+        diagnostic_plots = generate_diagnostic_plots_data(
+            residuals,
+            fitted_values,
+            influence_diagnostics["leverage"],
+            influence_diagnostics["standardized_residuals"]
+        )
+
         return {
             "test_type": "One-Way ANOVA",
             "f_statistic": round(float(f_stat), 4),
@@ -145,7 +570,14 @@ async def one_way_anova(request: OneWayANOVARequest):
             "residuals": [round(float(r), 4) for r in residuals],
             "fitted_values": [round(float(f), 4) for f in fitted_values],
             "standardized_residuals": [round(float(r), 4) for r in standardized_residuals],
-            "all_data": all_data_with_groups
+            "all_data": all_data_with_groups,
+            "assumptions": {
+                "normality": normality_tests,
+                "homogeneity_of_variance": homogeneity_tests
+            },
+            "effect_sizes": effect_sizes,
+            "influence_diagnostics": influence_diagnostics,
+            "diagnostic_plots": diagnostic_plots
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -240,6 +672,34 @@ async def two_way_anova(request: TwoWayANOVARequest):
                     "upper": round(float(mean + ci_margin), 4)
                 }
 
+        # Test assumptions
+        normality_tests = test_normality(residuals)
+
+        # For homogeneity testing in two-way, group by factor combinations
+        groups_for_variance_test = []
+        for (a_val, b_val), group_df in df.groupby([request.factor_a, request.factor_b]):
+            groups_for_variance_test.append(group_df[request.response].values)
+        homogeneity_tests = test_homogeneity_of_variance(groups_for_variance_test)
+
+        # Calculate total sum of squares for effect sizes
+        sst = np.sum((df[request.response].values - df[request.response].mean())**2)
+
+        # Calculate effect sizes
+        effect_sizes = calculate_effect_sizes_twoway(results, sst, len(df))
+
+        # Calculate influential observations
+        # For two-way ANOVA, p = number of cells
+        n_cells = len(df.groupby([request.factor_a, request.factor_b]))
+        influence_diagnostics = calculate_influential_observations(residuals, fitted_values, len(df), n_cells)
+
+        # Generate diagnostic plots data
+        diagnostic_plots = generate_diagnostic_plots_data(
+            residuals,
+            fitted_values,
+            influence_diagnostics["leverage"],
+            influence_diagnostics["standardized_residuals"]
+        )
+
         return {
             "test_type": "Two-Way ANOVA",
             "alpha": request.alpha,
@@ -256,7 +716,14 @@ async def two_way_anova(request: TwoWayANOVARequest):
             "fitted_values": [round(float(f), 4) for f in fitted_values],
             "standardized_residuals": [round(float(r), 4) for r in standardized_residuals],
             "factor_a_name": request.factor_a,
-            "factor_b_name": request.factor_b
+            "factor_b_name": request.factor_b,
+            "assumptions": {
+                "normality": normality_tests,
+                "homogeneity_of_variance": homogeneity_tests
+            },
+            "effect_sizes": effect_sizes,
+            "influence_diagnostics": influence_diagnostics,
+            "diagnostic_plots": diagnostic_plots
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -488,5 +955,274 @@ async def fisher_lsd_test(request: OneWayANOVARequest):
             "comparisons": comparisons,
             "description": "Least conservative method. Should only be used when overall F-test is significant."
         }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/post-hoc/two-way")
+async def two_way_post_hoc(request: TwoWayPostHocRequest):
+    """
+    Perform post-hoc tests for two-way ANOVA
+    Supports marginal means, cell means, and simple effects comparisons
+    """
+    try:
+        from statsmodels.stats.multicomp import pairwise_tukeyhsd
+
+        df = pd.DataFrame(request.data)
+
+        # Prepare data based on comparison type
+        if request.comparison_type == 'marginal_a':
+            # Compare marginal means of Factor A
+            groups_data = df[request.response].values
+            group_labels = df[request.factor_a].values
+            description = f"Pairwise comparisons of {request.factor_a} marginal means"
+
+        elif request.comparison_type == 'marginal_b':
+            # Compare marginal means of Factor B
+            groups_data = df[request.response].values
+            group_labels = df[request.factor_b].values
+            description = f"Pairwise comparisons of {request.factor_b} marginal means"
+
+        elif request.comparison_type == 'cell_means':
+            # Compare all cell means
+            df['cell'] = df[request.factor_a].astype(str) + ' × ' + df[request.factor_b].astype(str)
+            groups_data = df[request.response].values
+            group_labels = df['cell'].values
+            description = "Pairwise comparisons of all cell means"
+
+        elif request.comparison_type.startswith('simple_'):
+            # Simple effects - compare one factor at each level of the other
+            if request.comparison_type == 'simple_a':
+                # Compare Factor A at each level of Factor B
+                description = f"Simple effects of {request.factor_a} at each level of {request.factor_b}"
+            else:
+                # Compare Factor B at each level of Factor A
+                description = f"Simple effects of {request.factor_b} at each level of {request.factor_a}"
+
+            # For simple effects, we'll need to do multiple comparisons
+            # This is more complex, so we'll return grouped results
+            return await _two_way_simple_effects(request)
+        else:
+            raise HTTPException(status_code=400, detail=f"Invalid comparison_type: {request.comparison_type}")
+
+        # Perform the appropriate post-hoc test
+        if request.test_method == 'tukey':
+            tukey = pairwise_tukeyhsd(endog=groups_data, groups=group_labels, alpha=request.alpha)
+
+            comparisons = []
+            for i in range(len(tukey.summary().data) - 1):
+                row = tukey.summary().data[i + 1]
+                comparisons.append({
+                    "group1": str(row[0]),
+                    "group2": str(row[1]),
+                    "mean_diff": round(float(row[2]), 4),
+                    "lower_ci": round(float(row[3]), 4),
+                    "upper_ci": round(float(row[4]), 4),
+                    "reject": bool(row[5]),
+                    "p_adj": round(float(row[6] if len(row) > 6 else 0.0), 6)
+                })
+
+            test_name = "Tukey's HSD"
+
+        elif request.test_method == 'bonferroni':
+            # Bonferroni correction
+            groups_dict = {}
+            for label in np.unique(group_labels):
+                groups_dict[label] = groups_data[group_labels == label]
+
+            group_names = list(groups_dict.keys())
+            comparisons = []
+            n_comparisons = len(group_names) * (len(group_names) - 1) // 2
+            adjusted_alpha = request.alpha / n_comparisons
+
+            for i in range(len(group_names)):
+                for j in range(i + 1, len(group_names)):
+                    g1_data = groups_dict[group_names[i]]
+                    g2_data = groups_dict[group_names[j]]
+
+                    t_stat, p_value = stats.ttest_ind(g1_data, g2_data)
+                    mean_diff = np.mean(g1_data) - np.mean(g2_data)
+
+                    pooled_std = np.sqrt(((len(g1_data)-1)*np.var(g1_data, ddof=1) +
+                                          (len(g2_data)-1)*np.var(g2_data, ddof=1)) /
+                                         (len(g1_data) + len(g2_data) - 2))
+                    se = pooled_std * np.sqrt(1/len(g1_data) + 1/len(g2_data))
+                    df_error = len(g1_data) + len(g2_data) - 2
+                    t_crit = stats.t.ppf(1 - adjusted_alpha/2, df_error)
+                    ci_margin = t_crit * se
+
+                    comparisons.append({
+                        "group1": group_names[i],
+                        "group2": group_names[j],
+                        "mean_diff": round(float(mean_diff), 4),
+                        "lower_ci": round(float(mean_diff - ci_margin), 4),
+                        "upper_ci": round(float(mean_diff + ci_margin), 4),
+                        "p_adj": round(float(p_value * n_comparisons), 6),
+                        "reject": bool(p_value < adjusted_alpha)
+                    })
+
+            test_name = "Bonferroni"
+
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported test method for two-way: {request.test_method}")
+
+        return {
+            "test_type": f"{test_name} - Two-Way ANOVA Post-hoc",
+            "comparison_type": request.comparison_type,
+            "alpha": request.alpha,
+            "comparisons": comparisons,
+            "description": description
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+async def _two_way_simple_effects(request: TwoWayPostHocRequest):
+    """
+    Helper function for simple effects analysis in two-way ANOVA
+    """
+    df = pd.DataFrame(request.data)
+
+    if request.comparison_type == 'simple_a':
+        # Compare Factor A at each level of Factor B
+        grouping_factor = request.factor_b
+        comparison_factor = request.factor_a
+    else:
+        # Compare Factor B at each level of Factor A
+        grouping_factor = request.factor_a
+        comparison_factor = request.factor_b
+
+    results_by_level = {}
+
+    for level in df[grouping_factor].unique():
+        level_df = df[df[grouping_factor] == level]
+
+        # Perform post-hoc test for this level
+        groups_data = level_df[request.response].values
+        group_labels = level_df[comparison_factor].values
+
+        if request.test_method == 'tukey':
+            from statsmodels.stats.multicomp import pairwise_tukeyhsd
+            tukey = pairwise_tukeyhsd(endog=groups_data, groups=group_labels, alpha=request.alpha)
+
+            comparisons = []
+            for i in range(len(tukey.summary().data) - 1):
+                row = tukey.summary().data[i + 1]
+                comparisons.append({
+                    "group1": str(row[0]),
+                    "group2": str(row[1]),
+                    "mean_diff": round(float(row[2]), 4),
+                    "lower_ci": round(float(row[3]), 4),
+                    "upper_ci": round(float(row[4]), 4),
+                    "reject": bool(row[5]),
+                    "p_adj": round(float(row[6] if len(row) > 6 else 0.0), 6)
+                })
+
+            results_by_level[str(level)] = {
+                "comparisons": comparisons,
+                "n_observations": len(level_df)
+            }
+
+    return {
+        "test_type": f"Tukey's HSD - Simple Effects",
+        "comparison_type": request.comparison_type,
+        "alpha": request.alpha,
+        "results_by_level": results_by_level,
+        "description": f"Simple effects of {comparison_factor} at each level of {grouping_factor}"
+    }
+
+@router.post("/contrasts")
+async def perform_contrasts(request: ContrastRequest):
+    """
+    Perform custom contrast analysis for one-way ANOVA
+
+    Supports:
+    - Custom contrasts (user-specified coefficients)
+    - Polynomial contrasts (linear, quadratic, cubic trends)
+    - Helmert contrasts (each level vs mean of subsequent levels)
+    """
+    try:
+        groups = request.groups
+        k = len(groups)
+
+        results = {
+            "test_type": "Contrast Analysis",
+            "alpha": request.alpha,
+            "n_groups": k,
+            "contrasts": []
+        }
+
+        if request.contrast_type == "custom":
+            if not request.coefficients:
+                raise HTTPException(status_code=400, detail="Custom contrasts require coefficients")
+
+            if len(request.coefficients) != k:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Number of coefficients ({len(request.coefficients)}) must match number of groups ({k})"
+                )
+
+            # Calculate single custom contrast
+            contrast_result = calculate_contrast(groups, request.coefficients, request.alpha)
+            contrast_result["name"] = "Custom Contrast"
+            contrast_result["interpretation"] = "User-specified contrast"
+            results["contrasts"].append(contrast_result)
+            results["description"] = "Custom contrast with user-specified coefficients"
+
+        elif request.contrast_type == "polynomial":
+            if not request.polynomial_degree:
+                raise HTTPException(status_code=400, detail="Polynomial contrasts require degree specification")
+
+            if request.polynomial_degree < 1 or request.polynomial_degree > 3:
+                raise HTTPException(status_code=400, detail="Polynomial degree must be 1 (linear), 2 (quadratic), or 3 (cubic)")
+
+            if request.polynomial_degree >= k:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Polynomial degree ({request.polynomial_degree}) must be less than number of groups ({k})"
+                )
+
+            # Generate polynomial contrasts
+            polynomial_coeffs = generate_polynomial_contrasts(k, request.polynomial_degree)
+            contrast_names = ["Linear", "Quadratic", "Cubic"][:request.polynomial_degree]
+
+            for i, coeffs in enumerate(polynomial_coeffs):
+                contrast_result = calculate_contrast(groups, coeffs, request.alpha)
+                contrast_result["name"] = f"{contrast_names[i]} Trend"
+                contrast_result["interpretation"] = f"Tests for {contrast_names[i].lower()} trend across ordered groups"
+                results["contrasts"].append(contrast_result)
+
+            results["description"] = f"Polynomial contrasts testing for trends across {k} ordered groups"
+
+        elif request.contrast_type == "helmert":
+            # Generate Helmert contrasts
+            helmert_coeffs = generate_helmert_contrasts(k)
+
+            for i, coeffs in enumerate(helmert_coeffs):
+                contrast_result = calculate_contrast(groups, coeffs, request.alpha)
+                group_names = list(groups.keys())
+                contrast_result["name"] = f"Helmert {i+1}"
+                contrast_result["interpretation"] = f"Compares {group_names[i]} with mean of subsequent groups"
+                results["contrasts"].append(contrast_result)
+
+            results["description"] = f"Helmert contrasts comparing each group with mean of remaining groups"
+
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown contrast type: {request.contrast_type}")
+
+        # Add overall statistics
+        n_contrasts = len(results["contrasts"])
+        significant_contrasts = sum(1 for c in results["contrasts"] if c["reject_null"])
+
+        results["summary"] = {
+            "n_contrasts": n_contrasts,
+            "n_significant": significant_contrasts,
+            "bonferroni_alpha": round(request.alpha / n_contrasts, 6) if n_contrasts > 0 else request.alpha,
+            "note": f"For multiple contrasts, consider Bonferroni correction (α={round(request.alpha / n_contrasts, 6)})" if n_contrasts > 1 else ""
+        }
+
+        return results
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

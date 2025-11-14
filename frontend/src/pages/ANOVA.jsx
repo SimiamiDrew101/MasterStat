@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 import ResultCard from '../components/ResultCard'
+import AssumptionTestsANOVA from '../components/AssumptionTestsANOVA'
+import EffectSizePanel from '../components/EffectSizePanel'
+import InfluenceDiagnostics from '../components/InfluenceDiagnostics'
+import DiagnosticPlots from '../components/DiagnosticPlots'
+import ContrastsPanel from '../components/ContrastsPanel'
 import { TrendingUp } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -28,6 +33,18 @@ const ANOVA = () => {
   const [postHocResult, setPostHocResult] = useState(null)
   const [postHocLoading, setPostHocLoading] = useState(false)
   const [postHocError, setPostHocError] = useState(null)
+
+  // Two-way post-hoc state
+  const [twoWayComparisonType, setTwoWayComparisonType] = useState('marginal_a')
+  const [twoWayTestMethod, setTwoWayTestMethod] = useState('tukey')
+
+  // Contrasts state
+  const [contrastsResult, setContrastsResult] = useState(null)
+  const [contrastsLoading, setContrastsLoading] = useState(false)
+  const [contrastsError, setContrastsError] = useState(null)
+  const [contrastType, setContrastType] = useState('polynomial')
+  const [polynomialDegree, setPolynomialDegree] = useState(1)
+  const [customCoefficients, setCustomCoefficients] = useState('')
 
   // Table data for One-Way ANOVA
   const [oneWayTableData, setOneWayTableData] = useState(
@@ -301,6 +318,7 @@ const ANOVA = () => {
 
     try {
       let payload
+      let endpoint
 
       if (analysisType === 'one-way') {
         // Extract data from table
@@ -320,18 +338,96 @@ const ANOVA = () => {
           groups: groupsData,
           alpha
         }
+        endpoint = `${API_URL}/api/anova/post-hoc/${method}`
       } else {
-        setPostHocError('Post-hoc tests are currently only available for One-Way ANOVA')
-        setPostHocLoading(false)
-        return
+        // Two-way ANOVA post-hoc
+        // Parse the two-way data
+        const data = twoWayData.trim().split('\n').map(line => {
+          const parts = line.trim().split(/\s+/)
+          if (parts.length >= 3) {
+            return {
+              [factorA]: parts[0],
+              [factorB]: parts[1],
+              [responseName]: parseFloat(parts[2])
+            }
+          }
+          return null
+        }).filter(row => row !== null)
+
+        payload = {
+          data,
+          factor_a: factorA,
+          factor_b: factorB,
+          response: responseName,
+          comparison_type: twoWayComparisonType,
+          test_method: method,
+          alpha
+        }
+        endpoint = `${API_URL}/api/anova/post-hoc/two-way`
       }
 
-      const response = await axios.post(`${API_URL}/api/anova/post-hoc/${method}`, payload)
+      const response = await axios.post(endpoint, payload)
       setPostHocResult(response.data)
     } catch (err) {
       setPostHocError(err.response?.data?.detail || err.message || 'An error occurred')
     } finally {
       setPostHocLoading(false)
+    }
+  }
+
+  const handleContrasts = async () => {
+    setContrastsLoading(true)
+    setContrastsError(null)
+    setContrastsResult(null)
+
+    try {
+      // Extract data from table (contrasts only work for one-way ANOVA)
+      const groupsData = {}
+      groups.forEach((group, colIndex) => {
+        const values = oneWayTableData
+          .map(row => row[colIndex])
+          .filter(val => val !== '' && !isNaN(parseFloat(val)))
+          .map(val => parseFloat(val))
+
+        if (values.length > 0) {
+          groupsData[group.name] = values
+        }
+      })
+
+      const payload = {
+        groups: groupsData,
+        contrast_type: contrastType,
+        alpha
+      }
+
+      if (contrastType === 'custom') {
+        // Parse custom coefficients
+        const coeffs = customCoefficients
+          .split(',')
+          .map(c => parseFloat(c.trim()))
+          .filter(c => !isNaN(c))
+
+        if (coeffs.length !== groups.length) {
+          throw new Error(`Number of coefficients (${coeffs.length}) must match number of groups (${groups.length})`)
+        }
+
+        // Check if coefficients sum to 0
+        const sum = coeffs.reduce((a, b) => a + b, 0)
+        if (Math.abs(sum) > 0.0001) {
+          throw new Error(`Coefficients must sum to 0 (current sum: ${sum.toFixed(4)})`)
+        }
+
+        payload.coefficients = coeffs
+      } else if (contrastType === 'polynomial') {
+        payload.polynomial_degree = polynomialDegree
+      }
+
+      const response = await axios.post(`${API_URL}/api/anova/contrasts`, payload)
+      setContrastsResult(response.data)
+    } catch (err) {
+      setContrastsError(err.response?.data?.detail || err.message || 'An error occurred')
+    } finally {
+      setContrastsLoading(false)
     }
   }
 
@@ -574,15 +670,94 @@ const ANOVA = () => {
       {/* Results Display */}
       {result && <ResultCard result={result} />}
 
+      {/* Effect Sizes */}
+      {result && result.effect_sizes && (
+        <EffectSizePanel effectSizes={result.effect_sizes} testType={result.test_type} />
+      )}
+
+      {/* Assumptions Testing */}
+      {result && result.assumptions && (
+        <AssumptionTestsANOVA assumptions={result.assumptions} />
+      )}
+
+      {/* Influence Diagnostics */}
+      {result && result.influence_diagnostics && (
+        <InfluenceDiagnostics influenceData={result.influence_diagnostics} />
+      )}
+
+      {/* Diagnostic Plots */}
+      {result && result.diagnostic_plots && (
+        <DiagnosticPlots diagnosticPlots={result.diagnostic_plots} />
+      )}
+
       {/* Post-hoc Tests Section */}
-      {result && analysisType === 'one-way' && result.reject_null && (
+      {result && (
         <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
           <div className="mb-6">
             <h3 className="text-2xl font-bold text-gray-100 mb-2">Post-hoc Multiple Comparisons</h3>
             <p className="text-gray-300 text-sm">
-              The ANOVA detected significant differences between groups. Use post-hoc tests to identify which specific groups differ.
+              {analysisType === 'one-way'
+                ? 'The ANOVA detected significant differences between groups. Use post-hoc tests to identify which specific groups differ.'
+                : 'Select the type of comparisons you want to perform, then choose a post-hoc test method.'}
             </p>
           </div>
+
+          {/* Two-Way ANOVA: Comparison Type Selection */}
+          {analysisType === 'two-way' && (
+            <div className="mb-6 bg-slate-700/30 rounded-lg p-4">
+              <label className="block text-gray-200 font-medium mb-3">Comparison Type</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setTwoWayComparisonType('marginal_a')}
+                  className={`p-3 rounded-lg border-2 transition-all text-left ${
+                    twoWayComparisonType === 'marginal_a'
+                      ? 'border-cyan-500 bg-cyan-500/10'
+                      : 'border-slate-600 bg-slate-700/50 hover:bg-slate-700'
+                  }`}
+                >
+                  <h4 className="font-semibold text-gray-100">{factorA} Marginal Means</h4>
+                  <p className="text-xs text-gray-400">Compare main effects of {factorA}</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTwoWayComparisonType('marginal_b')}
+                  className={`p-3 rounded-lg border-2 transition-all text-left ${
+                    twoWayComparisonType === 'marginal_b'
+                      ? 'border-cyan-500 bg-cyan-500/10'
+                      : 'border-slate-600 bg-slate-700/50 hover:bg-slate-700'
+                  }`}
+                >
+                  <h4 className="font-semibold text-gray-100">{factorB} Marginal Means</h4>
+                  <p className="text-xs text-gray-400">Compare main effects of {factorB}</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTwoWayComparisonType('cell_means')}
+                  className={`p-3 rounded-lg border-2 transition-all text-left ${
+                    twoWayComparisonType === 'cell_means'
+                      ? 'border-cyan-500 bg-cyan-500/10'
+                      : 'border-slate-600 bg-slate-700/50 hover:bg-slate-700'
+                  }`}
+                >
+                  <h4 className="font-semibold text-gray-100">Cell Means</h4>
+                  <p className="text-xs text-gray-400">Compare all {factorA} × {factorB} combinations</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTwoWayComparisonType('simple_a')}
+                  className={`p-3 rounded-lg border-2 transition-all text-left ${
+                    twoWayComparisonType === 'simple_a'
+                      ? 'border-cyan-500 bg-cyan-500/10'
+                      : 'border-slate-600 bg-slate-700/50 hover:bg-slate-700'
+                  }`}
+                >
+                  <h4 className="font-semibold text-gray-100">Simple Effects ({factorA})</h4>
+                  <p className="text-xs text-gray-400">Compare {factorA} at each level of {factorB}</p>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Post-hoc Test Buttons */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -687,6 +862,118 @@ const ANOVA = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Contrasts Section (One-Way ANOVA only) */}
+      {result && analysisType === 'one-way' && (
+        <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+          <div className="mb-6">
+            <h3 className="text-2xl font-bold text-gray-100 mb-2">Planned Contrasts</h3>
+            <p className="text-gray-300 text-sm">
+              Test specific hypotheses about group differences using custom contrast weights or pre-defined contrast types.
+            </p>
+          </div>
+
+          {/* Contrast Type Selection */}
+          <div className="mb-6 bg-slate-700/30 rounded-lg p-4">
+            <label className="block text-gray-200 font-medium mb-3">Contrast Type</label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              <button
+                type="button"
+                onClick={() => setContrastType('polynomial')}
+                className={`p-3 rounded-lg border-2 transition-all text-left ${
+                  contrastType === 'polynomial'
+                    ? 'border-purple-500 bg-purple-500/10'
+                    : 'border-slate-600 bg-slate-700/50 hover:bg-slate-700'
+                }`}
+              >
+                <h4 className="font-semibold text-gray-100">Polynomial</h4>
+                <p className="text-xs text-gray-400">Linear, quadratic, cubic trends</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setContrastType('helmert')}
+                className={`p-3 rounded-lg border-2 transition-all text-left ${
+                  contrastType === 'helmert'
+                    ? 'border-purple-500 bg-purple-500/10'
+                    : 'border-slate-600 bg-slate-700/50 hover:bg-slate-700'
+                }`}
+              >
+                <h4 className="font-semibold text-gray-100">Helmert</h4>
+                <p className="text-xs text-gray-400">Each vs. mean of subsequent</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setContrastType('custom')}
+                className={`p-3 rounded-lg border-2 transition-all text-left ${
+                  contrastType === 'custom'
+                    ? 'border-purple-500 bg-purple-500/10'
+                    : 'border-slate-600 bg-slate-700/50 hover:bg-slate-700'
+                }`}
+              >
+                <h4 className="font-semibold text-gray-100">Custom</h4>
+                <p className="text-xs text-gray-400">User-specified coefficients</p>
+              </button>
+            </div>
+
+            {/* Polynomial Degree Selection */}
+            {contrastType === 'polynomial' && (
+              <div className="mb-4">
+                <label className="block text-gray-200 text-sm font-medium mb-2">Polynomial Degree</label>
+                <select
+                  value={polynomialDegree}
+                  onChange={(e) => setPolynomialDegree(parseInt(e.target.value))}
+                  className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value={1}>Linear (1st degree)</option>
+                  <option value={2}>Quadratic (2nd degree)</option>
+                  <option value={3}>Cubic (3rd degree)</option>
+                </select>
+                <p className="text-xs text-gray-400 mt-1">
+                  Tests for polynomial trends across ordered groups (e.g., dose levels, time points)
+                </p>
+              </div>
+            )}
+
+            {/* Custom Coefficients Input */}
+            {contrastType === 'custom' && (
+              <div className="mb-4">
+                <label className="block text-gray-200 text-sm font-medium mb-2">
+                  Contrast Coefficients (comma-separated, must sum to 0)
+                </label>
+                <input
+                  type="text"
+                  value={customCoefficients}
+                  onChange={(e) => setCustomCoefficients(e.target.value)}
+                  placeholder={`e.g., for ${groups.length} groups: 1, -0.5, -0.5`}
+                  className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Example: To compare first group vs average of others with 3 groups, use: 2, -1, -1
+                </p>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleContrasts}
+              disabled={contrastsLoading || (contrastType === 'custom' && !customCoefficients)}
+              className="w-full bg-purple-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {contrastsLoading ? 'Calculating...' : 'Run Contrasts'}
+            </button>
+          </div>
+
+          {/* Error Display */}
+          {contrastsError && (
+            <div className="mb-6 bg-red-900/30 backdrop-blur-lg rounded-xl p-4 border border-red-700/50">
+              <p className="text-red-200 font-medium">Error: {contrastsError}</p>
+            </div>
+          )}
+
+          {/* Contrasts Results */}
+          {contrastsResult && <ContrastsPanel contrastsResult={contrastsResult} />}
         </div>
       )}
     </div>
