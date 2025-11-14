@@ -11,7 +11,7 @@ import { TrendingUp } from 'lucide-react'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const ANOVA = () => {
-  const [analysisType, setAnalysisType] = useState('one-way')
+  const [activeTab, setActiveTab] = useState('one-way')
   const [groups, setGroups] = useState([
     { name: 'Group A', values: '' },
     { name: 'Group B', values: '' },
@@ -25,14 +25,25 @@ const ANOVA = () => {
   const [responseName, setResponseName] = useState('Yield')
   const [twoWayData, setTwoWayData] = useState('')
 
-  const [result, setResult] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  // One-Way ANOVA state
+  const [oneWayResult, setOneWayResult] = useState(null)
+  const [oneWayLoading, setOneWayLoading] = useState(false)
+  const [oneWayError, setOneWayError] = useState(null)
 
-  // Post-hoc test state
+  // Two-Way ANOVA state
+  const [twoWayResult, setTwoWayResult] = useState(null)
+  const [twoWayLoading, setTwoWayLoading] = useState(false)
+  const [twoWayError, setTwoWayError] = useState(null)
+
+  // Post-hoc test state (One-Way)
   const [postHocResult, setPostHocResult] = useState(null)
   const [postHocLoading, setPostHocLoading] = useState(false)
   const [postHocError, setPostHocError] = useState(null)
+
+  // Post-hoc test state (Two-Way)
+  const [twoWayPostHocResult, setTwoWayPostHocResult] = useState(null)
+  const [twoWayPostHocLoading, setTwoWayPostHocLoading] = useState(false)
+  const [twoWayPostHocError, setTwoWayPostHocError] = useState(null)
 
   // Two-way post-hoc state
   const [twoWayComparisonType, setTwoWayComparisonType] = useState('marginal_a')
@@ -230,148 +241,172 @@ const ANOVA = () => {
     }
   }
 
-  const handleSubmit = async (e) => {
+  const handleOneWaySubmit = async (e) => {
     e.preventDefault()
-    setLoading(true)
-    setError(null)
-    setResult(null)
-    setPostHocResult(null) // Clear previous post-hoc results
+    setOneWayLoading(true)
+    setOneWayError(null)
+    setOneWayResult(null)
+    setPostHocResult(null)
+    setContrastsResult(null)
 
     try {
-      if (analysisType === 'one-way') {
-        // Extract data from table
-        const groupsData = {}
-        groups.forEach((group, colIndex) => {
-          const values = oneWayTableData
-            .map(row => row[colIndex])
-            .filter(val => val !== '' && !isNaN(parseFloat(val)))
-            .map(val => parseFloat(val))
+      // Extract data from table
+      const groupsData = {}
+      groups.forEach((group, colIndex) => {
+        const values = oneWayTableData
+          .map(row => row[colIndex])
+          .filter(val => val !== '' && !isNaN(parseFloat(val)))
+          .map(val => parseFloat(val))
 
-          if (values.length > 0) {
-            groupsData[group.name] = values
-          }
-        })
-
-        if (Object.keys(groupsData).length < 2) {
-          throw new Error('Please provide data for at least 2 groups')
+        if (values.length > 0) {
+          groupsData[group.name] = values
         }
+      })
 
-        const payload = {
-          groups: groupsData,
-          alpha
-        }
-
-        const response = await axios.post(`${API_URL}/api/anova/one-way`, payload)
-        setResult(response.data)
-      } else if (analysisType === 'two-way') {
-        // Extract data from table
-        const data = twoWayTableData
-          .filter(row => {
-            // Check if all three columns have values
-            const hasFactorA = row[0] && String(row[0]).trim() !== ''
-            const hasFactorB = row[1] && String(row[1]).trim() !== ''
-            const hasResponse = row[2] && String(row[2]).trim() !== '' && !isNaN(parseFloat(row[2]))
-            return hasFactorA && hasFactorB && hasResponse
-          })
-          .map(row => ({
-            [factorA]: String(row[0]).trim(),
-            [factorB]: String(row[1]).trim(),
-            [responseName]: parseFloat(row[2])
-          }))
-
-        if (data.length < 2) {
-          throw new Error('Please provide at least 2 complete rows of data with valid response values')
-        }
-
-        // Validate factor names
-        if (!factorA || !factorB || !responseName) {
-          throw new Error('Please provide names for both factors and the response variable')
-        }
-
-        const payload = {
-          data: data,
-          factor_a: factorA,
-          factor_b: factorB,
-          response: responseName,
-          alpha
-        }
-
-        console.log('Sending two-way ANOVA request:', payload)
-        const response = await axios.post(`${API_URL}/api/anova/two-way`, payload)
-        console.log('Received response:', response.data)
-        setResult(response.data)
+      if (Object.keys(groupsData).length < 2) {
+        throw new Error('Please provide data for at least 2 groups')
       }
+
+      const payload = {
+        groups: groupsData,
+        alpha
+      }
+
+      const response = await axios.post(`${API_URL}/api/anova/one-way`, payload)
+      setOneWayResult(response.data)
     } catch (err) {
-      console.error('ANOVA error:', err)
+      console.error('One-Way ANOVA error:', err)
       const errorMessage = err.response?.data?.detail || err.message || 'An error occurred during analysis'
-      setError(errorMessage)
-      setResult(null)
+      setOneWayError(errorMessage)
+      setOneWayResult(null)
     } finally {
-      setLoading(false)
+      setOneWayLoading(false)
     }
   }
 
-  const handlePostHoc = async (method) => {
+  const handleTwoWaySubmit = async (e) => {
+    e.preventDefault()
+    setTwoWayLoading(true)
+    setTwoWayError(null)
+    setTwoWayResult(null)
+    setTwoWayPostHocResult(null)
+
+    try {
+      // Extract data from table
+      const data = twoWayTableData
+        .filter(row => {
+          // Check if all three columns have values
+          const hasFactorA = row[0] && String(row[0]).trim() !== ''
+          const hasFactorB = row[1] && String(row[1]).trim() !== ''
+          const hasResponse = row[2] && String(row[2]).trim() !== '' && !isNaN(parseFloat(row[2]))
+          return hasFactorA && hasFactorB && hasResponse
+        })
+        .map(row => ({
+          [factorA]: String(row[0]).trim(),
+          [factorB]: String(row[1]).trim(),
+          [responseName]: parseFloat(row[2])
+        }))
+
+      if (data.length < 2) {
+        throw new Error('Please provide at least 2 complete rows of data with valid response values')
+      }
+
+      // Validate factor names
+      if (!factorA || !factorB || !responseName) {
+        throw new Error('Please provide names for both factors and the response variable')
+      }
+
+      const payload = {
+        data: data,
+        factor_a: factorA,
+        factor_b: factorB,
+        response: responseName,
+        alpha
+      }
+
+      console.log('Sending two-way ANOVA request:', payload)
+      const response = await axios.post(`${API_URL}/api/anova/two-way`, payload)
+      console.log('Received response:', response.data)
+      setTwoWayResult(response.data)
+    } catch (err) {
+      console.error('Two-Way ANOVA error:', err)
+      const errorMessage = err.response?.data?.detail || err.message || 'An error occurred during analysis'
+      setTwoWayError(errorMessage)
+      setTwoWayResult(null)
+    } finally {
+      setTwoWayLoading(false)
+    }
+  }
+
+  const handleOneWayPostHoc = async (method) => {
     setPostHocLoading(true)
     setPostHocError(null)
     setPostHocResult(null)
 
     try {
-      let payload
-      let endpoint
+      // Extract data from table
+      const groupsData = {}
+      groups.forEach((group, colIndex) => {
+        const values = oneWayTableData
+          .map(row => row[colIndex])
+          .filter(val => val !== '' && !isNaN(parseFloat(val)))
+          .map(val => parseFloat(val))
 
-      if (analysisType === 'one-way') {
-        // Extract data from table
-        const groupsData = {}
-        groups.forEach((group, colIndex) => {
-          const values = oneWayTableData
-            .map(row => row[colIndex])
-            .filter(val => val !== '' && !isNaN(parseFloat(val)))
-            .map(val => parseFloat(val))
-
-          if (values.length > 0) {
-            groupsData[group.name] = values
-          }
-        })
-
-        payload = {
-          groups: groupsData,
-          alpha
+        if (values.length > 0) {
+          groupsData[group.name] = values
         }
-        endpoint = `${API_URL}/api/anova/post-hoc/${method}`
-      } else {
-        // Two-way ANOVA post-hoc
-        // Parse the two-way data
-        const data = twoWayData.trim().split('\n').map(line => {
-          const parts = line.trim().split(/\s+/)
-          if (parts.length >= 3) {
-            return {
-              [factorA]: parts[0],
-              [factorB]: parts[1],
-              [responseName]: parseFloat(parts[2])
-            }
-          }
-          return null
-        }).filter(row => row !== null)
+      })
 
-        payload = {
-          data,
-          factor_a: factorA,
-          factor_b: factorB,
-          response: responseName,
-          comparison_type: twoWayComparisonType,
-          test_method: method,
-          alpha
-        }
-        endpoint = `${API_URL}/api/anova/post-hoc/two-way`
+      const payload = {
+        groups: groupsData,
+        alpha
       }
 
-      const response = await axios.post(endpoint, payload)
+      const response = await axios.post(`${API_URL}/api/anova/post-hoc/${method}`, payload)
       setPostHocResult(response.data)
     } catch (err) {
       setPostHocError(err.response?.data?.detail || err.message || 'An error occurred')
     } finally {
       setPostHocLoading(false)
+    }
+  }
+
+  const handleTwoWayPostHoc = async (method) => {
+    setTwoWayPostHocLoading(true)
+    setTwoWayPostHocError(null)
+    setTwoWayPostHocResult(null)
+
+    try {
+      // Extract data from table
+      const data = twoWayTableData
+        .filter(row => {
+          const hasFactorA = row[0] && String(row[0]).trim() !== ''
+          const hasFactorB = row[1] && String(row[1]).trim() !== ''
+          const hasResponse = row[2] && String(row[2]).trim() !== '' && !isNaN(parseFloat(row[2]))
+          return hasFactorA && hasFactorB && hasResponse
+        })
+        .map(row => ({
+          [factorA]: String(row[0]).trim(),
+          [factorB]: String(row[1]).trim(),
+          [responseName]: parseFloat(row[2])
+        }))
+
+      const payload = {
+        data,
+        factor_a: factorA,
+        factor_b: factorB,
+        response: responseName,
+        comparison_type: twoWayComparisonType,
+        test_method: method,
+        alpha
+      }
+
+      const response = await axios.post(`${API_URL}/api/anova/post-hoc/two-way`, payload)
+      setTwoWayPostHocResult(response.data)
+    } catch (err) {
+      setTwoWayPostHocError(err.response?.data?.detail || err.message || 'An error occurred')
+    } finally {
+      setTwoWayPostHocLoading(false)
     }
   }
 
@@ -433,28 +468,50 @@ const ANOVA = () => {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
-        <div className="flex items-center space-x-3 mb-6">
-          <TrendingUp className="w-8 h-8 text-gray-100" />
+        <div className="flex items-center space-x-3 mb-4">
+          <TrendingUp className="w-8 h-8 text-cyan-400" />
           <h2 className="text-3xl font-bold text-gray-100">ANOVA Analysis</h2>
         </div>
+        <p className="text-gray-300">
+          Analysis of Variance: Compare means across groups and identify significant differences. Includes assumptions testing, effect sizes, and advanced diagnostics.
+        </p>
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Analysis Type */}
-          <div>
-            <label className="block text-gray-100 font-medium mb-2">Analysis Type</label>
-            <select
-              value={analysisType}
-              onChange={(e) => setAnalysisType(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="one-way">One-Way ANOVA</option>
-              <option value="two-way">Two-Way ANOVA</option>
-            </select>
-          </div>
+      {/* Tab Navigation */}
+      <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl border border-slate-700/50 overflow-hidden">
+        <div className="grid grid-cols-2">
+          <button
+            onClick={() => setActiveTab('one-way')}
+            className={`px-6 py-4 font-semibold text-sm transition-all ${
+              activeTab === 'one-way'
+                ? 'bg-cyan-500/20 text-cyan-400 border-b-2 border-cyan-500'
+                : 'text-gray-400 hover:text-gray-300 hover:bg-slate-700/30'
+            }`}
+          >
+            One-Way ANOVA
+          </button>
+          <button
+            onClick={() => setActiveTab('two-way')}
+            className={`px-6 py-4 font-semibold text-sm transition-all ${
+              activeTab === 'two-way'
+                ? 'bg-purple-500/20 text-purple-400 border-b-2 border-purple-500'
+                : 'text-gray-400 hover:text-gray-300 hover:bg-slate-700/30'
+            }`}
+          >
+            Two-Way ANOVA
+          </button>
+        </div>
+      </div>
 
+      {/* One-Way ANOVA Tab */}
+      {activeTab === 'one-way' && (
+        <>
+      <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+        <form onSubmit={handleOneWaySubmit} className="space-y-6">
           {/* One-Way ANOVA: Groups */}
-          {analysisType === 'one-way' && (
+          <div className="space-y-4">
             <div className="space-y-4">
               <div className="flex items-center justify-between mb-2">
                 <label className="text-gray-100 font-medium">Data Entry (Excel-like navigation with arrow keys)</label>
@@ -537,101 +594,7 @@ const ANOVA = () => {
                 Use arrow keys, Tab, or Enter to navigate between cells. New rows are added automatically.
               </p>
             </div>
-          )}
-
-          {/* Two-Way ANOVA: Factor Configuration and Data */}
-          {analysisType === 'two-way' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-gray-100 font-medium mb-2">Factor A Name</label>
-                  <input
-                    type="text"
-                    value={factorA}
-                    onChange={(e) => setFactorA(e.target.value)}
-                    className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g., Temperature"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-100 font-medium mb-2">Factor B Name</label>
-                  <input
-                    type="text"
-                    value={factorB}
-                    onChange={(e) => setFactorB(e.target.value)}
-                    className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g., Pressure"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-100 font-medium mb-2">Response Variable</label>
-                  <input
-                    type="text"
-                    value={responseName}
-                    onChange={(e) => setResponseName(e.target.value)}
-                    className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g., Yield"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-gray-100 font-medium">
-                    Data Entry (Excel-like navigation with arrow keys)
-                  </label>
-                  <button
-                    type="button"
-                    onClick={populateTwoWaySampleData}
-                    className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-colors text-sm font-medium"
-                  >
-                    Generate Sample Data
-                  </button>
-                </div>
-
-                {/* Excel-like table */}
-                <div className="overflow-auto max-h-96 border border-slate-600 rounded-lg">
-                  <table className="w-full border-collapse">
-                    <thead className="sticky top-0 bg-slate-700/50 z-10">
-                      <tr>
-                        <th className="border border-slate-600 py-2 px-3 text-gray-100 font-semibold min-w-[150px]">
-                          {factorA || 'Factor A'}
-                        </th>
-                        <th className="border border-slate-600 py-2 px-3 text-gray-100 font-semibold min-w-[150px]">
-                          {factorB || 'Factor B'}
-                        </th>
-                        <th className="border border-slate-600 py-2 px-3 text-gray-100 font-semibold min-w-[150px]">
-                          {responseName || 'Response'}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {twoWayTableData.map((row, rowIndex) => (
-                        <tr key={rowIndex}>
-                          {row.map((cell, colIndex) => (
-                            <td key={colIndex} className="border border-slate-600 p-0">
-                              <input
-                                id={`twoway-cell-${rowIndex}-${colIndex}`}
-                                type="text"
-                                value={cell}
-                                onChange={(e) => handleTwoWayCellChange(rowIndex, colIndex, e.target.value)}
-                                onKeyDown={(e) => handleKeyDown(e, rowIndex, colIndex, false)}
-                                className="w-full px-3 py-2 bg-transparent text-gray-100 focus:bg-slate-700/30 focus:outline-none"
-                                placeholder={colIndex === 2 ? 'Number' : 'Level'}
-                              />
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-gray-400 text-xs mt-2">
-                  Use arrow keys, Tab, or Enter to navigate between cells. New rows are added automatically.
-                </p>
-              </div>
-            </div>
-          )}
+          </div>
 
           {/* Alpha */}
           <div>
@@ -652,138 +615,79 @@ const ANOVA = () => {
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={oneWayLoading}
+            className="w-full bg-cyan-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-cyan-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Calculating...' : 'Run ANOVA'}
+            {oneWayLoading ? 'Calculating...' : 'Run One-Way ANOVA'}
           </button>
         </form>
       </div>
 
       {/* Error Display */}
-      {error && (
+      {oneWayError && (
         <div className="bg-red-900/30 backdrop-blur-lg rounded-xl p-4 border border-red-700/50">
-          <p className="text-red-200 font-medium">Error: {error}</p>
+          <p className="text-red-200 font-medium">Error: {oneWayError}</p>
         </div>
       )}
 
       {/* Results Display */}
-      {result && <ResultCard result={result} />}
+      {oneWayResult && <ResultCard result={oneWayResult} />}
 
       {/* Effect Sizes */}
-      {result && result.effect_sizes && (
-        <EffectSizePanel effectSizes={result.effect_sizes} testType={result.test_type} />
+      {oneWayResult && oneWayResult.effect_sizes && (
+        <EffectSizePanel effectSizes={oneWayResult.effect_sizes} testType={oneWayResult.test_type} />
       )}
 
       {/* Assumptions Testing */}
-      {result && result.assumptions && (
-        <AssumptionTestsANOVA assumptions={result.assumptions} />
+      {oneWayResult && oneWayResult.assumptions && (
+        <AssumptionTestsANOVA assumptions={oneWayResult.assumptions} />
       )}
 
       {/* Influence Diagnostics */}
-      {result && result.influence_diagnostics && (
-        <InfluenceDiagnostics influenceData={result.influence_diagnostics} />
+      {oneWayResult && oneWayResult.influence_diagnostics && (
+        <InfluenceDiagnostics influenceData={oneWayResult.influence_diagnostics} />
       )}
 
       {/* Diagnostic Plots */}
-      {result && result.diagnostic_plots && (
-        <DiagnosticPlots diagnosticPlots={result.diagnostic_plots} />
+      {oneWayResult && oneWayResult.diagnostic_plots && (
+        <DiagnosticPlots diagnosticPlots={oneWayResult.diagnostic_plots} />
       )}
 
-      {/* Post-hoc Tests Section */}
-      {result && (
+      {/* Post-hoc Tests Section (One-Way) */}
+      {oneWayResult && (
         <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
           <div className="mb-6">
             <h3 className="text-2xl font-bold text-gray-100 mb-2">Post-hoc Multiple Comparisons</h3>
             <p className="text-gray-300 text-sm">
-              {analysisType === 'one-way'
-                ? 'The ANOVA detected significant differences between groups. Use post-hoc tests to identify which specific groups differ.'
-                : 'Select the type of comparisons you want to perform, then choose a post-hoc test method.'}
+              The ANOVA detected significant differences between groups. Use post-hoc tests to identify which specific groups differ.
             </p>
           </div>
-
-          {/* Two-Way ANOVA: Comparison Type Selection */}
-          {analysisType === 'two-way' && (
-            <div className="mb-6 bg-slate-700/30 rounded-lg p-4">
-              <label className="block text-gray-200 font-medium mb-3">Comparison Type</label>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setTwoWayComparisonType('marginal_a')}
-                  className={`p-3 rounded-lg border-2 transition-all text-left ${
-                    twoWayComparisonType === 'marginal_a'
-                      ? 'border-cyan-500 bg-cyan-500/10'
-                      : 'border-slate-600 bg-slate-700/50 hover:bg-slate-700'
-                  }`}
-                >
-                  <h4 className="font-semibold text-gray-100">{factorA} Marginal Means</h4>
-                  <p className="text-xs text-gray-400">Compare main effects of {factorA}</p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTwoWayComparisonType('marginal_b')}
-                  className={`p-3 rounded-lg border-2 transition-all text-left ${
-                    twoWayComparisonType === 'marginal_b'
-                      ? 'border-cyan-500 bg-cyan-500/10'
-                      : 'border-slate-600 bg-slate-700/50 hover:bg-slate-700'
-                  }`}
-                >
-                  <h4 className="font-semibold text-gray-100">{factorB} Marginal Means</h4>
-                  <p className="text-xs text-gray-400">Compare main effects of {factorB}</p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTwoWayComparisonType('cell_means')}
-                  className={`p-3 rounded-lg border-2 transition-all text-left ${
-                    twoWayComparisonType === 'cell_means'
-                      ? 'border-cyan-500 bg-cyan-500/10'
-                      : 'border-slate-600 bg-slate-700/50 hover:bg-slate-700'
-                  }`}
-                >
-                  <h4 className="font-semibold text-gray-100">Cell Means</h4>
-                  <p className="text-xs text-gray-400">Compare all {factorA} × {factorB} combinations</p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTwoWayComparisonType('simple_a')}
-                  className={`p-3 rounded-lg border-2 transition-all text-left ${
-                    twoWayComparisonType === 'simple_a'
-                      ? 'border-cyan-500 bg-cyan-500/10'
-                      : 'border-slate-600 bg-slate-700/50 hover:bg-slate-700'
-                  }`}
-                >
-                  <h4 className="font-semibold text-gray-100">Simple Effects ({factorA})</h4>
-                  <p className="text-xs text-gray-400">Compare {factorA} at each level of {factorB}</p>
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Post-hoc Test Buttons */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <button
-              onClick={() => handlePostHoc('tukey')}
+              onClick={() => handleOneWayPostHoc('tukey')}
               disabled={postHocLoading}
               className="bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Tukey HSD
             </button>
             <button
-              onClick={() => handlePostHoc('bonferroni')}
+              onClick={() => handleOneWayPostHoc('bonferroni')}
               disabled={postHocLoading}
               className="bg-gradient-to-r from-purple-600 to-purple-700 text-white font-bold py-3 px-4 rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Bonferroni
             </button>
             <button
-              onClick={() => handlePostHoc('scheffe')}
+              onClick={() => handleOneWayPostHoc('scheffe')}
               disabled={postHocLoading}
               className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white font-bold py-3 px-4 rounded-lg hover:from-indigo-700 hover:to-indigo-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Scheffe
             </button>
             <button
-              onClick={() => handlePostHoc('fisher-lsd')}
+              onClick={() => handleOneWayPostHoc('fisher-lsd')}
               disabled={postHocLoading}
               className="bg-gradient-to-r from-teal-600 to-teal-700 text-white font-bold py-3 px-4 rounded-lg hover:from-teal-700 hover:to-teal-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -866,7 +770,7 @@ const ANOVA = () => {
       )}
 
       {/* Contrasts Section (One-Way ANOVA only) */}
-      {result && analysisType === 'one-way' && (
+      {oneWayResult && (
         <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
           <div className="mb-6">
             <h3 className="text-2xl font-bold text-gray-100 mb-2">Planned Contrasts</h3>
@@ -975,6 +879,334 @@ const ANOVA = () => {
           {/* Contrasts Results */}
           {contrastsResult && <ContrastsPanel contrastsResult={contrastsResult} />}
         </div>
+      )}
+      </>
+      )}
+
+      {/* Two-Way ANOVA Tab */}
+      {activeTab === 'two-way' && (
+        <>
+      <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+        <form onSubmit={handleTwoWaySubmit} className="space-y-6">
+          {/* Factor Configuration */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-gray-100 font-medium mb-2">Factor A Name</label>
+              <input
+                type="text"
+                value={factorA}
+                onChange={(e) => setFactorA(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., Temperature"
+              />
+            </div>
+            <div>
+              <label className="block text-gray-100 font-medium mb-2">Factor B Name</label>
+              <input
+                type="text"
+                value={factorB}
+                onChange={(e) => setFactorB(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., Pressure"
+              />
+            </div>
+            <div>
+              <label className="block text-gray-100 font-medium mb-2">Response Variable</label>
+              <input
+                type="text"
+                value={responseName}
+                onChange={(e) => setResponseName(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="e.g., Yield"
+              />
+            </div>
+          </div>
+
+          {/* Data Entry */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-gray-100 font-medium">
+                Data Entry (Excel-like navigation with arrow keys)
+              </label>
+              <button
+                type="button"
+                onClick={populateTwoWaySampleData}
+                className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-colors text-sm font-medium"
+              >
+                Generate Sample Data
+              </button>
+            </div>
+
+            {/* Excel-like table */}
+            <div className="overflow-auto max-h-96 border border-slate-600 rounded-lg">
+              <table className="w-full border-collapse">
+                <thead className="sticky top-0 bg-slate-700/50 z-10">
+                  <tr>
+                    <th className="border border-slate-600 py-2 px-3 text-gray-100 font-semibold min-w-[150px]">
+                      {factorA || 'Factor A'}
+                    </th>
+                    <th className="border border-slate-600 py-2 px-3 text-gray-100 font-semibold min-w-[150px]">
+                      {factorB || 'Factor B'}
+                    </th>
+                    <th className="border border-slate-600 py-2 px-3 text-gray-100 font-semibold min-w-[150px]">
+                      {responseName || 'Response'}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {twoWayTableData.map((row, rowIndex) => (
+                    <tr key={rowIndex}>
+                      {row.map((cell, colIndex) => (
+                        <td key={colIndex} className="border border-slate-600 p-0">
+                          <input
+                            id={`twoway-cell-${rowIndex}-${colIndex}`}
+                            type="text"
+                            value={cell}
+                            onChange={(e) => handleTwoWayCellChange(rowIndex, colIndex, e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(e, rowIndex, colIndex, false)}
+                            className="w-full px-3 py-2 bg-transparent text-gray-100 focus:bg-slate-700/30 focus:outline-none"
+                            placeholder={colIndex === 2 ? 'Number' : 'Level'}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-gray-400 text-xs mt-2">
+              Use arrow keys, Tab, or Enter to navigate between cells. New rows are added automatically.
+            </p>
+          </div>
+
+          {/* Alpha */}
+          <div>
+            <label className="block text-gray-100 font-medium mb-2">
+              Significance Level (α)
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              max="1"
+              value={alpha}
+              onChange={(e) => setAlpha(parseFloat(e.target.value))}
+              className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={twoWayLoading}
+            className="w-full bg-purple-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {twoWayLoading ? 'Calculating...' : 'Run Two-Way ANOVA'}
+          </button>
+        </form>
+      </div>
+
+      {/* Error Display */}
+      {twoWayError && (
+        <div className="bg-red-900/30 backdrop-blur-lg rounded-xl p-4 border border-red-700/50">
+          <p className="text-red-200 font-medium">Error: {twoWayError}</p>
+        </div>
+      )}
+
+      {/* Results Display */}
+      {twoWayResult && <ResultCard result={twoWayResult} />}
+
+      {/* Effect Sizes */}
+      {twoWayResult && twoWayResult.effect_sizes && (
+        <EffectSizePanel effectSizes={twoWayResult.effect_sizes} testType={twoWayResult.test_type} />
+      )}
+
+      {/* Assumptions Testing */}
+      {twoWayResult && twoWayResult.assumptions && (
+        <AssumptionTestsANOVA assumptions={twoWayResult.assumptions} />
+      )}
+
+      {/* Influence Diagnostics */}
+      {twoWayResult && twoWayResult.influence_diagnostics && (
+        <InfluenceDiagnostics influenceData={twoWayResult.influence_diagnostics} />
+      )}
+
+      {/* Diagnostic Plots */}
+      {twoWayResult && twoWayResult.diagnostic_plots && (
+        <DiagnosticPlots diagnosticPlots={twoWayResult.diagnostic_plots} />
+      )}
+
+      {/* Post-hoc Tests Section (Two-Way) */}
+      {twoWayResult && (
+        <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+          <div className="mb-6">
+            <h3 className="text-2xl font-bold text-gray-100 mb-2">Post-hoc Multiple Comparisons</h3>
+            <p className="text-gray-300 text-sm">
+              Select the type of comparisons you want to perform, then choose a post-hoc test method.
+            </p>
+          </div>
+
+          {/* Comparison Type Selection */}
+          <div className="mb-6 bg-slate-700/30 rounded-lg p-4">
+            <label className="block text-gray-200 font-medium mb-3">Comparison Type</label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setTwoWayComparisonType('marginal_a')}
+                className={`p-3 rounded-lg border-2 transition-all text-left ${
+                  twoWayComparisonType === 'marginal_a'
+                    ? 'border-purple-500 bg-purple-500/10'
+                    : 'border-slate-600 bg-slate-700/50 hover:bg-slate-700'
+                }`}
+              >
+                <h4 className="font-semibold text-gray-100">{factorA} Marginal Means</h4>
+                <p className="text-xs text-gray-400">Compare main effects of {factorA}</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTwoWayComparisonType('marginal_b')}
+                className={`p-3 rounded-lg border-2 transition-all text-left ${
+                  twoWayComparisonType === 'marginal_b'
+                    ? 'border-purple-500 bg-purple-500/10'
+                    : 'border-slate-600 bg-slate-700/50 hover:bg-slate-700'
+                }`}
+              >
+                <h4 className="font-semibold text-gray-100">{factorB} Marginal Means</h4>
+                <p className="text-xs text-gray-400">Compare main effects of {factorB}</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTwoWayComparisonType('cell_means')}
+                className={`p-3 rounded-lg border-2 transition-all text-left ${
+                  twoWayComparisonType === 'cell_means'
+                    ? 'border-purple-500 bg-purple-500/10'
+                    : 'border-slate-600 bg-slate-700/50 hover:bg-slate-700'
+                }`}
+              >
+                <h4 className="font-semibold text-gray-100">Cell Means</h4>
+                <p className="text-xs text-gray-400">Compare all {factorA} × {factorB} combinations</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setTwoWayComparisonType('simple_a')}
+                className={`p-3 rounded-lg border-2 transition-all text-left ${
+                  twoWayComparisonType === 'simple_a'
+                    ? 'border-purple-500 bg-purple-500/10'
+                    : 'border-slate-600 bg-slate-700/50 hover:bg-slate-700'
+                }`}
+              >
+                <h4 className="font-semibold text-gray-100">Simple Effects ({factorA})</h4>
+                <p className="text-xs text-gray-400">Compare {factorA} at each level of {factorB}</p>
+              </button>
+            </div>
+          </div>
+
+          {/* Post-hoc Test Buttons */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <button
+              onClick={() => handleTwoWayPostHoc('tukey')}
+              disabled={twoWayPostHocLoading}
+              className="bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold py-3 px-4 rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Tukey HSD
+            </button>
+            <button
+              onClick={() => handleTwoWayPostHoc('bonferroni')}
+              disabled={twoWayPostHocLoading}
+              className="bg-gradient-to-r from-purple-600 to-purple-700 text-white font-bold py-3 px-4 rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Bonferroni
+            </button>
+            <button
+              onClick={() => handleTwoWayPostHoc('scheffe')}
+              disabled={twoWayPostHocLoading}
+              className="bg-gradient-to-r from-indigo-600 to-indigo-700 text-white font-bold py-3 px-4 rounded-lg hover:from-indigo-700 hover:to-indigo-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Scheffe
+            </button>
+            <button
+              onClick={() => handleTwoWayPostHoc('fisher-lsd')}
+              disabled={twoWayPostHocLoading}
+              className="bg-gradient-to-r from-teal-600 to-teal-700 text-white font-bold py-3 px-4 rounded-lg hover:from-teal-700 hover:to-teal-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Fisher's LSD
+            </button>
+          </div>
+
+          {/* Loading State */}
+          {twoWayPostHocLoading && (
+            <div className="text-center py-4">
+              <p className="text-gray-300">Running post-hoc analysis...</p>
+            </div>
+          )}
+
+          {/* Error Display */}
+          {twoWayPostHocError && (
+            <div className="bg-red-900/30 backdrop-blur-lg rounded-xl p-4 border border-red-700/50 mb-6">
+              <p className="text-red-200 font-medium">Error: {twoWayPostHocError}</p>
+            </div>
+          )}
+
+          {/* Post-hoc Results */}
+          {twoWayPostHocResult && (
+            <div className="space-y-4">
+              <div className="bg-gradient-to-r from-blue-900/30 to-purple-900/30 rounded-xl p-5 border border-blue-500/30">
+                <h4 className="text-gray-100 font-bold text-lg mb-2">{twoWayPostHocResult.test_type}</h4>
+                <p className="text-gray-300 text-sm">{twoWayPostHocResult.description}</p>
+                <p className="text-gray-400 text-xs mt-2">Significance level (α): {twoWayPostHocResult.alpha}</p>
+              </div>
+
+              {/* Comparisons Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-gray-100">
+                  <thead>
+                    <tr className="bg-slate-700/30 border-b border-slate-600">
+                      <th className="text-left py-3 px-4">Group 1</th>
+                      <th className="text-left py-3 px-4">Group 2</th>
+                      <th className="text-right py-3 px-4">Mean Difference</th>
+                      <th className="text-right py-3 px-4">Lower CI</th>
+                      <th className="text-right py-3 px-4">Upper CI</th>
+                      {twoWayPostHocResult.comparisons[0]?.p_adj !== undefined && (
+                        <th className="text-right py-3 px-4">p-value (adj)</th>
+                      )}
+                      <th className="text-center py-3 px-4">Significant</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {twoWayPostHocResult.comparisons.map((comp, idx) => (
+                      <tr key={idx} className={`border-b border-slate-700/30 ${comp.reject ? 'bg-green-900/20' : ''}`}>
+                        <td className="py-3 px-4">{comp.group1}</td>
+                        <td className="py-3 px-4">{comp.group2}</td>
+                        <td className="text-right py-3 px-4 font-mono">{comp.mean_diff}</td>
+                        <td className="text-right py-3 px-4 font-mono">{comp.lower_ci}</td>
+                        <td className="text-right py-3 px-4 font-mono">{comp.upper_ci}</td>
+                        {comp.p_adj !== undefined && (
+                          <td className="text-right py-3 px-4 font-mono">{comp.p_adj}</td>
+                        )}
+                        <td className="text-center py-3 px-4">
+                          {comp.reject ? (
+                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-500/30 text-green-300">✓</span>
+                          ) : (
+                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gray-500/30 text-gray-400">✗</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Summary */}
+              <div className="bg-slate-700/30 rounded-lg p-4">
+                <p className="text-gray-300 text-sm">
+                  <strong>Summary:</strong> {twoWayPostHocResult.comparisons.filter(c => c.reject).length} out of {twoWayPostHocResult.comparisons.length} pairwise comparisons are statistically significant at α = {twoWayPostHocResult.alpha}.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      </>
       )}
     </div>
   )
