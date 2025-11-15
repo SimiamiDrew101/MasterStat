@@ -65,12 +65,23 @@ const ResidualPlots = ({ residuals, fittedValues, standardizedResiduals }) => {
     const minSample = Math.min(...sampleVals)
     const maxSample = Math.max(...sampleVals)
 
-    const xScale = (val) => ((val - minTheoretical) / (maxTheoretical - minTheoretical)) * plotWidth
-    const yScale = (val) => plotHeight - ((val - minSample) / (maxSample - minSample)) * plotHeight
+    // Add padding to ranges for better visualization
+    const theoreticalRange = maxTheoretical - minTheoretical
+    const sampleRange = maxSample - minSample
+    const theoreticalPadding = theoreticalRange * 0.05
+    const samplePadding = sampleRange * 0.05
 
-    // Reference line (y = x in standardized space)
-    const refLineStart = Math.max(minTheoretical, minSample)
-    const refLineEnd = Math.min(maxTheoretical, maxSample)
+    const xScale = (val) => ((val - (minTheoretical - theoreticalPadding)) / (theoreticalRange + 2 * theoreticalPadding)) * plotWidth
+    const yScale = (val) => plotHeight - ((val - (minSample - samplePadding)) / (sampleRange + 2 * samplePadding)) * plotHeight
+
+    // Reference line (y = x): Map theoretical values to sample space
+    // For a perfect normal distribution, sample quantiles should equal theoretical quantiles
+    // So the line goes from (minTheoretical, minTheoretical) to (maxTheoretical, maxTheoretical)
+    // But we need to map these using the appropriate scales for x and y
+    const refLinePoints = [
+      { x: minTheoretical, y: minTheoretical },
+      { x: maxTheoretical, y: maxTheoretical }
+    ]
 
     return (
       <svg ref={qqPlotRef} width={width} height={height}>
@@ -89,12 +100,12 @@ const ResidualPlots = ({ residuals, fittedValues, standardizedResiduals }) => {
             />
           ))}
 
-          {/* Reference line */}
+          {/* Reference line (y = x diagonal) */}
           <line
-            x1={xScale(refLineStart)}
-            y1={yScale(refLineStart)}
-            x2={xScale(refLineEnd)}
-            y2={yScale(refLineEnd)}
+            x1={xScale(refLinePoints[0].x)}
+            y1={yScale(refLinePoints[0].y)}
+            x2={xScale(refLinePoints[1].x)}
+            y2={yScale(refLinePoints[1].y)}
             stroke="#ef4444"
             strokeWidth={2}
             strokeDasharray="4"
@@ -143,8 +154,12 @@ const ResidualPlots = ({ residuals, fittedValues, standardizedResiduals }) => {
     const maxResidual = Math.max(...residuals)
     const maxAbsResidual = Math.max(Math.abs(minResidual), Math.abs(maxResidual))
 
-    const xScale = (val) => ((val - minFitted) / (maxFitted - minFitted)) * plotWidth
-    const yScale = (val) => plotHeight / 2 - (val / maxAbsResidual) * (plotHeight / 2)
+    // Add padding for better visualization
+    const fittedRange = maxFitted - minFitted
+    const fittedPadding = fittedRange * 0.05
+
+    const xScale = (val) => ((val - (minFitted - fittedPadding)) / (fittedRange + 2 * fittedPadding)) * plotWidth
+    const yScale = (val) => plotHeight / 2 - (val / (maxAbsResidual * 1.1)) * (plotHeight / 2)
 
     return (
       <svg ref={residualsVsFittedRef} width={width} height={height}>
@@ -211,8 +226,13 @@ const ResidualPlots = ({ residuals, fittedValues, standardizedResiduals }) => {
   // Histogram of Residuals
   const HistogramPlot = () => {
     const maxCount = Math.max(...histogram.bins)
-    const xScale = (val) => ((val - histogram.binEdges[0]) / (histogram.binEdges[histogram.binEdges.length - 1] - histogram.binEdges[0])) * plotWidth
-    const yScale = (count) => plotHeight - (count / maxCount) * plotHeight
+    const minEdge = histogram.binEdges[0]
+    const maxEdge = histogram.binEdges[histogram.binEdges.length - 1]
+    const edgeRange = maxEdge - minEdge
+    const edgePadding = edgeRange * 0.02
+
+    const xScale = (val) => ((val - (minEdge - edgePadding)) / (edgeRange + 2 * edgePadding)) * plotWidth
+    const yScale = (count) => plotHeight - (count / (maxCount * 1.05)) * plotHeight
 
     return (
       <svg ref={histogramRef} width={width} height={height}>

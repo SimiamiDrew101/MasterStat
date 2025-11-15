@@ -90,7 +90,7 @@ const FactorialInteractionPlots = ({ interactionData, factors }) => {
           modeBarButtonsToRemove: ['lasso2d', 'select2d'],
           toImageButtonOptions: {
             format: 'png',
-            filename: `interaction-${interactionName.replace(/×/g, 'x')}-${new Date().toISOString().split('T')[0]}`,
+            filename: `interaction-${interactionName.replace(/ï¿½/g, 'x')}-${new Date().toISOString().split('T')[0]}`,
             height: 600,
             width: 900,
             scale: 2
@@ -116,7 +116,7 @@ const FactorialInteractionPlots = ({ interactionData, factors }) => {
             <div className="mb-4">
               <h4 className="text-gray-100 font-semibold text-lg">{interactionName} Interaction Plot</h4>
               <p className="text-gray-400 text-sm mt-1">
-                {is Parallel
+                {isParallel
                   ? "Lines are approximately parallel - interaction likely not significant"
                   : "Lines are non-parallel or crossing - interaction may be significant"}
               </p>

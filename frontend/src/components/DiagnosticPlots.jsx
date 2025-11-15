@@ -33,15 +33,21 @@ const DiagnosticPlots = ({ diagnosticPlots }) => {
     const xPadding = xRange * 0.1
     const yPadding = yRange * 0.1
 
+    // Adjust min/max with padding
+    const xMinPadded = xMin - xPadding
+    const xMaxPadded = xMax + xPadding
+    const yMinPadded = yMin - yPadding
+    const yMaxPadded = yMax + yPadding
+
     const points = xData.map((x, i) => {
-      const xPos = padding + ((x - xMin + xPadding) / (xRange + 2 * xPadding)) * (plotWidth - 2 * padding)
-      const yPos = plotHeight - padding - ((yData[i] - yMin + yPadding) / (yRange + 2 * yPadding)) * (plotHeight - 2 * padding)
+      const xPos = padding + ((x - xMinPadded) / (xMaxPadded - xMinPadded)) * (plotWidth - 2 * padding)
+      const yPos = plotHeight - padding - ((yData[i] - yMinPadded) / (yMaxPadded - yMinPadded)) * (plotHeight - 2 * padding)
       return { x: xPos, y: yPos, originalX: x, originalY: yData[i] }
     })
 
     // Calculate where y=0 is positioned in the plot (for threshold line)
     const y0Position = threshold !== null
-      ? plotHeight - padding - ((threshold - yMin + yPadding) / (yRange + 2 * yPadding)) * (plotHeight - 2 * padding)
+      ? plotHeight - padding - ((threshold - yMinPadded) / (yMaxPadded - yMinPadded)) * (plotHeight - 2 * padding)
       : null
 
     return (

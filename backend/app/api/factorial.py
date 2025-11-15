@@ -11,6 +11,42 @@ from scipy.stats import norm
 
 router = APIRouter()
 
+def generate_diagnostic_plots_data(residuals, fitted_values, leverage, std_residuals):
+    """
+    Generate data for additional diagnostic plots:
+    1. Scale-Location plot (sqrt of standardized residuals vs fitted values)
+    2. Leverage vs Residuals plot
+    """
+    residuals = np.array(residuals)
+    fitted_values = np.array(fitted_values)
+    leverage = np.array(leverage)
+    std_residuals = np.array(std_residuals)
+
+    # Scale-Location plot data
+    # Y-axis: sqrt of absolute standardized residuals
+    sqrt_abs_std_residuals = np.sqrt(np.abs(std_residuals))
+
+    # Sort by fitted values for better visualization
+    sort_idx = np.argsort(fitted_values)
+
+    scale_location = {
+        "fitted_values": [float(x) for x in fitted_values[sort_idx]],
+        "sqrt_abs_std_residuals": [float(x) for x in sqrt_abs_std_residuals[sort_idx]],
+        "interpretation": "Should show random scatter around a horizontal line. Funnel shape indicates heteroscedasticity."
+    }
+
+    # Leverage vs Residuals plot data
+    leverage_residuals = {
+        "leverage": [float(x) for x in leverage],
+        "std_residuals": [float(x) for x in std_residuals],
+        "interpretation": "Points with high leverage (>2p/n or >3p/n) and large residuals are influential."
+    }
+
+    return {
+        "scale_location": scale_location,
+        "leverage_residuals": leverage_residuals
+    }
+
 def calculate_lenths_pse(effects: Dict[str, float], alpha: float = 0.05) -> Dict[str, Any]:
     """
     Calculate Lenth's Pseudo Standard Error (PSE) for unreplicated factorial designs
@@ -75,11 +111,11 @@ def calculate_lenths_pse(effects: Dict[str, float], alpha: float = 0.05) -> Dict
     for i, (name, abs_effect) in enumerate(sorted_effects):
         half_normal_plot_data.append({
             "name": name,
-            "effect": effects[name],  # Original signed effect
-            "abs_effect": abs_effect,
-            "half_normal_quantile": half_normal_quantiles[i],
-            "is_significant_me": abs_effect > me,
-            "is_significant_sme": abs_effect > sme
+            "effect": float(effects[name]),  # Original signed effect
+            "abs_effect": float(abs_effect),
+            "half_normal_quantile": float(half_normal_quantiles[i]),
+            "is_significant_me": bool(abs_effect > me),
+            "is_significant_sme": bool(abs_effect > sme)
         })
 
     return {
@@ -490,6 +526,18 @@ async def full_factorial_analysis(request: FactorialDesignRequest):
         residuals = np.nan_to_num(residuals, nan=0.0, posinf=0.0, neginf=0.0)
         standardized_residuals = np.nan_to_num(standardized_residuals, nan=0.0, posinf=0.0, neginf=0.0)
 
+        # Calculate influence diagnostics for diagnostic plots
+        influence = model.get_influence()
+        leverage = influence.hat_matrix_diag
+
+        # Generate diagnostic plots data
+        diagnostic_plots = generate_diagnostic_plots_data(
+            residuals,
+            fitted_values,
+            leverage,
+            standardized_residuals
+        )
+
         # Prepare data for Pareto chart (absolute effects)
         effect_magnitudes = []
         for name, value in effects.items():
@@ -642,6 +690,7 @@ async def full_factorial_analysis(request: FactorialDesignRequest):
             "interaction_plots_data": interaction_plots_data,
             "cube_data": cube_data,
             "lenths_analysis": lenths_analysis,
+            "diagnostic_plots": diagnostic_plots,
             "response_name": request.response,
             "interpretation": interpretation
         }
