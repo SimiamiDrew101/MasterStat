@@ -29,6 +29,11 @@ const BayesianDOE = () => {
   const [nSamples, setNSamples] = useState(2000)
   const [nBurn, setNBurn] = useState(500)
 
+  // Sequential design settings
+  const [sequentialCriterion, setSequentialCriterion] = useState('expected_info_gain')
+  const [numPointsToSelect, setNumPointsToSelect] = useState(1)
+  const [candidateResolution, setCandidateResolution] = useState(5)
+
   // Initialize factors when number changes
   const handleFactorCountChange = (count) => {
     const newCount = parseInt(count) || 2
@@ -131,6 +136,71 @@ const BayesianDOE = () => {
       setActiveTab('results')
     } catch (err) {
       setError(err.response?.data?.detail || err.message || 'Analysis failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Run sequential design
+  const runSequentialDesign = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      // Prepare current data
+      const validRows = tableData.filter(row => {
+        const responseValue = row[row.length - 1]
+        return responseValue !== '' && responseValue !== null && responseValue !== undefined
+      })
+
+      if (validRows.length < 3) {
+        throw new Error('Need at least 3 complete data points for sequential design')
+      }
+
+      const currentData = validRows.map(row => {
+        const point = {}
+        factorNames.forEach((factor, i) => {
+          point[factor] = parseFloat(row[i])
+        })
+        point[responseName] = parseFloat(row[row.length - 1])
+        return point
+      })
+
+      // Generate candidate points (full factorial grid at specified resolution)
+      const candidatePoints = []
+      const levels = Array.from({ length: candidateResolution }, (_, i) =>
+        -1 + (2 * i) / (candidateResolution - 1)
+      )
+
+      // Generate all combinations
+      const generateCombinations = (factors, currentCombination = {}, depth = 0) => {
+        if (depth === factors.length) {
+          candidatePoints.push({ ...currentCombination })
+          return
+        }
+
+        const factor = factors[depth]
+        for (const level of levels) {
+          currentCombination[factor] = level
+          generateCombinations(factors, currentCombination, depth + 1)
+        }
+      }
+
+      generateCombinations(factorNames)
+
+      // Call backend API
+      const response = await axios.post(`${API_URL}/api/bayesian-doe/sequential-design`, {
+        current_data: currentData,
+        factors: factorNames,
+        response: responseName,
+        candidate_points: candidatePoints,
+        n_select: numPointsToSelect,
+        criterion: sequentialCriterion
+      })
+
+      setSequentialResult(response.data)
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'Sequential design failed')
     } finally {
       setLoading(false)
     }
@@ -637,35 +707,246 @@ const BayesianDOE = () => {
             <h3 className="text-2xl font-bold text-gray-100">Sequential Design & Adaptive Strategies</h3>
           </div>
 
-          <div className="bg-gradient-to-r from-green-900/30 to-teal-900/30 rounded-lg p-6 border border-green-700/30">
-            <h4 className="text-xl font-bold text-green-100 mb-4">Coming in Next Update</h4>
-            <ul className="space-y-3 text-green-200">
-              <li className="flex items-start gap-2">
-                <span className="text-green-400 font-bold">•</span>
-                <span>Generate candidate points and select the most informative next experiments</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-green-400 font-bold">•</span>
-                <span>Expected information gain calculation for each candidate</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-green-400 font-bold">•</span>
-                <span>Uncertainty reduction visualization</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-green-400 font-bold">•</span>
-                <span>Adaptive stopping criteria based on posterior uncertainty</span>
-              </li>
-            </ul>
+          <div className="bg-slate-700/50 rounded-lg p-6 mb-6">
+            <h4 className="text-lg font-semibold text-gray-100 mb-4">Configure Next Experiment Selection</h4>
 
-            <div className="mt-6 p-4 bg-blue-900/20 rounded-lg border border-blue-700/30">
-              <p className="text-blue-200 text-sm">
-                <strong>Current Status:</strong> You've completed the Bayesian factorial analysis.
-                The sequential design module will allow you to intelligently select the next experiments
-                to run based on maximizing expected information gain or reducing uncertainty.
-              </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Selection Criterion */}
+              <div>
+                <label className="block text-gray-300 font-medium mb-2">Selection Criterion</label>
+                <select
+                  value={sequentialCriterion}
+                  onChange={(e) => setSequentialCriterion(e.target.value)}
+                  className="w-full px-4 py-2 bg-slate-800 text-gray-100 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="expected_info_gain">Expected Information Gain</option>
+                  <option value="uncertainty_reduction">Uncertainty Reduction (D-Optimality)</option>
+                  <option value="prediction_variance">Prediction Variance</option>
+                </select>
+                <p className="text-xs text-gray-400 mt-1">
+                  {sequentialCriterion === 'expected_info_gain' && 'Selects points that maximize expected information gain'}
+                  {sequentialCriterion === 'uncertainty_reduction' && 'Maximizes determinant of information matrix'}
+                  {sequentialCriterion === 'prediction_variance' && 'Selects points with highest prediction uncertainty'}
+                </p>
+              </div>
+
+              {/* Number of Points */}
+              <div>
+                <label className="block text-gray-300 font-medium mb-2">Number of Points to Select</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={numPointsToSelect}
+                  onChange={(e) => setNumPointsToSelect(parseInt(e.target.value) || 1)}
+                  className="w-full px-4 py-2 bg-slate-800 text-gray-100 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+                <p className="text-xs text-gray-400 mt-1">How many experiments to run next</p>
+              </div>
+
+              {/* Number of Candidate Points */}
+              <div>
+                <label className="block text-gray-300 font-medium mb-2">Candidate Grid Resolution</label>
+                <select
+                  value={candidateResolution}
+                  onChange={(e) => setCandidateResolution(parseInt(e.target.value))}
+                  className="w-full px-4 py-2 bg-slate-800 text-gray-100 border border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="3">Coarse (3 levels per factor)</option>
+                  <option value="5">Medium (5 levels per factor)</option>
+                  <option value="7">Fine (7 levels per factor)</option>
+                </select>
+                <p className="text-xs text-gray-400 mt-1">Resolution of candidate point grid</p>
+              </div>
             </div>
+
+            <button
+              onClick={runSequentialDesign}
+              disabled={loading}
+              className="mt-6 w-full px-6 py-3 bg-gradient-to-r from-green-600 to-teal-600 text-white font-semibold rounded-lg hover:from-green-700 hover:to-teal-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Computing Optimal Points...' : 'Select Next Experiments'}
+            </button>
           </div>
+
+          {/* Results Display */}
+          {sequentialResult && (
+            <div className="space-y-6">
+              {/* Recommendation Box */}
+              <div className="bg-gradient-to-r from-green-900/30 to-teal-900/30 rounded-lg p-6 border border-green-700/30">
+                <h4 className="text-lg font-bold text-green-100 mb-3 flex items-center gap-2">
+                  <Lightbulb className="w-5 h-5" />
+                  Recommendation
+                </h4>
+                <p className="text-green-200">{sequentialResult.recommendation}</p>
+                <p className="text-green-300 text-sm mt-2">
+                  <strong>Method:</strong> {sequentialResult.method}
+                </p>
+              </div>
+
+              {/* Selected Points Table */}
+              <div className="bg-slate-700/50 rounded-lg p-6">
+                <h4 className="text-lg font-semibold text-gray-100 mb-4">
+                  Selected Experimental Points (Top {sequentialResult.selected_points.length})
+                </h4>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-slate-600">
+                        <th className="px-4 py-2 text-left text-gray-300 font-semibold">Rank</th>
+                        {factorNames.map(factor => (
+                          <th key={factor} className="px-4 py-2 text-left text-gray-300 font-semibold">{factor}</th>
+                        ))}
+                        <th className="px-4 py-2 text-left text-gray-300 font-semibold">Score</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sequentialResult.selected_points.map((item, idx) => (
+                        <tr key={idx} className="border-b border-slate-700 hover:bg-slate-700/30">
+                          <td className="px-4 py-3 text-green-400 font-bold">{idx + 1}</td>
+                          {factorNames.map(factor => (
+                            <td key={factor} className="px-4 py-3 text-gray-200">
+                              {item.x_values[factor].toFixed(3)}
+                            </td>
+                          ))}
+                          <td className="px-4 py-3 text-blue-300 font-semibold">{item.score.toFixed(4)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Visualization for 2D case */}
+              {factorNames.length === 2 && (
+                <div className="bg-slate-700/50 rounded-lg p-6">
+                  <h4 className="text-lg font-semibold text-gray-100 mb-4">Candidate Points Visualization</h4>
+                  <Plot
+                    data={[
+                      // All candidate points
+                      {
+                        type: 'scatter',
+                        mode: 'markers',
+                        x: sequentialResult.all_candidates.map(c => c.x_values[factorNames[0]]),
+                        y: sequentialResult.all_candidates.map(c => c.x_values[factorNames[1]]),
+                        marker: {
+                          size: 8,
+                          color: sequentialResult.all_candidates.map(c => c.score),
+                          colorscale: 'Viridis',
+                          showscale: true,
+                          colorbar: { title: 'Score' },
+                          opacity: 0.6
+                        },
+                        name: 'All Candidates',
+                        hovertemplate: `${factorNames[0]}: %{x:.3f}<br>${factorNames[1]}: %{y:.3f}<br>Score: %{marker.color:.4f}<extra></extra>`
+                      },
+                      // Selected points
+                      {
+                        type: 'scatter',
+                        mode: 'markers',
+                        x: sequentialResult.selected_points.map(c => c.x_values[factorNames[0]]),
+                        y: sequentialResult.selected_points.map(c => c.x_values[factorNames[1]]),
+                        marker: {
+                          size: 14,
+                          color: '#10b981',
+                          symbol: 'star',
+                          line: { color: '#fff', width: 2 }
+                        },
+                        name: 'Selected Points',
+                        hovertemplate: `${factorNames[0]}: %{x:.3f}<br>${factorNames[1]}: %{y:.3f}<br>SELECTED<extra></extra>`
+                      },
+                      // Current experimental points
+                      {
+                        type: 'scatter',
+                        mode: 'markers',
+                        x: tableData.filter(row => row[0] !== '' && row[row.length - 1] !== '').map(row => parseFloat(row[0])),
+                        y: tableData.filter(row => row[0] !== '' && row[row.length - 1] !== '').map(row => parseFloat(row[1])),
+                        marker: {
+                          size: 10,
+                          color: '#ef4444',
+                          symbol: 'circle',
+                          line: { color: '#fff', width: 1 }
+                        },
+                        name: 'Current Data',
+                        hovertemplate: `${factorNames[0]}: %{x:.3f}<br>${factorNames[1]}: %{y:.3f}<br>Completed<extra></extra>`
+                      }
+                    ]}
+                    layout={{
+                      paper_bgcolor: '#334155',
+                      plot_bgcolor: '#1e293b',
+                      font: { color: '#e2e8f0' },
+                      xaxis: {
+                        title: factorNames[0],
+                        gridcolor: '#475569',
+                        zerolinecolor: '#64748b',
+                        color: '#e2e8f0'
+                      },
+                      yaxis: {
+                        title: factorNames[1],
+                        gridcolor: '#475569',
+                        zerolinecolor: '#64748b',
+                        color: '#e2e8f0'
+                      },
+                      showlegend: true,
+                      legend: {
+                        bgcolor: 'rgba(30, 41, 59, 0.8)',
+                        bordercolor: '#64748b',
+                        borderwidth: 1
+                      },
+                      hovermode: 'closest',
+                      height: 500
+                    }}
+                    config={{
+                      responsive: true,
+                      displayModeBar: true,
+                      displaylogo: false,
+                      modeBarButtonsToRemove: ['lasso2d', 'select2d']
+                    }}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              )}
+
+              {/* Score Distribution */}
+              <div className="bg-slate-700/50 rounded-lg p-6">
+                <h4 className="text-lg font-semibold text-gray-100 mb-4">Score Distribution</h4>
+                <Plot
+                  data={[
+                    {
+                      type: 'histogram',
+                      x: sequentialResult.all_candidates.map(c => c.score),
+                      marker: { color: '#3b82f6', opacity: 0.7 },
+                      name: 'All Candidates',
+                      nbinsx: 20
+                    }
+                  ]}
+                  layout={{
+                    paper_bgcolor: '#334155',
+                    plot_bgcolor: '#1e293b',
+                    font: { color: '#e2e8f0' },
+                    xaxis: {
+                      title: 'Information Score',
+                      gridcolor: '#475569',
+                      color: '#e2e8f0'
+                    },
+                    yaxis: {
+                      title: 'Frequency',
+                      gridcolor: '#475569',
+                      color: '#e2e8f0'
+                    },
+                    showlegend: false,
+                    height: 300
+                  }}
+                  config={{
+                    responsive: true,
+                    displayModeBar: true,
+                    displaylogo: false
+                  }}
+                  style={{ width: '100%' }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 

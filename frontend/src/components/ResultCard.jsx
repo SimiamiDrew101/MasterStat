@@ -4,9 +4,7 @@ import MeansPlot from './MeansPlot'
 import ResidualPlots from './ResidualPlots'
 import FDistributionPlot from './FDistributionPlot'
 import InteractionPlot from './InteractionPlot'
-import InteractionPlotsGrid from './InteractionPlotsGrid'
 import ParetoChart from './ParetoChart'
-import MainEffectsPlot from './MainEffectsPlot'
 import CubePlot from './CubePlot'
 
 const ResultCard = ({ result }) => {
@@ -482,19 +480,6 @@ const ResultCard = ({ result }) => {
       {/* Pareto Chart (for Factorial Designs) */}
       {result.effect_magnitudes && result.effect_magnitudes.length > 0 && (
         <ParetoChart data={result.effect_magnitudes} />
-      )}
-
-      {/* Main Effects Plot (for Factorial Designs) */}
-      {result.main_effects_plot_data && (
-        <MainEffectsPlot data={result.main_effects_plot_data} />
-      )}
-
-      {/* Interaction Plots (for Factorial Designs with 2+ factors) */}
-      {result.interaction_plots_data && (
-        <InteractionPlotsGrid
-          data={result.interaction_plots_data}
-          responseName={result.response_name}
-        />
       )}
 
       {/* Cube Plot (for 2³ Factorial Designs) */}
