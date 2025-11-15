@@ -1,7 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import ResultCard from '../components/ResultCard'
-import { Beaker, Plus, Trash2 } from 'lucide-react'
+import CubePlot from '../components/CubePlot'
+import HalfNormalPlot from '../components/HalfNormalPlot'
+import FactorialInteractionPlots from '../components/FactorialInteractionPlots'
+import AliasStructureGraph from '../components/AliasStructureGraph'
+import { Beaker, Plus, Trash2, Download, Copy, FileJson } from 'lucide-react'
+import { exportToCSVWithMetadata, copyToClipboard, exportResultsToJSON } from '../utils/exportDesign'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -19,6 +24,9 @@ const FactorialDesigns = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const isFirstRender = useRef(true)
+
+  // Plackett-Burman specific state
+  const [pbNumRuns, setPbNumRuns] = useState(12)
 
   // Foldover design state
   const [showFoldover, setShowFoldover] = useState(false)
@@ -233,7 +241,42 @@ const FactorialDesigns = () => {
 
   // Regenerate table when number of factors, design type, or replicates change
   useEffect(() => {
-    if (designType === 'fractional') {
+    if (designType === 'pb') {
+      // Plackett-Burman design
+      if (numFactors > 0 && numFactors < pbNumRuns) {
+        const generatePBDesign = async () => {
+          try {
+            const response = await axios.post(`${API_URL}/api/factorial/plackett-burman/generate`, {
+              n_factors: numFactors,
+              n_runs: pbNumRuns
+            })
+
+            // Convert design matrix to table format
+            const designMatrix = response.data.design_matrix
+            const newRuns = designMatrix.map(row => {
+              const runArray = factors.map(factor => row[factor])
+              runArray.push('') // Add empty response column
+              return runArray
+            })
+
+            // Add sample responses
+            const sampleResponses = generateSampleResponses(numFactors, 2, 1)
+            newRuns.forEach((run, i) => {
+              run[run.length - 1] = sampleResponses[i] || ''
+            })
+
+            setTableData(newRuns)
+            setResult(null)
+          } catch (err) {
+            console.error('Error generating Plackett-Burman design:', err)
+            setError(err.response?.data?.detail || err.message)
+          }
+        }
+        generatePBDesign()
+      } else if (numFactors >= pbNumRuns) {
+        setTableData([])
+      }
+    } else if (designType === 'fractional') {
       // Fractional factorial design
       if (numFactors >= 4 && generators.length > 0) {
         const newRuns = generateFractionalFactorialRuns(numFactors, fraction, generators, numReplicates)
@@ -274,7 +317,7 @@ const FactorialDesigns = () => {
         setTableData([])
       }
     }
-  }, [numFactors, designType, numReplicates, fraction, generators])
+  }, [numFactors, designType, numReplicates, fraction, generators, pbNumRuns])
 
   const handleCellChange = (rowIndex, colIndex, value) => {
     const newData = [...tableData]
@@ -540,6 +583,15 @@ const FactorialDesigns = () => {
           fraction: fraction
         }
         endpoint = `${API_URL}/api/factorial/fractional-factorial/analyze`
+      } else if (designType === 'pb') {
+        // Plackett-Burman endpoint
+        payload = {
+          data: data,
+          factors: factors,
+          response: responseName,
+          alpha
+        }
+        endpoint = `${API_URL}/api/factorial/plackett-burman/analyze`
       } else {
         // Full factorial endpoints
         payload = {
@@ -582,11 +634,65 @@ const FactorialDesigns = () => {
               <option value="2k">2^k Full Factorial (2 levels: Low/High)</option>
               <option value="3k">3^k Full Factorial (3 levels: Low/Medium/High)</option>
               <option value="fractional">2^(k-p) Fractional Factorial</option>
+              <option value="pb">Plackett-Burman Screening Design</option>
             </select>
             <p className="text-gray-400 text-xs mt-1">
-              2^k for screening/main effects • 3^k for optimization/curvature detection • Fractional for efficient screening
+              2^k for screening/main effects • 3^k for optimization/curvature detection • Fractional for efficient screening • Plackett-Burman for screening many factors
             </p>
           </div>
+
+          {/* Plackett-Burman Configuration */}
+          {designType === 'pb' && (
+            <div className="bg-gradient-to-r from-blue-900/20 to-cyan-900/20 rounded-lg p-5 border border-blue-700/30">
+              <h4 className="text-blue-200 font-bold text-lg mb-3">
+                Plackett-Burman Configuration
+              </h4>
+              <p className="text-gray-300 text-sm mb-4">
+                Plackett-Burman designs are Resolution III orthogonal arrays for efficient screening of many factors.
+                Main effects are confounded with 2-way interactions. Use when interactions are expected to be negligible.
+              </p>
+
+              <div>
+                <label className="block text-gray-100 font-medium mb-2">
+                  Number of Runs
+                </label>
+                <select
+                  value={pbNumRuns}
+                  onChange={(e) => setPbNumRuns(parseInt(e.target.value))}
+                  className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value={12}>12 runs (screen up to 11 factors)</option>
+                  <option value={20}>20 runs (screen up to 19 factors)</option>
+                  <option value={24}>24 runs (screen up to 23 factors)</option>
+                  <option value={28}>28 runs (screen up to 27 factors)</option>
+                  <option value={36}>36 runs (screen up to 35 factors)</option>
+                  <option value={44}>44 runs (screen up to 43 factors)</option>
+                  <option value={48}>48 runs (screen up to 47 factors)</option>
+                </select>
+                <p className="text-gray-400 text-xs mt-2">
+                  {numFactors > 0 && numFactors < pbNumRuns ? (
+                    <span className="text-green-400">
+                      ✓ {numFactors} factor{numFactors !== 1 ? 's' : ''} can be screened with {pbNumRuns} runs
+                    </span>
+                  ) : (
+                    <span className="text-orange-400">
+                      ⚠️ Number of factors ({numFactors}) must be less than number of runs ({pbNumRuns})
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              <div className="mt-4 bg-blue-900/20 rounded-lg p-4 border border-blue-700/20">
+                <h5 className="text-blue-200 font-semibold text-sm mb-2">Resolution III Design</h5>
+                <ul className="text-gray-300 text-xs space-y-1 list-disc list-inside">
+                  <li>Main effects are confounded with 2-way interactions</li>
+                  <li>Assumes all interactions are negligible</li>
+                  <li>Very efficient for screening: n factors in n+1 runs (approximately)</li>
+                  <li>Use this when you have many factors and want to identify the vital few</li>
+                </ul>
+              </div>
+            </div>
+          )}
 
           {/* Fraction Selection (fractional only) */}
           {designType === 'fractional' && (
@@ -958,6 +1064,69 @@ const FactorialDesigns = () => {
             />
           </div>
 
+          {/* Export Design Section */}
+          {tableData.length > 0 && (
+            <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-600">
+              <h4 className="text-gray-100 font-semibold mb-3 text-sm">Export Design</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const metadata = {
+                      designType: designType === '2k' ? '2^k Full Factorial' :
+                                  designType === '3k' ? '3^k Full Factorial' :
+                                  designType === 'pb' ? `Plackett-Burman Screening (${pbNumRuns} runs)` :
+                                  `2^(${numFactors}-${generators.length}) Fractional Factorial`,
+                      numFactors: numFactors,
+                      numRuns: tableData.length,
+                      fraction: designType === 'fractional' ? fraction : null,
+                      generators: designType === 'fractional' ? generators : null,
+                      resolution: result?.alias_structure?.resolution || result?.resolution || null
+                    }
+                    exportToCSVWithMetadata(tableData, factors, responseName, metadata)
+                  }}
+                  className="flex items-center justify-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Export CSV</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const success = await copyToClipboard(tableData, factors, responseName)
+                    if (success) {
+                      alert('Design copied to clipboard! You can now paste it into Excel.')
+                    } else {
+                      alert('Failed to copy to clipboard. Please try again.')
+                    }
+                  }}
+                  className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                >
+                  <Copy className="w-4 h-4" />
+                  <span>Copy to Excel</span>
+                </button>
+
+                {result && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const filename = `factorial-results-${designType}`
+                      exportResultsToJSON(result, filename)
+                    }}
+                    className="flex items-center justify-center space-x-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+                  >
+                    <FileJson className="w-4 h-4" />
+                    <span>Export Results JSON</span>
+                  </button>
+                )}
+              </div>
+              <p className="text-gray-400 text-xs mt-2">
+                Export design matrix to CSV or copy to clipboard for use in Excel. Export results as JSON for record keeping.
+              </p>
+            </div>
+          )}
+
           {/* Submit Button */}
           <button
             type="submit"
@@ -978,6 +1147,33 @@ const FactorialDesigns = () => {
 
       {/* Results Display */}
       {result && <ResultCard result={result} />}
+
+      {/* Cube Plot for 2^3 and 2^4 Designs */}
+      {result && result.cube_data && result.cube_data.length > 0 && (
+        <CubePlot
+          data={result.cube_data}
+          factors={factors}
+          responseName={responseName}
+        />
+      )}
+
+      {/* Half-Normal Plot for Effect Screening (unreplicated designs) */}
+      {result && result.lenths_analysis && (
+        <HalfNormalPlot lenthsData={result.lenths_analysis} />
+      )}
+
+      {/* Interaction Plots */}
+      {result && result.interaction_plots_data && Object.keys(result.interaction_plots_data).length > 0 && (
+        <FactorialInteractionPlots
+          interactionData={result.interaction_plots_data}
+          factors={factors}
+        />
+      )}
+
+      {/* Alias Structure Visualization (for fractional factorial designs) */}
+      {result && designType === 'fractional' && result.alias_structure && (
+        <AliasStructureGraph aliasStructure={result.alias_structure} />
+      )}
 
       {/* Foldover Design Section */}
       {result && designType === 'fractional' && result.alias_structure && (

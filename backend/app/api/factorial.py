@@ -7,8 +7,94 @@ from itertools import product
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from scipy import stats
+from scipy.stats import norm
 
 router = APIRouter()
+
+def calculate_lenths_pse(effects: Dict[str, float], alpha: float = 0.05) -> Dict[str, Any]:
+    """
+    Calculate Lenth's Pseudo Standard Error (PSE) for unreplicated factorial designs
+    This helps identify significant effects using half-normal plots
+
+    Parameters:
+    - effects: Dictionary of effect names and their values
+    - alpha: Significance level (default 0.05)
+
+    Returns:
+    - Dictionary with PSE, ME (Margin of Error), SME (Simultaneous Margin of Error),
+      and data for half-normal plot
+    """
+    # Get absolute effect values
+    abs_effects = {name: abs(val) for name, val in effects.items()}
+    effect_values = np.array(list(abs_effects.values()))
+
+    if len(effect_values) == 0:
+        return None
+
+    # Lenth's method for PSE calculation
+    # Step 1: Calculate s0 (initial estimate)
+    s0 = 1.5 * np.median(effect_values)
+
+    # Step 2: Calculate PSE (pseudo standard error)
+    # Use effects less than 2.5 * s0
+    included_effects = effect_values[effect_values < 2.5 * s0]
+
+    if len(included_effects) == 0:
+        included_effects = effect_values
+
+    pse = 1.5 * np.median(included_effects)
+
+    # Number of effects
+    m = len(effect_values)
+
+    # Calculate critical values for margin of error
+    # ME (Margin of Error) - for individual effects
+    t_me = stats.t.ppf(1 - alpha / 2, m / 3)
+    me = t_me * pse
+
+    # SME (Simultaneous Margin of Error) - for multiple testing
+    gamma = (1 + (1 - alpha)**(1 / m)) / 2
+    t_sme = stats.t.ppf(gamma, m / 3)
+    sme = t_sme * pse
+
+    # Generate data for half-normal plot
+    # Sort absolute effects
+    sorted_effects = sorted(abs_effects.items(), key=lambda x: x[1])
+    n = len(sorted_effects)
+
+    # Calculate half-normal quantiles
+    half_normal_quantiles = []
+    for i in range(1, n + 1):
+        p_i = (i - 0.5) / n
+        # Half-normal quantile (normal quantile for (1 + p_i) / 2)
+        q_i = norm.ppf((1 + p_i) / 2)
+        half_normal_quantiles.append(q_i)
+
+    # Prepare plot data
+    half_normal_plot_data = []
+    for i, (name, abs_effect) in enumerate(sorted_effects):
+        half_normal_plot_data.append({
+            "name": name,
+            "effect": effects[name],  # Original signed effect
+            "abs_effect": abs_effect,
+            "half_normal_quantile": half_normal_quantiles[i],
+            "is_significant_me": abs_effect > me,
+            "is_significant_sme": abs_effect > sme
+        })
+
+    return {
+        "pse": round(float(pse), 4),
+        "s0": round(float(s0), 4),
+        "me": round(float(me), 4),
+        "sme": round(float(sme), 4),
+        "t_me": round(float(t_me), 4),
+        "t_sme": round(float(t_sme), 4),
+        "n_effects": m,
+        "alpha": alpha,
+        "half_normal_plot_data": half_normal_plot_data,
+        "significant_effects_me": [d["name"] for d in half_normal_plot_data if d["is_significant_me"]],
+        "significant_effects_sme": [d["name"] for d in half_normal_plot_data if d["is_significant_sme"]]
+    }
 
 def calculate_alias_structure(factors: List[str], generators: List[str]) -> Dict[str, Any]:
     """
@@ -501,6 +587,16 @@ async def full_factorial_analysis(request: FactorialDesignRequest):
             has_replicates=has_replicates
         )
 
+        # Calculate Lenth's PSE for half-normal plots (useful for unreplicated designs)
+        lenths_analysis = None
+        if not has_replicates and len(effect_magnitudes) > 0:
+            # Combine main effects and interaction effects for Lenth's method
+            all_effects = {}
+            for eff in effect_magnitudes:
+                all_effects[eff['name']] = eff['effect']
+
+            lenths_analysis = calculate_lenths_pse(all_effects, request.alpha)
+
         # Cube plot data for 2^3 designs
         cube_data = None
         if len(request.factors) == 3 and all(df[f].nunique() == 2 for f in request.factors):
@@ -545,6 +641,7 @@ async def full_factorial_analysis(request: FactorialDesignRequest):
             "main_effects_plot_data": main_effects_plot_data,
             "interaction_plots_data": interaction_plots_data,
             "cube_data": cube_data,
+            "lenths_analysis": lenths_analysis,
             "response_name": request.response,
             "interpretation": interpretation
         }
@@ -936,6 +1033,16 @@ async def fractional_factorial_analysis(request: FractionalFactorialAnalysisRequ
             interpretation['recommendations'].insert(0,
                 "⚡ Resolution IV design: Main effects are clear, but 2-way interactions are confounded with each other.")
 
+        # Calculate Lenth's PSE for half-normal plots (especially useful for fractional designs)
+        lenths_analysis = None
+        if not has_replicates and len(effect_magnitudes) > 0:
+            # Combine main effects and interaction effects for Lenth's method
+            all_effects = {}
+            for eff in effect_magnitudes:
+                all_effects[eff['name']] = eff['effect']
+
+            lenths_analysis = calculate_lenths_pse(all_effects, request.alpha)
+
         return {
             "test_type": f"2^({len(request.factors)}-{len(request.generators)}) Fractional Factorial Design",
             "n_factors": len(request.factors),
@@ -953,6 +1060,7 @@ async def fractional_factorial_analysis(request: FractionalFactorialAnalysisRequ
             "effect_magnitudes": effect_magnitudes,
             "main_effects_plot_data": main_effects_plot_data,
             "interaction_plots_data": interaction_plots_data,
+            "lenths_analysis": lenths_analysis,
             "response_name": request.response,
             "interpretation": interpretation
         }
@@ -1058,6 +1166,266 @@ async def calculate_effects(data: dict):
                 results["interaction_effects"][f"{f1}*{f2}"] = round(float(effect), 4)
 
         return results
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class PlackettBurmanRequest(BaseModel):
+    n_factors: int = Field(..., description="Number of factors to screen (2-47)")
+    n_runs: Optional[int] = Field(None, description="Number of runs (must be 4k: 12, 20, 24, 28, 36, 44, 48)")
+
+
+class PlackettBurmanAnalysisRequest(BaseModel):
+    data: List[Dict[str, Union[str, float]]] = Field(..., description="Experimental data")
+    factors: List[str] = Field(..., description="List of factor names")
+    response: str = Field(..., description="Response variable name")
+    alpha: float = Field(0.05, description="Significance level")
+
+
+@router.post("/plackett-burman/generate")
+async def generate_plackett_burman(request: PlackettBurmanRequest):
+    """
+    Generate Plackett-Burman screening design
+    PB designs are Resolution III orthogonal arrays for efficient screening
+    """
+    try:
+        n = request.n_factors
+
+        # Validate number of factors
+        if n < 2 or n > 47:
+            raise ValueError("Number of factors must be between 2 and 47")
+
+        # Determine number of runs (must be multiple of 4)
+        # PB designs exist for n_runs = 4k where k = 1, 2, 3, ...
+        if request.n_runs:
+            n_runs = request.n_runs
+            # Validate n_runs
+            valid_runs = [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48]
+            if n_runs not in valid_runs:
+                raise ValueError(f"Invalid number of runs. Must be one of {valid_runs}")
+            if n >= n_runs:
+                raise ValueError(f"Number of factors ({n}) must be less than number of runs ({n_runs})")
+        else:
+            # Auto-select minimum runs needed
+            valid_runs = [4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48]
+            n_runs = next((r for r in valid_runs if r > n), 48)
+
+        # Use pyDOE2 if available, otherwise use custom generation
+        try:
+            from pyDOE2 import pbdesign
+            design_matrix = pbdesign(n_runs - 1)  # pyDOE2 pbdesign generates n-1 factors
+
+            # Select only the needed columns
+            design_subset = design_matrix[:, :n]
+
+        except ImportError:
+            # Fallback: Use custom Plackett-Burman generation
+            # This uses the standard PB generator for common run sizes
+            design_subset = generate_pb_matrix(n, n_runs)
+
+        # Convert to factor names
+        factor_names = [chr(65 + i) for i in range(n)]  # A, B, C, ...
+
+        # Convert design matrix to dataframe with Low/High labels
+        design_df = pd.DataFrame(design_subset, columns=factor_names)
+
+        # Convert -1/1 to Low/High
+        design_df = design_df.applymap(lambda x: 'High' if x > 0 else 'Low')
+
+        # Convert to list of dicts
+        design_records = design_df.to_dict('records')
+
+        return {
+            "design_type": f"Plackett-Burman Screening Design",
+            "n_factors": n,
+            "n_runs": n_runs,
+            "resolution": "III",
+            "factor_names": factor_names,
+            "design_matrix": design_records,
+            "description": f"Resolution III screening design for {n} factors in {n_runs} runs. All main effects are confounded with 2-way interactions.",
+            "warning": "Plackett-Burman designs are Resolution III. Main effects are confounded with 2-way interactions. Use only when interactions are expected to be negligible."
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def generate_pb_matrix(n_factors: int, n_runs: int) -> np.ndarray:
+    """
+    Generate Plackett-Burman design matrix using generator sequences
+    """
+    # Standard PB generators for common run sizes
+    pb_generators = {
+        12: [1, 1, -1, 1, 1, 1, -1, -1, -1, 1, -1],
+        20: [1, 1, -1, -1, 1, 1, 1, 1, -1, 1, -1, 1, -1, -1, -1, -1, 1, 1, -1],
+        24: [1, 1, 1, 1, 1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, -1, 1, -1, 1, -1, -1, -1, -1],
+        28: [1, 1, 1, 1, -1, 1, 1, 1, -1, -1, 1, -1, 1, -1, -1, 1, 1, -1, -1, -1, -1, 1, -1, -1, -1, 1, 1],
+        36: [1, -1, 1, -1, 1, -1, -1, -1, -1, 1, 1, -1, -1, -1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1, 1, 1, -1, 1, 1, -1, -1, 1, -1, 1, -1],
+        44: [1, 1, 1, 1, 1, 1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1, 1, -1, -1, -1, -1, 1, 1, -1, -1, 1, -1, 1, -1, 1, -1, -1, -1, -1, -1, 1, -1, -1, 1, -1, 1, 1],
+        48: [1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1, 1, 1, -1, -1, 1, 1, 1, -1, 1, -1, -1, -1, -1, -1, -1, 1, -1, -1, 1, -1, -1, 1, 1, 1, -1, -1, -1, 1, 1, -1, 1, -1, 1, 1, -1]
+    }
+
+    if n_runs not in pb_generators:
+        # For other sizes, try to use Hadamard matrix approach or raise error
+        raise ValueError(f"No standard generator available for {n_runs} runs. Use 12, 20, 24, 28, 36, 44, or 48 runs.")
+
+    generator = pb_generators[n_runs]
+
+    # Create design matrix by rotating generator
+    design = []
+    for i in range(n_runs - 1):
+        row = generator[i:] + generator[:i]
+        design.append(row)
+
+    # Add a row of all -1's
+    design.append([-1] * (n_runs - 1))
+
+    design_array = np.array(design)
+
+    # Select only the needed columns for n_factors
+    return design_array[:, :n_factors]
+
+
+@router.post("/plackett-burman/analyze")
+async def analyze_plackett_burman(request: PlackettBurmanAnalysisRequest):
+    """
+    Analyze Plackett-Burman screening design
+    """
+    try:
+        df = pd.DataFrame(request.data)
+
+        # Rename columns to avoid conflicts
+        column_mapping = {}
+        for factor in request.factors:
+            column_mapping[factor] = f"factor_{factor}"
+        column_mapping[request.response] = f"response_{request.response}"
+
+        df_renamed = df.rename(columns=column_mapping)
+
+        # Build formula with renamed columns
+        renamed_factors = [f"factor_{f}" for f in request.factors]
+        renamed_response = f"response_{request.response}"
+        factor_terms = [f"C({f})" for f in renamed_factors]
+
+        # For PB designs, we only fit main effects (no interactions)
+        formula = f"{renamed_response} ~ {' + '.join(factor_terms)}"
+
+        # Fit model
+        model = ols(formula, data=df_renamed).fit()
+        anova_table = sm.stats.anova_lm(model, typ=2)
+
+        # Parse ANOVA results
+        results = {}
+        for idx, row in anova_table.iterrows():
+            source = str(idx)
+
+            # Clean up source names
+            for factor in request.factors:
+                source = source.replace(f"C(factor_{factor})", factor)
+                source = source.replace(f"factor_{factor}", factor)
+
+            results[source] = {
+                "sum_sq": round(float(row['sum_sq']), 4),
+                "df": int(row['df']),
+                "F": round(float(row['F']), 4) if not pd.isna(row['F']) else None,
+                "p_value": round(float(row['PR(>F)']), 6) if not pd.isna(row['PR(>F)']) else None,
+                "significant": bool(row['PR(>F)'] < request.alpha) if not pd.isna(row['PR(>F)']) else False
+            }
+
+        # Calculate effect estimates
+        effects = {}
+        for factor in request.factors:
+            if df[factor].nunique() == 2:
+                levels = sorted(df[factor].unique())
+                high = df[df[factor] == levels[1]][request.response].mean()
+                low = df[df[factor] == levels[0]][request.response].mean()
+
+                if pd.notna(high) and pd.notna(low):
+                    effects[factor] = round(float(high - low), 4)
+                else:
+                    effects[factor] = 0.0
+
+        # Calculate residuals
+        fitted_values = model.fittedvalues.values
+        residuals = model.resid.values
+        mse = np.mean(residuals**2)
+
+        if mse > 0:
+            standardized_residuals = residuals / np.sqrt(mse)
+        else:
+            standardized_residuals = residuals
+
+        fitted_values = np.nan_to_num(fitted_values, nan=0.0, posinf=0.0, neginf=0.0)
+        residuals = np.nan_to_num(residuals, nan=0.0, posinf=0.0, neginf=0.0)
+        standardized_residuals = np.nan_to_num(standardized_residuals, nan=0.0, posinf=0.0, neginf=0.0)
+
+        # Effect magnitudes for Pareto
+        effect_magnitudes = []
+        for name, value in effects.items():
+            effect_magnitudes.append({
+                "name": name,
+                "effect": value,
+                "abs_effect": abs(value)
+            })
+
+        effect_magnitudes.sort(key=lambda x: x['abs_effect'], reverse=True)
+
+        # Main effects plot data
+        main_effects_plot_data = {}
+        for factor in request.factors:
+            levels = sorted(df[factor].unique())
+            means = [df[df[factor] == level][request.response].mean() for level in levels]
+            valid_means = [round(float(m), 4) if pd.notna(m) else 0.0 for m in means]
+
+            main_effects_plot_data[factor] = {
+                "levels": [str(l) for l in levels],
+                "means": valid_means
+            }
+
+        # Calculate Lenth's PSE for screening
+        lenths_analysis = None
+        if len(effect_magnitudes) > 0:
+            all_effects = {}
+            for eff in effect_magnitudes:
+                all_effects[eff['name']] = eff['effect']
+
+            lenths_analysis = calculate_lenths_pse(all_effects, request.alpha)
+
+        # Generate interpretation
+        interpretation = generate_factorial_interpretation(
+            results=results,
+            factors=request.factors,
+            alpha=request.alpha,
+            r_squared=model.rsquared,
+            adj_r_squared=model.rsquared_adj,
+            has_replicates=False
+        )
+
+        # Add PB-specific warnings
+        interpretation['recommendations'].insert(0,
+            "⚠️ Plackett-Burman designs are Resolution III. Main effects are confounded with 2-way interactions. Interpret results assuming interactions are negligible.")
+
+        return {
+            "test_type": "Plackett-Burman Screening Design Analysis",
+            "n_factors": len(request.factors),
+            "factors": request.factors,
+            "alpha": request.alpha,
+            "resolution": "III",
+            "anova_table": results,
+            "main_effects": effects,
+            "model_r_squared": round(float(model.rsquared), 4),
+            "model_adj_r_squared": round(float(model.rsquared_adj), 4),
+            "residuals": [round(float(r), 4) for r in residuals],
+            "fitted_values": [round(float(f), 4) for f in fitted_values],
+            "standardized_residuals": [round(float(r), 4) for r in standardized_residuals],
+            "effect_magnitudes": effect_magnitudes,
+            "main_effects_plot_data": main_effects_plot_data,
+            "lenths_analysis": lenths_analysis,
+            "response_name": request.response,
+            "interpretation": interpretation,
+            "warning": "Resolution III design: Main effects are confounded with 2-way interactions"
+        }
+
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

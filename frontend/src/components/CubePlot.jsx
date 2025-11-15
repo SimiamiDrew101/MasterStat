@@ -1,236 +1,395 @@
-import { useRef } from 'react'
-import { Download } from 'lucide-react'
-import { exportSvgToPng } from '../utils/exportChart'
+import Plot from 'react-plotly.js'
 
-const CubePlot = ({ data, factors }) => {
-  const svgRef = useRef(null)
+/**
+ * CubePlot component for visualizing 2^3 and 2^4 factorial designs using Plotly
+ * Shows response values at each corner of the design space in an interactive 3D plot
+ */
+const CubePlot = ({ data, factors, responseName = 'Response' }) => {
+  if (!data || data.length === 0 || !factors) return null
 
-  if (!data || data.length === 0 || !factors || factors.length !== 3) return null
+  const numFactors = factors.length
 
-  // SVG dimensions
-  const width = 500
-  const height = 500
-  const centerX = width / 2
-  const centerY = height / 2
+  // For 2^3 designs, create a 3D scatter plot with cube edges
+  if (numFactors === 3) {
+    // Create cube edges
+    const edges = [
+      // Bottom square
+      [[0, 1], [0, 0], [0, 0]],
+      [[1, 1], [0, 1], [0, 0]],
+      [[1, 0], [1, 1], [0, 0]],
+      [[0, 0], [1, 0], [0, 0]],
+      // Top square
+      [[0, 1], [0, 0], [1, 1]],
+      [[1, 1], [0, 1], [1, 1]],
+      [[1, 0], [1, 1], [1, 1]],
+      [[0, 0], [1, 0], [1, 1]],
+      // Vertical edges
+      [[0, 0], [0, 0], [0, 1]],
+      [[1, 1], [0, 0], [0, 1]],
+      [[1, 1], [1, 1], [0, 1]],
+      [[0, 0], [1, 1], [0, 1]]
+    ]
 
-  // Cube dimensions (isometric projection)
-  const cubeSize = 150
+    const edgeTraces = edges.map((edge, idx) => ({
+      type: 'scatter3d',
+      mode: 'lines',
+      x: edge[0],
+      y: edge[1],
+      z: edge[2],
+      line: {
+        color: '#64748b',
+        width: 3
+      },
+      hoverinfo: 'skip',
+      showlegend: false,
+      name: ''
+    }))
 
-  // Isometric projection angles
-  const angleX = Math.PI / 6  // 30 degrees
-  const angleY = Math.PI / 6  // 30 degrees
-
-  // Convert 3D coordinates to 2D isometric
-  const project = (x, y, z) => {
-    const isoX = centerX + (x - y) * cubeSize * Math.cos(angleX)
-    const isoY = centerY + (x + y) * cubeSize * Math.sin(angleY) - z * cubeSize
-    return { x: isoX, y: isoY }
-  }
-
-  // Define cube vertices (all 8 corners)
-  const vertices = [
-    { x: 0, y: 0, z: 0, label: '000' },
-    { x: 1, y: 0, z: 0, label: '100' },
-    { x: 0, y: 1, z: 0, label: '010' },
-    { x: 1, y: 1, z: 0, label: '110' },
-    { x: 0, y: 0, z: 1, label: '001' },
-    { x: 1, y: 0, z: 1, label: '101' },
-    { x: 0, y: 1, z: 1, label: '011' },
-    { x: 1, y: 1, z: 1, label: '111' }
-  ]
-
-  // Define cube edges
-  const edges = [
-    [0, 1], [0, 2], [0, 4], // from origin
-    [1, 3], [1, 5], // from 100
-    [2, 3], [2, 6], // from 010
-    [3, 7], // from 110
-    [4, 5], [4, 6], // from 001
-    [5, 7], // from 101
-    [6, 7]  // from 011
-  ]
-
-  // Project all vertices
-  const projectedVertices = vertices.map(v => ({
-    ...v,
-    projected: project(v.x, v.y, v.z)
-  }))
-
-  // Match data to vertices
-  const verticesWithData = projectedVertices.map(v => {
-    const dataPoint = data.find(d => d.x === v.x && d.y === v.y && d.z === v.z)
-    return {
-      ...v,
-      response: dataPoint ? dataPoint.response : null,
-      dataLabel: dataPoint ? dataPoint.label : null
+    // Create scatter plot for response values at corners
+    const cornerTrace = {
+      type: 'scatter3d',
+      mode: 'markers+text',
+      x: data.map(d => d.x),
+      y: data.map(d => d.y),
+      z: data.map(d => d.z),
+      text: data.map(d => `${d.response.toFixed(2)}`),
+      textposition: 'top center',
+      textfont: {
+        color: '#e2e8f0',
+        size: 14,
+        family: 'monospace',
+        weight: 'bold'
+      },
+      marker: {
+        size: 16,
+        color: data.map(d => d.response),
+        colorscale: [
+          [0, '#0050ff'],      // Blue (low values)
+          [0.25, '#00d4ff'],   // Cyan
+          [0.5, '#64ff96'],    // Green
+          [0.75, '#ffff00'],   // Yellow
+          [1, '#ff0000']       // Red (high values)
+        ],
+        showscale: true,
+        colorbar: {
+          title: {
+            text: responseName,
+            side: 'right'
+          },
+          thickness: 20,
+          len: 0.7
+        },
+        line: {
+          color: '#f1f5f9',
+          width: 2
+        }
+      },
+      hovertemplate: '<b>Response: %{text}</b><br>' +
+        `${factors[0]}: %{x}<br>` +
+        `${factors[1]}: %{y}<br>` +
+        `${factors[2]}: %{z}<br>` +
+        '<extra></extra>',
+      name: 'Design Points'
     }
-  })
 
-  // Find min/max response for color scaling
-  const responses = data.map(d => d.response)
-  const minResponse = Math.min(...responses)
-  const maxResponse = Math.max(...responses)
+    const plotData = [...edgeTraces, cornerTrace]
 
-  // Color scale (blue to red)
-  const getColor = (value) => {
-    if (value === null) return '#64748b'
-    const normalized = (value - minResponse) / (maxResponse - minResponse)
-    const r = Math.round(normalized * 255)
-    const b = Math.round((1 - normalized) * 255)
-    return `rgb(${r}, 100, ${b})`
-  }
+    const layout = {
+      title: {
+        text: `2³ Factorial Design Cube Plot`,
+        font: {
+          size: 20,
+          color: '#f1f5f9'
+        }
+      },
+      autosize: true,
+      scene: {
+        xaxis: {
+          title: factors[0],
+          backgroundcolor: '#1e293b',
+          gridcolor: '#475569',
+          showbackground: true,
+          zerolinecolor: '#64748b',
+          tickvals: [0, 1],
+          ticktext: ['Low', 'High']
+        },
+        yaxis: {
+          title: factors[1],
+          backgroundcolor: '#1e293b',
+          gridcolor: '#475569',
+          showbackground: true,
+          zerolinecolor: '#64748b',
+          tickvals: [0, 1],
+          ticktext: ['Low', 'High']
+        },
+        zaxis: {
+          title: factors[2],
+          backgroundcolor: '#1e293b',
+          gridcolor: '#475569',
+          showbackground: true,
+          zerolinecolor: '#64748b',
+          tickvals: [0, 1],
+          ticktext: ['Low', 'High']
+        },
+        camera: {
+          eye: {
+            x: 1.7,
+            y: 1.7,
+            z: 1.3
+          }
+        }
+      },
+      paper_bgcolor: '#334155',
+      plot_bgcolor: '#1e293b',
+      font: {
+        color: '#e2e8f0'
+      },
+      margin: {
+        l: 0,
+        r: 0,
+        b: 0,
+        t: 50
+      }
+    }
 
-  return (
-    <div className="bg-slate-700/50 rounded-lg p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h4 className="text-gray-100 font-semibold">Cube Plot (2³ Factorial Design)</h4>
-        <button
-          type="button"
-          onClick={() => {
-            if (svgRef.current) {
-              exportSvgToPng(svgRef.current, `cube-plot-${new Date().toISOString().split('T')[0]}`)
-            }
-          }}
-          className="px-3 py-2 rounded-lg text-sm font-medium bg-slate-600/50 text-gray-300 hover:bg-slate-600 transition-all flex items-center space-x-2"
-          title="Export as PNG"
-        >
-          <Download className="w-4 h-4" />
-          <span>Export PNG</span>
-        </button>
-      </div>
-      <p className="text-gray-300 text-sm mb-4">
-        Each vertex shows the response at that factor combination. Colors indicate response magnitude.
-      </p>
+    const config = {
+      responsive: true,
+      displayModeBar: true,
+      displaylogo: false,
+      modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+      toImageButtonOptions: {
+        format: 'png',
+        filename: `cube-plot-${new Date().toISOString().split('T')[0]}`,
+        height: 1000,
+        width: 1200,
+        scale: 2
+      }
+    }
 
-      <div className="flex justify-center">
-        <svg ref={svgRef} width={width} height={height} className="overflow-visible">
-          {/* Draw edges */}
-          {edges.map((edge, i) => {
-            const start = projectedVertices[edge[0]].projected
-            const end = projectedVertices[edge[1]].projected
-            return (
-              <line
-                key={`edge-${i}`}
-                x1={start.x}
-                y1={start.y}
-                x2={end.x}
-                y2={end.y}
-                stroke="#64748b"
-                strokeWidth={2}
-                opacity={0.5}
-              />
-            )
-          })}
+    return (
+      <div className="bg-slate-700/50 rounded-lg p-6">
+        <div className="mb-4">
+          <h4 className="text-gray-100 font-semibold text-lg">2³ Design Cube Plot</h4>
+          <p className="text-gray-400 text-sm mt-1">
+            Each corner represents a treatment combination. Numbers show response values.
+          </p>
+        </div>
 
-          {/* Draw vertices and labels */}
-          {verticesWithData.map((vertex, i) => {
-            const pos = vertex.projected
-            const color = getColor(vertex.response)
+        <div className="flex justify-center bg-slate-800/50 rounded-lg p-4">
+          <Plot
+            data={plotData}
+            layout={layout}
+            config={config}
+            style={{ width: '100%', height: '600px' }}
+            useResizeHandler={true}
+          />
+        </div>
 
-            return (
-              <g key={i}>
-                {/* Vertex circle */}
-                <circle
-                  cx={pos.x}
-                  cy={pos.y}
-                  r={vertex.response !== null ? 20 : 8}
-                  fill={color}
-                  stroke="#1e293b"
-                  strokeWidth={2}
-                />
-
-                {/* Response value */}
-                {vertex.response !== null && (
-                  <text
-                    x={pos.x}
-                    y={pos.y + 4}
-                    textAnchor="middle"
-                    fill="#ffffff"
-                    fontSize="12"
-                    fontWeight="bold"
-                  >
-                    {vertex.response.toFixed(1)}
-                  </text>
-                )}
-
-                {/* Factor combination label */}
-                {vertex.dataLabel && (
-                  <text
-                    x={pos.x}
-                    y={pos.y + 35}
-                    textAnchor="middle"
-                    fill="#e2e8f0"
-                    fontSize="10"
-                  >
-                    {vertex.dataLabel}
-                  </text>
-                )}
-              </g>
-            )
-          })}
-
-          {/* Axis labels */}
-          <g>
-            {/* X-axis (Factor A) */}
-            <text
-              x={centerX + cubeSize * 1.2}
-              y={centerY + 20}
-              fill="#3b82f6"
-              fontSize="14"
-              fontWeight="600"
-            >
-              {factors[0]} →
-            </text>
-
-            {/* Y-axis (Factor B) */}
-            <text
-              x={centerX - cubeSize * 1.2}
-              y={centerY + 20}
-              fill="#10b981"
-              fontSize="14"
-              fontWeight="600"
-            >
-              ← {factors[1]}
-            </text>
-
-            {/* Z-axis (Factor C) */}
-            <text
-              x={centerX - 20}
-              y={centerY - cubeSize * 1.2}
-              fill="#ef4444"
-              fontSize="14"
-              fontWeight="600"
-            >
-              ↑ {factors[2]}
-            </text>
-          </g>
-        </svg>
-      </div>
-
-      {/* Legend */}
-      <div className="mt-6 flex justify-center">
-        <div className="bg-slate-800/50 rounded-lg p-4">
-          <div className="flex items-center space-x-4">
-            <span className="text-gray-300 text-sm font-semibold">Response:</span>
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-6 rounded" style={{background: 'linear-gradient(to right, rgb(0,100,255), rgb(255,100,0))'}}></div>
-              <span className="text-gray-300 text-sm">
-                {minResponse.toFixed(1)} → {maxResponse.toFixed(1)}
-              </span>
+        <div className="mt-4 bg-slate-800/50 rounded-lg p-4">
+          <p className="text-gray-300 text-sm">
+            <strong className="text-gray-100">Interpretation:</strong> This cube plot visualizes all 8 treatment combinations of a 2³ factorial design.
+            Each vertex of the cube represents a unique combination of factor levels (Low/High). The color and numerical values indicate the response at each combination.
+            Red corners indicate higher responses, blue indicates lower responses. Look for patterns to identify main effects and interactions.
+          </p>
+          <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
+            <div className="bg-slate-700/50 rounded p-2">
+              <span className="text-gray-400">Rotate:</span>
+              <span className="text-gray-200 ml-1 font-medium">Click & drag</span>
+            </div>
+            <div className="bg-slate-700/50 rounded p-2">
+              <span className="text-gray-400">Zoom:</span>
+              <span className="text-gray-200 ml-1 font-medium">Scroll wheel</span>
+            </div>
+            <div className="bg-slate-700/50 rounded p-2">
+              <span className="text-gray-400">Pan:</span>
+              <span className="text-gray-200 ml-1 font-medium">Shift + drag</span>
             </div>
           </div>
         </div>
       </div>
+    )
+  } else if (numFactors === 4) {
+    // For 4 factors, show two 3D cubes for different levels of the 4th factor
+    return (
+      <div className="bg-slate-700/50 rounded-lg p-6">
+        <div className="mb-4">
+          <h4 className="text-gray-100 font-semibold text-lg">2⁴ Design Visualization</h4>
+          <p className="text-gray-400 text-sm mt-1">
+            Showing two 3D cubes representing {factors[3]} at Low and High levels
+          </p>
+        </div>
 
-      <div className="mt-4 bg-slate-800/50 rounded-lg p-4">
-        <p className="text-gray-300 text-sm">
-          <strong className="text-gray-100">Interpretation:</strong> The cube shows all 8 treatment combinations
-          for a 2³ design. The response value at each vertex indicates the outcome. Look for patterns across
-          edges to identify main effects and along face diagonals for interactions.
-        </p>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {[0, 1].map(level4 => {
+            const filteredData = data.filter(d => {
+              // Check if data has 'w' property for 4th dimension
+              if ('w' in d) return d.w === level4
+              // Otherwise try to infer from the data structure
+              return false
+            })
+
+            if (filteredData.length === 0) return null
+
+            // Create cube edges
+            const edges = [
+              [[0, 1], [0, 0], [0, 0]],
+              [[1, 1], [0, 1], [0, 0]],
+              [[1, 0], [1, 1], [0, 0]],
+              [[0, 0], [1, 0], [0, 0]],
+              [[0, 1], [0, 0], [1, 1]],
+              [[1, 1], [0, 1], [1, 1]],
+              [[1, 0], [1, 1], [1, 1]],
+              [[0, 0], [1, 0], [1, 1]],
+              [[0, 0], [0, 0], [0, 1]],
+              [[1, 1], [0, 0], [0, 1]],
+              [[1, 1], [1, 1], [0, 1]],
+              [[0, 0], [1, 1], [0, 1]]
+            ]
+
+            const edgeTraces = edges.map((edge, idx) => ({
+              type: 'scatter3d',
+              mode: 'lines',
+              x: edge[0],
+              y: edge[1],
+              z: edge[2],
+              line: {
+                color: '#64748b',
+                width: 2
+              },
+              hoverinfo: 'skip',
+              showlegend: false
+            }))
+
+            const cornerTrace = {
+              type: 'scatter3d',
+              mode: 'markers+text',
+              x: filteredData.map(d => d.x),
+              y: filteredData.map(d => d.y),
+              z: filteredData.map(d => d.z),
+              text: filteredData.map(d => `${d.response.toFixed(1)}`),
+              textposition: 'top center',
+              textfont: {
+                color: '#e2e8f0',
+                size: 12,
+                family: 'monospace'
+              },
+              marker: {
+                size: 12,
+                color: filteredData.map(d => d.response),
+                colorscale: [
+                  [0, '#0050ff'],
+                  [0.25, '#00d4ff'],
+                  [0.5, '#64ff96'],
+                  [0.75, '#ffff00'],
+                  [1, '#ff0000']
+                ],
+                showscale: level4 === 1,
+                colorbar: level4 === 1 ? {
+                  title: {
+                    text: responseName,
+                    side: 'right'
+                  },
+                  thickness: 15,
+                  len: 0.7
+                } : undefined,
+                line: {
+                  color: '#f1f5f9',
+                  width: 2
+                }
+              },
+              hovertemplate: '<b>%{text}</b><br>' +
+                `${factors[0]}: %{x}<br>` +
+                `${factors[1]}: %{y}<br>` +
+                `${factors[2]}: %{z}<br>` +
+                `${factors[3]}: ${level4 === 0 ? 'Low' : 'High'}<br>` +
+                '<extra></extra>'
+            }
+
+            const plotData = [...edgeTraces, cornerTrace]
+
+            const layout = {
+              title: {
+                text: `${factors[3]} = ${level4 === 0 ? 'Low' : 'High'}`,
+                font: {
+                  size: 16,
+                  color: '#f1f5f9'
+                }
+              },
+              autosize: true,
+              scene: {
+                xaxis: {
+                  title: factors[0],
+                  backgroundcolor: '#1e293b',
+                  gridcolor: '#475569',
+                  showbackground: true,
+                  tickvals: [0, 1],
+                  ticktext: ['L', 'H']
+                },
+                yaxis: {
+                  title: factors[1],
+                  backgroundcolor: '#1e293b',
+                  gridcolor: '#475569',
+                  showbackground: true,
+                  tickvals: [0, 1],
+                  ticktext: ['L', 'H']
+                },
+                zaxis: {
+                  title: factors[2],
+                  backgroundcolor: '#1e293b',
+                  gridcolor: '#475569',
+                  showbackground: true,
+                  tickvals: [0, 1],
+                  ticktext: ['L', 'H']
+                },
+                camera: {
+                  eye: { x: 1.5, y: 1.5, z: 1.2 }
+                }
+              },
+              paper_bgcolor: '#334155',
+              plot_bgcolor: '#1e293b',
+              font: { color: '#e2e8f0', size: 10 },
+              margin: { l: 0, r: 0, b: 0, t: 40 }
+            }
+
+            const config = {
+              responsive: true,
+              displayModeBar: true,
+              displaylogo: false,
+              modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+              toImageButtonOptions: {
+                format: 'png',
+                filename: `cube-plot-${factors[3]}-${level4 === 0 ? 'low' : 'high'}-${new Date().toISOString().split('T')[0]}`,
+                height: 800,
+                width: 800,
+                scale: 2
+              }
+            }
+
+            return (
+              <div key={level4} className="bg-slate-800/50 rounded-lg p-3">
+                <Plot
+                  data={plotData}
+                  layout={layout}
+                  config={config}
+                  style={{ width: '100%', height: '400px' }}
+                  useResizeHandler={true}
+                />
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="mt-4 bg-slate-800/50 rounded-lg p-4">
+          <p className="text-gray-300 text-sm">
+            <strong className="text-gray-100">Interpretation:</strong> For 2⁴ designs with 16 treatment combinations, we show two 3D cubes - one for each level of the 4th factor ({factors[3]}).
+            Compare patterns across both cubes to understand how the 4th factor interacts with others.
+          </p>
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
+
+  return null
 }
 
 export default CubePlot

@@ -18,8 +18,14 @@ const DiagnosticPlots = ({ diagnosticPlots }) => {
 
     const xMin = Math.min(...xData)
     const xMax = Math.max(...xData)
-    const yMin = Math.min(...yData)
-    const yMax = Math.max(...yData)
+
+    // If there's a threshold, ensure it's included in the y-range
+    let yMin = Math.min(...yData)
+    let yMax = Math.max(...yData)
+    if (threshold !== null) {
+      yMin = Math.min(yMin, threshold)
+      yMax = Math.max(yMax, threshold)
+    }
 
     // Add 10% padding to the ranges
     const xRange = xMax - xMin
@@ -32,6 +38,11 @@ const DiagnosticPlots = ({ diagnosticPlots }) => {
       const yPos = plotHeight - padding - ((yData[i] - yMin + yPadding) / (yRange + 2 * yPadding)) * (plotHeight - 2 * padding)
       return { x: xPos, y: yPos, originalX: x, originalY: yData[i] }
     })
+
+    // Calculate where y=0 is positioned in the plot (for threshold line)
+    const y0Position = threshold !== null
+      ? plotHeight - padding - ((threshold - yMin + yPadding) / (yRange + 2 * yPadding)) * (plotHeight - 2 * padding)
+      : null
 
     return (
       <div className="relative bg-slate-900/50 rounded-lg p-4">
@@ -79,12 +90,12 @@ const DiagnosticPlots = ({ diagnosticPlots }) => {
           ))}
 
           {/* Reference line at y=0 for leverage-residuals plot */}
-          {threshold !== null && (
+          {y0Position !== null && (
             <line
               x1={padding}
-              y1={plotHeight / 2}
+              y1={y0Position}
               x2={plotWidth - padding}
-              y2={plotHeight / 2}
+              y2={y0Position}
               stroke="rgba(248, 113, 113, 0.5)"
               strokeWidth="2"
               strokeDasharray="5,5"
