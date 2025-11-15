@@ -6,6 +6,8 @@ import pandas as pd
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from statsmodels.regression.mixed_linear_model import MixedLM
+from scipy import stats
+from scipy.stats import shapiro, levene
 
 router = APIRouter()
 
@@ -244,6 +246,53 @@ async def rcbd_analysis(request: RCBDRequest):
                     calculate_boxplot_data(group_df[request.response].values, block_name)
                 )
 
+            # Normality test (Shapiro-Wilk) for residuals
+            normality_test = {}
+            if len(residuals) >= 3:  # Shapiro-Wilk requires at least 3 observations
+                try:
+                    shapiro_stat, shapiro_p = shapiro(residuals)
+                    normality_test = {
+                        "test": "Shapiro-Wilk",
+                        "statistic": round(float(shapiro_stat), 4),
+                        "p_value": round(float(shapiro_p), 6),
+                        "interpretation": "Normal" if shapiro_p > request.alpha else "Non-normal"
+                    }
+                except:
+                    normality_test = {"test": "Shapiro-Wilk", "error": "Test could not be performed"}
+
+            # Homogeneity of variance test (Levene's test) across blocks
+            homogeneity_test = {}
+            try:
+                # Group residuals by block
+                block_residuals = []
+                for block_name, group_df in df.groupby(request.block):
+                    # Get indices for this block and extract corresponding residuals
+                    block_indices = group_df.index
+                    block_res = [residuals[i] for i, idx in enumerate(df.index) if idx in block_indices]
+                    block_residuals.append(block_res)
+
+                if len(block_residuals) >= 2 and all(len(br) > 0 for br in block_residuals):
+                    levene_stat, levene_p = levene(*block_residuals)
+                    homogeneity_test = {
+                        "test": "Levene's Test",
+                        "statistic": round(float(levene_stat), 4),
+                        "p_value": round(float(levene_p), 6),
+                        "interpretation": "Homogeneous" if levene_p > request.alpha else "Heterogeneous"
+                    }
+            except:
+                homogeneity_test = {"test": "Levene's Test", "error": "Test could not be performed"}
+
+            # Calculate block-treatment interaction means for visualization
+            interaction_means = {}
+            for (block_val, treatment_val), group_df in df.groupby([request.block, request.treatment]):
+                key = f"{block_val}_{treatment_val}"
+                interaction_means[key] = {
+                    "block": str(block_val),
+                    "treatment": str(treatment_val),
+                    "mean": round(float(group_df[request.response].mean()), 4),
+                    "n": int(len(group_df))
+                }
+
             return {
                 "test_type": "Randomized Complete Block Design (RCBD) - Fixed Blocks",
                 "alpha": request.alpha,
@@ -259,7 +308,10 @@ async def rcbd_analysis(request: RCBDRequest):
                 "boxplot_data_block": boxplot_data_block,
                 "residuals": [round(float(r), 4) for r in residuals],
                 "fitted_values": [round(float(f), 4) for f in fitted_values],
-                "standardized_residuals": [round(float(r), 4) for r in standardized_residuals]
+                "standardized_residuals": [round(float(r), 4) for r in standardized_residuals],
+                "normality_test": normality_test,
+                "homogeneity_test": homogeneity_test,
+                "interaction_means": interaction_means
             }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

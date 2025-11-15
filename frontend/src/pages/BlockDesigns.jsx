@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import ResultCard from '../components/ResultCard'
+import EfficiencyMetric from '../components/EfficiencyMetric'
+import BlockDiagnostics from '../components/BlockDiagnostics'
+import BlockStructureVisualization from '../components/BlockStructureVisualization'
 import { Grid, Plus, Trash2, Shuffle } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -278,29 +281,71 @@ const BlockDesigns = () => {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
-        <div className="flex items-center space-x-3 mb-6">
+        <div className="flex items-center space-x-3 mb-4">
           <Grid className="w-8 h-8 text-pink-400" />
           <h2 className="text-3xl font-bold text-gray-100">Block Designs</h2>
         </div>
+        <p className="text-gray-300">
+          Powerful experimental designs for controlling nuisance variability by grouping experimental units into homogeneous blocks. Choose from RCBD, Latin Square, or Graeco-Latin Square based on your blocking structure.
+        </p>
+      </div>
 
+      {/* Tab Navigation */}
+      <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl border border-slate-700/50 overflow-hidden">
+        <div className="grid grid-cols-1 md:grid-cols-3">
+          <button
+            onClick={() => {
+              setDesignType('rcbd')
+              setResult(null)
+              setError(null)
+            }}
+            className={`px-6 py-4 font-semibold text-center transition-all border-b-4 ${
+              designType === 'rcbd'
+                ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500'
+                : 'text-gray-400 hover:text-gray-300 hover:bg-slate-700/30 border-transparent'
+            }`}
+          >
+            <div className="text-lg">RCBD</div>
+            <div className="text-xs mt-1 opacity-75">1 Blocking Factor</div>
+          </button>
+          <button
+            onClick={() => {
+              setDesignType('latin')
+              setResult(null)
+              setError(null)
+            }}
+            className={`px-6 py-4 font-semibold text-center transition-all border-b-4 ${
+              designType === 'latin'
+                ? 'bg-purple-500/20 text-purple-400 border-purple-500'
+                : 'text-gray-400 hover:text-gray-300 hover:bg-slate-700/30 border-transparent'
+            }`}
+          >
+            <div className="text-lg">Latin Square</div>
+            <div className="text-xs mt-1 opacity-75">2 Blocking Factors</div>
+          </button>
+          <button
+            onClick={() => {
+              setDesignType('graeco')
+              setResult(null)
+              setError(null)
+            }}
+            className={`px-6 py-4 font-semibold text-center transition-all border-b-4 ${
+              designType === 'graeco'
+                ? 'bg-green-500/20 text-green-400 border-green-500'
+                : 'text-gray-400 hover:text-gray-300 hover:bg-slate-700/30 border-transparent'
+            }`}
+          >
+            <div className="text-lg">Graeco-Latin</div>
+            <div className="text-xs mt-1 opacity-75">2 Treatments + 2 Blocks</div>
+          </button>
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
         <form onSubmit={handleAnalyze} className="space-y-6">
-          {/* Design Type */}
-          <div>
-            <label className="block text-gray-100 font-medium mb-2">Design Type</label>
-            <select
-              value={designType}
-              onChange={(e) => setDesignType(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-pink-500"
-            >
-              <option value="rcbd">Randomized Complete Block Design (RCBD)</option>
-              <option value="latin">Latin Square Design</option>
-              <option value="graeco">Graeco-Latin Square Design</option>
-            </select>
-            <p className="text-gray-400 text-xs mt-1">
-              RCBD: 1 blocking factor • Latin: 2 blocking factors • Graeco-Latin: 2 blocking + 2 treatment factors
-            </p>
-          </div>
 
           {/* Design Parameters */}
           {designType === 'rcbd' ? (
@@ -444,6 +489,17 @@ const BlockDesigns = () => {
             </div>
           )}
 
+          {/* Block Structure Visualization */}
+          {generatedDesign && generatedDesign.design_table && (
+            <BlockStructureVisualization
+              designType={designType}
+              designTable={generatedDesign.design_table}
+              nBlocks={nBlocks}
+              nTreatments={nTreatments}
+              squareSize={squareSize}
+            />
+          )}
+
           {/* Data Table */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -582,7 +638,29 @@ const BlockDesigns = () => {
       )}
 
       {/* Results Display */}
-      {result && <ResultCard result={result} />}
+      {result && (
+        <div className="space-y-6">
+          <ResultCard result={result} />
+
+          {/* Efficiency Metric */}
+          {result.relative_efficiency && (
+            <EfficiencyMetric
+              relativeEfficiency={result.relative_efficiency}
+              designType={designType === 'rcbd' ? 'RCBD' : designType === 'latin' ? 'Latin Square' : 'Graeco-Latin Square'}
+            />
+          )}
+
+          {/* Block Diagnostics */}
+          {(result.normality_test || result.homogeneity_test || result.interaction_means) && (
+            <BlockDiagnostics
+              normalityTest={result.normality_test}
+              homogeneityTest={result.homogeneity_test}
+              interactionMeans={result.interaction_means}
+              blockType={randomBlocks ? 'random' : 'fixed'}
+            />
+          )}
+        </div>
+      )}
     </div>
   )
 }
