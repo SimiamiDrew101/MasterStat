@@ -1865,9 +1865,10 @@ const FactorialDesigns = () => {
         <HalfNormalPlot lenthsData={result.lenths_analysis} />
       )}
 
-      {/* Interaction Plots */}
+      {/* Main Effects and Interaction Plots */}
       {result && result.interaction_plots_data && Object.keys(result.interaction_plots_data).length > 0 && (
         <FactorialInteractionPlots
+          mainEffectsData={result.main_effects_plot_data}
           interactionData={result.interaction_plots_data}
           factors={factors}
         />

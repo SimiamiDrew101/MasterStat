@@ -9,7 +9,8 @@ import { Calculator, AlertCircle } from 'lucide-react'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const HypothesisTesting = () => {
-  const [testType, setTestType] = useState('t-test')
+  const [activeTab, setActiveTab] = useState('t-test') // 't-test', 'f-test', 'z-test'
+  const [resultsTab, setResultsTab] = useState('results') // 'results', 'diagnostics', 'visualization'
   const [alpha, setAlpha] = useState(0.05)
   const [alternative, setAlternative] = useState('two-sided')
   const [paired, setPaired] = useState(false)
@@ -18,7 +19,6 @@ const HypothesisTesting = () => {
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const [activeTab, setActiveTab] = useState('results') // 'results', 'diagnostics', 'visualization'
 
   // Table data for samples
   const [sample1TableData, setSample1TableData] = useState(Array(15).fill(''))
@@ -149,7 +149,7 @@ const HypothesisTesting = () => {
       let endpoint = ''
       let payload = {}
 
-      if (testType === 't-test') {
+      if (activeTab === 't-test') {
         endpoint = '/api/hypothesis/t-test'
         payload = {
           sample1: sample1Data,
@@ -159,7 +159,7 @@ const HypothesisTesting = () => {
           paired,
           mu
         }
-      } else if (testType === 'f-test') {
+      } else if (activeTab === 'f-test') {
         endpoint = '/api/hypothesis/f-test'
         if (sample2Data.length === 0) {
           throw new Error('F-test requires two samples')
@@ -169,7 +169,7 @@ const HypothesisTesting = () => {
           sample2: sample2Data,
           alpha
         }
-      } else if (testType === 'z-test') {
+      } else if (activeTab === 'z-test') {
         endpoint = '/api/hypothesis/z-test'
         payload = {
           sample: sample1Data,
@@ -191,26 +191,73 @@ const HypothesisTesting = () => {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
-        <div className="flex items-center space-x-3 mb-6">
+        <div className="flex items-center space-x-3">
           <Calculator className="w-8 h-8 text-blue-400" />
           <h2 className="text-3xl font-bold text-gray-100">Hypothesis Testing</h2>
         </div>
+      </div>
 
+      {/* Tab Navigation */}
+      <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl border border-slate-700/50 overflow-hidden">
+        <div className="grid grid-cols-1 md:grid-cols-3">
+          {/* t-Test Tab */}
+          <button
+            onClick={() => {
+              setActiveTab('t-test')
+              setResult(null)
+              setError(null)
+            }}
+            className={`px-6 py-4 font-semibold text-center transition-all border-b-4 ${
+              activeTab === 't-test'
+                ? 'bg-blue-500/20 text-blue-400 border-blue-500'
+                : 'bg-slate-700/30 text-gray-400 border-transparent hover:bg-slate-700/50 hover:text-gray-300'
+            }`}
+          >
+            <div className="text-lg">t-Test</div>
+            <div className="text-xs mt-1 opacity-75">Compare means</div>
+          </button>
+
+          {/* F-Test Tab */}
+          <button
+            onClick={() => {
+              setActiveTab('f-test')
+              setResult(null)
+              setError(null)
+            }}
+            className={`px-6 py-4 font-semibold text-center transition-all border-b-4 ${
+              activeTab === 'f-test'
+                ? 'bg-orange-500/20 text-orange-400 border-orange-500'
+                : 'bg-slate-700/30 text-gray-400 border-transparent hover:bg-slate-700/50 hover:text-gray-300'
+            }`}
+          >
+            <div className="text-lg">F-Test</div>
+            <div className="text-xs mt-1 opacity-75">Variance equality</div>
+          </button>
+
+          {/* Z-Test Tab */}
+          <button
+            onClick={() => {
+              setActiveTab('z-test')
+              setResult(null)
+              setError(null)
+            }}
+            className={`px-6 py-4 font-semibold text-center transition-all border-b-4 ${
+              activeTab === 'z-test'
+                ? 'bg-green-500/20 text-green-400 border-green-500'
+                : 'bg-slate-700/30 text-gray-400 border-transparent hover:bg-slate-700/50 hover:text-gray-300'
+            }`}
+          >
+            <div className="text-lg">Z-Test</div>
+            <div className="text-xs mt-1 opacity-75">Known population variance</div>
+          </button>
+        </div>
+      </div>
+
+      {/* Content Form */}
+      <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Test Type Selection */}
-          <div>
-            <label className="block text-gray-200 font-medium mb-2">Test Type</label>
-            <select
-              value={testType}
-              onChange={(e) => setTestType(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="t-test">t-Test</option>
-              <option value="f-test">F-Test (Variance Equality)</option>
-              <option value="z-test">Z-Test (Known Population Variance)</option>
-            </select>
-          </div>
 
           {/* Sample 1 */}
           <div>
@@ -248,11 +295,11 @@ const HypothesisTesting = () => {
           </div>
 
           {/* Sample 2 */}
-          {(testType === 't-test' || testType === 'f-test') && testType !== 'z-test' && (
+          {(activeTab === 't-test' || activeTab === 'f-test') && activeTab !== 'z-test' && (
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-gray-200 font-medium">
-                  Sample 2 {testType === 'f-test' ? '(required)' : '(optional for one-sample t-test)'}
+                  Sample 2 {activeTab === 'f-test' ? '(required)' : '(optional for one-sample t-test)'}
                 </label>
                 <button
                   type="button"
@@ -285,7 +332,7 @@ const HypothesisTesting = () => {
           )}
 
           {/* z-test specific options */}
-          {testType === 'z-test' && (
+          {activeTab === 'z-test' && (
             <>
               <div>
                 <label className="block text-gray-200 font-medium mb-2">
@@ -332,7 +379,7 @@ const HypothesisTesting = () => {
           )}
 
           {/* t-test specific options */}
-          {testType === 't-test' && (
+          {activeTab === 't-test' && (
             <>
               <div>
                 <label className="block text-gray-200 font-medium mb-2">
@@ -443,9 +490,9 @@ const HypothesisTesting = () => {
           {/* Tab Navigation */}
           <div className="flex border-b border-slate-600 mb-6">
             <button
-              onClick={() => setActiveTab('results')}
+              onClick={() => setResultsTab('results')}
               className={`px-6 py-3 font-semibold transition-colors ${
-                activeTab === 'results'
+                resultsTab === 'results'
                   ? 'text-blue-400 border-b-2 border-blue-400'
                   : 'text-gray-400 hover:text-gray-300'
               }`}
@@ -454,9 +501,9 @@ const HypothesisTesting = () => {
             </button>
             {result.assumptions && (
               <button
-                onClick={() => setActiveTab('diagnostics')}
+                onClick={() => setResultsTab('diagnostics')}
                 className={`px-6 py-3 font-semibold transition-colors ${
-                  activeTab === 'diagnostics'
+                  resultsTab === 'diagnostics'
                     ? 'text-purple-400 border-b-2 border-purple-400'
                     : 'text-gray-400 hover:text-gray-300'
                 }`}
@@ -469,9 +516,9 @@ const HypothesisTesting = () => {
             )}
             {result.distribution_plot_data && (
               <button
-                onClick={() => setActiveTab('visualization')}
+                onClick={() => setResultsTab('visualization')}
                 className={`px-6 py-3 font-semibold transition-colors ${
-                  activeTab === 'visualization'
+                  resultsTab === 'visualization'
                     ? 'text-cyan-400 border-b-2 border-cyan-400'
                     : 'text-gray-400 hover:text-gray-300'
                 }`}
@@ -483,7 +530,7 @@ const HypothesisTesting = () => {
 
           {/* Tab Content */}
           <div className="space-y-6">
-            {activeTab === 'results' && (
+            {resultsTab === 'results' && (
               <>
                 <ResultCard result={result} />
                 {result.effect_size && (
@@ -495,14 +542,14 @@ const HypothesisTesting = () => {
               </>
             )}
 
-            {activeTab === 'diagnostics' && result.assumptions && (
+            {resultsTab === 'diagnostics' && result.assumptions && (
               <AssumptionsPanel
                 assumptions={result.assumptions}
                 alpha={alpha}
               />
             )}
 
-            {activeTab === 'visualization' && result.distribution_plot_data && (
+            {resultsTab === 'visualization' && result.distribution_plot_data && (
               <DistributionPlot
                 distributionData={result.distribution_plot_data}
                 pValue={result.p_value}

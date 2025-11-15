@@ -5,6 +5,11 @@ const DiagnosticPlots = ({ diagnosticPlots }) => {
 
   const { scale_location, leverage_residuals } = diagnosticPlots
 
+  // Validate that we have the required data
+  if (!scale_location || !leverage_residuals) return null
+  if (!scale_location.fitted_values || !scale_location.sqrt_abs_std_residuals) return null
+  if (!leverage_residuals.leverage || !leverage_residuals.std_residuals) return null
+
   // Helper function to normalize values to plot coordinates
   const normalizeValue = (value, min, max, height) => {
     const normalized = (value - min) / (max - min)
@@ -18,37 +23,46 @@ const DiagnosticPlots = ({ diagnosticPlots }) => {
 
     const xMin = Math.min(...xData)
     const xMax = Math.max(...xData)
+    const yMin = Math.min(...yData)
+    const yMax = Math.max(...yData)
 
-    // If there's a threshold, ensure it's included in the y-range
-    let yMin = Math.min(...yData)
-    let yMax = Math.max(...yData)
-    if (threshold !== null) {
-      yMin = Math.min(yMin, threshold)
-      yMax = Math.max(yMax, threshold)
+    // Add padding to x-range
+    const xRange = xMax - xMin || 1
+    const xPadding = xRange * 0.1
+
+    // Scale functions
+    const xScale = (val) => {
+      return padding + ((val - (xMin - xPadding)) / (xRange + 2 * xPadding)) * (plotWidth - 2 * padding)
     }
 
-    // Add 10% padding to the ranges
-    const xRange = xMax - xMin
-    const yRange = yMax - yMin
-    const xPadding = xRange * 0.1
-    const yPadding = yRange * 0.1
+    let yScale
+    let y0Position = null
 
-    // Adjust min/max with padding
-    const xMinPadded = xMin - xPadding
-    const xMaxPadded = xMax + xPadding
-    const yMinPadded = yMin - yPadding
-    const yMaxPadded = yMax + yPadding
+    if (threshold !== null) {
+      // For residuals plots, center at threshold with symmetric scale
+      const maxAbsResidual = Math.max(Math.abs(yMax - threshold), Math.abs(yMin - threshold)) || 1
+      yScale = (val) => {
+        const plotCenter = padding + (plotHeight - 2 * padding) / 2
+        return plotCenter - ((val - threshold) / (maxAbsResidual * 1.1)) * ((plotHeight - 2 * padding) / 2)
+      }
+      y0Position = yScale(threshold)
+    } else {
+      // For non-residuals plots, use standard min-max scaling
+      const yRange = yMax - yMin || 1
+      const yPadding = yRange * 0.1
+      yScale = (val) => {
+        return plotHeight - padding - ((val - (yMin - yPadding)) / (yRange + 2 * yPadding)) * (plotHeight - 2 * padding)
+      }
+    }
 
     const points = xData.map((x, i) => {
-      const xPos = padding + ((x - xMinPadded) / (xMaxPadded - xMinPadded)) * (plotWidth - 2 * padding)
-      const yPos = plotHeight - padding - ((yData[i] - yMinPadded) / (yMaxPadded - yMinPadded)) * (plotHeight - 2 * padding)
-      return { x: xPos, y: yPos, originalX: x, originalY: yData[i] }
+      return {
+        x: xScale(x),
+        y: yScale(yData[i]),
+        originalX: x,
+        originalY: yData[i]
+      }
     })
-
-    // Calculate where y=0 is positioned in the plot (for threshold line)
-    const y0Position = threshold !== null
-      ? plotHeight - padding - ((threshold - yMinPadded) / (yMaxPadded - yMinPadded)) * (plotHeight - 2 * padding)
-      : null
 
     return (
       <div className="relative bg-slate-900/50 rounded-lg p-4">
