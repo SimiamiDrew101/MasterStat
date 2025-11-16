@@ -4,7 +4,11 @@ import ResultCard from '../components/ResultCard'
 import EfficiencyMetric from '../components/EfficiencyMetric'
 import BlockDiagnostics from '../components/BlockDiagnostics'
 import BlockStructureVisualization from '../components/BlockStructureVisualization'
-import { Grid, Plus, Trash2, Shuffle } from 'lucide-react'
+import AncovaResults from '../components/AncovaResults'
+import MissingDataPanel from '../components/MissingDataPanel'
+import CrossoverResults from '../components/CrossoverResults'
+import IncompleteBlockResults from '../components/IncompleteBlockResults'
+import { Grid, Plus, Trash2, Shuffle, Activity, Grid3x3 } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -13,10 +17,18 @@ const BlockDesigns = () => {
   const [nTreatments, setNTreatments] = useState(4)
   const [nBlocks, setNBlocks] = useState(3)
   const [squareSize, setSquareSize] = useState(4)
+  const [nSubjects, setNSubjects] = useState(10)
+  const [crossoverType, setCrossoverType] = useState('2x2')
+  const [incompleteType, setIncompleteType] = useState('bib')
+  const [blockSize, setBlockSize] = useState(2)
+  const [nRows, setNRows] = useState(3)
+  const [nColumns, setNColumns] = useState(3)
   const [responseName, setResponseName] = useState('Response')
   const [alpha, setAlpha] = useState(0.05)
   const [randomize, setRandomize] = useState(true)
   const [randomBlocks, setRandomBlocks] = useState(false)
+  const [covariateColumn, setCovariateColumn] = useState('')
+  const [imputationMethod, setImputationMethod] = useState('none')
   const [tableData, setTableData] = useState([])
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -52,6 +64,26 @@ const BlockDesigns = () => {
         response = await axios.post(`${API_URL}/api/block-designs/generate/graeco-latin`, {
           size: squareSize
         })
+      } else if (designType === 'crossover') {
+        const nTreatmentsForCrossover = crossoverType === '2x2' ? 2 : crossoverType === 'williams3' ? 3 : 4
+        response = await axios.post(`${API_URL}/api/block-designs/crossover/generate`, {
+          n_subjects: nSubjects,
+          n_treatments: nTreatmentsForCrossover,
+          design_type: crossoverType === '2x2' ? '2x2' : 'williams'
+        })
+      } else if (designType === 'incomplete') {
+        if (incompleteType === 'bib') {
+          response = await axios.post(`${API_URL}/api/block-designs/incomplete/generate/bib`, {
+            n_treatments: nTreatments,
+            block_size: blockSize
+          })
+        } else {
+          response = await axios.post(`${API_URL}/api/block-designs/incomplete/generate/youden`, {
+            n_treatments: nTreatments,
+            n_rows: nRows,
+            n_columns: nColumns
+          })
+        }
       }
 
       setGeneratedDesign(response.data)
@@ -59,13 +91,26 @@ const BlockDesigns = () => {
       // Convert design to table data and populate with random responses
       const design = response.data.design_table
       const tableRows = design.map(row => {
-        const response = (Math.round(randomNormal(100, 15) * 10) / 10).toFixed(1)
+        const responseValue = (Math.round(randomNormal(100, 15) * 10) / 10).toFixed(1)
         if (designType === 'rcbd') {
-          return [row.run_order, row.block, row.treatment, response]
+          // Add covariate column if specified
+          if (covariateColumn && covariateColumn.trim()) {
+            const covariateValue = (Math.round(randomNormal(50, 10) * 10) / 10).toFixed(1)
+            return [row.run_order, row.block, row.treatment, covariateValue, responseValue]
+          }
+          return [row.run_order, row.block, row.treatment, responseValue]
         } else if (designType === 'latin') {
-          return [row.row, row.column, row.treatment, response]
+          return [row.row, row.column, row.treatment, responseValue]
+        } else if (designType === 'crossover') {
+          return [row.subject, row.sequence, row.period, row.treatment, responseValue]
+        } else if (designType === 'incomplete') {
+          if (incompleteType === 'bib') {
+            return [row.block, row.treatment, responseValue]
+          } else {
+            return [row.row, row.column, row.treatment, responseValue]
+          }
         } else {
-          return [row.row, row.column, row.latin_treatment, row.greek_treatment, response]
+          return [row.row, row.column, row.latin_treatment, row.greek_treatment, responseValue]
         }
       })
 
@@ -81,10 +126,12 @@ const BlockDesigns = () => {
   // Auto-generate design on mount or when parameters change
   useEffect(() => {
     if (designType && ((designType === 'rcbd' && nTreatments >= 2 && nBlocks >= 2) ||
-        ((designType === 'latin' || designType === 'graeco') && squareSize >= 3))) {
+        ((designType === 'latin' || designType === 'graeco') && squareSize >= 3) ||
+        (designType === 'crossover' && nSubjects >= 4) ||
+        (designType === 'incomplete' && nTreatments >= 3))) {
       handleGenerateDesign()
     }
-  }, [designType, nTreatments, nBlocks, squareSize, randomize])
+  }, [designType, nTreatments, nBlocks, squareSize, randomize, covariateColumn, nSubjects, crossoverType, incompleteType, blockSize, nRows, nColumns])
 
   const handleCellChange = (rowIndex, colIndex, value) => {
     const newData = [...tableData]
@@ -172,13 +219,26 @@ const BlockDesigns = () => {
       let payload, endpoint
 
       if (designType === 'rcbd') {
+        const hasCov = covariateColumn && covariateColumn.trim()
         const data = tableData
-          .map((row, idx) => ({
-            run_order: parseInt(row[0]) || idx + 1,
-            block: String(row[1] || '').trim(),
-            treatment: String(row[2] || '').trim(),
-            [responseName]: parseFloat(row[3])
-          }))
+          .map((row, idx) => {
+            const baseRow = {
+              run_order: parseInt(row[0]) || idx + 1,
+              block: String(row[1] || '').trim(),
+              treatment: String(row[2] || '').trim(),
+            }
+
+            if (hasCov) {
+              // With covariate: [run, block, treatment, covariate, response]
+              baseRow[covariateColumn] = parseFloat(row[3])
+              baseRow[responseName] = parseFloat(row[4])
+            } else {
+              // Without covariate: [run, block, treatment, response]
+              baseRow[responseName] = parseFloat(row[3])
+            }
+
+            return baseRow
+          })
           .filter(row => {
             // Filter out rows with missing or invalid data
             const isValid = row.block && row.treatment && !isNaN(row[responseName])
@@ -195,8 +255,15 @@ const BlockDesigns = () => {
           block: 'block',
           response: responseName,
           alpha: alpha,
-          random_blocks: randomBlocks
+          random_blocks: randomBlocks,
+          imputation_method: imputationMethod
         }
+
+        // Add covariate to payload if specified
+        if (hasCov) {
+          payload.covariate = covariateColumn
+        }
+
         endpoint = `${API_URL}/api/block-designs/rcbd`
 
       } else if (designType === 'latin') {
@@ -257,6 +324,75 @@ const BlockDesigns = () => {
           alpha: alpha
         }
         endpoint = `${API_URL}/api/block-designs/graeco-latin`
+
+      } else if (designType === 'crossover') {
+        const data = tableData
+          .map((row) => ({
+            subject: String(row[0] || '').trim(),
+            sequence: String(row[1] || '').trim(),
+            period: String(row[2] || '').trim(),
+            treatment: String(row[3] || '').trim(),
+            [responseName]: parseFloat(row[4])
+          }))
+          .filter(row => {
+            const isValid = row.subject && row.sequence && row.period &&
+                           row.treatment && !isNaN(row[responseName])
+            return isValid
+          })
+
+        if (data.length < 2) {
+          throw new Error('Please provide at least 2 complete rows of data with valid response values')
+        }
+
+        payload = {
+          data: data,
+          subject: 'subject',
+          period: 'period',
+          treatment: 'treatment',
+          sequence: 'sequence',
+          response: responseName,
+          alpha: alpha
+        }
+        endpoint = `${API_URL}/api/block-designs/crossover/analyze`
+
+      } else if (designType === 'incomplete') {
+        const data = tableData
+          .map((row) => {
+            if (incompleteType === 'bib') {
+              return {
+                block: String(row[0] || '').trim(),
+                treatment: String(row[1] || '').trim(),
+                [responseName]: parseFloat(row[2])
+              }
+            } else {
+              return {
+                row: String(row[0] || '').trim(),
+                column: String(row[1] || '').trim(),
+                treatment: String(row[2] || '').trim(),
+                [responseName]: parseFloat(row[3])
+              }
+            }
+          })
+          .filter(row => {
+            if (incompleteType === 'bib') {
+              return row.block && row.treatment && !isNaN(row[responseName])
+            } else {
+              return row.row && row.column && row.treatment && !isNaN(row[responseName])
+            }
+          })
+
+        if (data.length < 2) {
+          throw new Error('Please provide at least 2 complete rows of data with valid response values')
+        }
+
+        payload = {
+          data: data,
+          treatment: 'treatment',
+          block: incompleteType === 'bib' ? 'block' : 'row',
+          response: responseName,
+          alpha: alpha
+        }
+        endpoint = `${API_URL}/api/block-designs/incomplete/analyze`
       }
 
       const response = await axios.post(endpoint, payload)
@@ -271,9 +407,20 @@ const BlockDesigns = () => {
   // Get column headers based on design type
   const getHeaders = () => {
     if (designType === 'rcbd') {
+      if (covariateColumn && covariateColumn.trim()) {
+        return ['Run', 'Block', 'Treatment', covariateColumn, responseName]
+      }
       return ['Run', 'Block', 'Treatment', responseName]
     } else if (designType === 'latin') {
       return ['Row', 'Column', 'Treatment', responseName]
+    } else if (designType === 'crossover') {
+      return ['Subject', 'Sequence', 'Period', 'Treatment', responseName]
+    } else if (designType === 'incomplete') {
+      if (incompleteType === 'bib') {
+        return ['Block', 'Treatment', responseName]
+      } else {
+        return ['Row', 'Column', 'Treatment', responseName]
+      }
     } else {
       return ['Row', 'Column', 'Latin', 'Greek', responseName]
     }
@@ -294,12 +441,14 @@ const BlockDesigns = () => {
 
       {/* Tab Navigation */}
       <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl border border-slate-700/50 overflow-hidden">
-        <div className="grid grid-cols-1 md:grid-cols-3">
+        <div className="grid grid-cols-1 md:grid-cols-5">
           <button
             onClick={() => {
               setDesignType('rcbd')
               setResult(null)
               setError(null)
+              setGeneratedDesign(null)
+              setTableData([])
             }}
             className={`px-6 py-4 font-semibold text-center transition-all border-b-4 ${
               designType === 'rcbd'
@@ -315,6 +464,8 @@ const BlockDesigns = () => {
               setDesignType('latin')
               setResult(null)
               setError(null)
+              setGeneratedDesign(null)
+              setTableData([])
             }}
             className={`px-6 py-4 font-semibold text-center transition-all border-b-4 ${
               designType === 'latin'
@@ -330,6 +481,8 @@ const BlockDesigns = () => {
               setDesignType('graeco')
               setResult(null)
               setError(null)
+              setGeneratedDesign(null)
+              setTableData([])
             }}
             className={`px-6 py-4 font-semibold text-center transition-all border-b-4 ${
               designType === 'graeco'
@@ -340,6 +493,40 @@ const BlockDesigns = () => {
             <div className="text-lg">Graeco-Latin</div>
             <div className="text-xs mt-1 opacity-75">2 Treatments + 2 Blocks</div>
           </button>
+          <button
+            onClick={() => {
+              setDesignType('crossover')
+              setResult(null)
+              setError(null)
+              setGeneratedDesign(null)
+              setTableData([])
+            }}
+            className={`px-6 py-4 font-semibold text-center transition-all border-b-4 ${
+              designType === 'crossover'
+                ? 'bg-orange-500/20 text-orange-400 border-orange-500'
+                : 'text-gray-400 hover:text-gray-300 hover:bg-slate-700/30 border-transparent'
+            }`}
+          >
+            <div className="text-lg">Crossover</div>
+            <div className="text-xs mt-1 opacity-75">Repeated Measures</div>
+          </button>
+          <button
+            onClick={() => {
+              setDesignType('incomplete')
+              setResult(null)
+              setError(null)
+              setGeneratedDesign(null)
+              setTableData([])
+            }}
+            className={`px-6 py-4 font-semibold text-center transition-all border-b-4 ${
+              designType === 'incomplete'
+                ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500'
+                : 'text-gray-400 hover:text-gray-300 hover:bg-slate-700/30 border-transparent'
+            }`}
+          >
+            <div className="text-lg">Incomplete</div>
+            <div className="text-xs mt-1 opacity-75">BIB / Youden</div>
+          </button>
         </div>
       </div>
 
@@ -349,32 +536,233 @@ const BlockDesigns = () => {
 
           {/* Design Parameters */}
           {designType === 'rcbd' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-gray-100 font-medium mb-2">
-                  Number of Treatments
-                </label>
-                <input
-                  type="number"
-                  min="2"
-                  max="20"
-                  value={nTreatments}
-                  onChange={(e) => setNTreatments(parseInt(e.target.value) || 2)}
-                  className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-pink-500"
-                />
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-100 font-medium mb-2">
+                    Number of Treatments
+                  </label>
+                  <input
+                    type="number"
+                    min="2"
+                    max="20"
+                    value={nTreatments}
+                    onChange={(e) => setNTreatments(parseInt(e.target.value) || 2)}
+                    className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-100 font-medium mb-2">
+                    Number of Blocks
+                  </label>
+                  <input
+                    type="number"
+                    min="2"
+                    max="20"
+                    value={nBlocks}
+                    onChange={(e) => setNBlocks(parseInt(e.target.value) || 2)}
+                    className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                  />
+                </div>
               </div>
+
+              {/* ANCOVA Covariate Selection */}
+              <div className="bg-cyan-900/20 rounded-lg p-4 border border-cyan-700/30">
+                <div className="mb-3">
+                  <label className="block text-gray-100 font-medium mb-2">
+                    ANCOVA: Covariate Name (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={covariateColumn}
+                    onChange={(e) => setCovariateColumn(e.target.value)}
+                    placeholder="e.g., Baseline, InitialWeight, PreTest"
+                    className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                </div>
+                <p className="text-cyan-200 text-xs">
+                  <strong>ANCOVA (Analysis of Covariance):</strong> Provide a covariate column name to adjust treatment means for a continuous variable (e.g., baseline measurements, pre-test scores). This increases precision by removing covariate variability. The covariate column will be added to your data table.
+                </p>
+              </div>
+
+              {/* Missing Data Imputation */}
+              <div className="bg-orange-900/20 rounded-lg p-4 border border-orange-700/30">
+                <div className="mb-3">
+                  <label className="block text-gray-100 font-medium mb-2">
+                    Missing Data Imputation Method
+                  </label>
+                  <select
+                    value={imputationMethod}
+                    onChange={(e) => setImputationMethod(e.target.value)}
+                    className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="none">None (Complete Cases Only)</option>
+                    <option value="mean">Mean Imputation (Block-Specific)</option>
+                    <option value="em">EM Algorithm (Advanced)</option>
+                  </select>
+                </div>
+                <p className="text-orange-200 text-xs">
+                  <strong>Missing Data Handling:</strong> Select an imputation method to handle missing response values.
+                  Mean imputation uses block-specific means (simple, fast). EM algorithm uses treatment and block information
+                  to predict missing values (more sophisticated). Leave empty cells or enter "NA" for missing data in the table.
+                </p>
+              </div>
+            </div>
+          ) : designType === 'crossover' ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-100 font-medium mb-2">
+                    Number of Subjects
+                  </label>
+                  <input
+                    type="number"
+                    min="4"
+                    max="100"
+                    value={nSubjects}
+                    onChange={(e) => setNSubjects(parseInt(e.target.value) || 10)}
+                    className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-100 font-medium mb-2">
+                    Crossover Design Type
+                  </label>
+                  <select
+                    value={crossoverType}
+                    onChange={(e) => setCrossoverType(e.target.value)}
+                    className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="2x2">2×2 Crossover (AB/BA)</option>
+                    <option value="williams3">Williams 3-Treatment</option>
+                    <option value="williams4">Williams 4-Treatment</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="bg-orange-900/20 rounded-lg p-4 border border-orange-700/30">
+                <h4 className="text-gray-100 font-semibold mb-2">About Crossover Designs</h4>
+                <p className="text-orange-200 text-xs">
+                  <strong>Crossover designs:</strong> Each subject receives multiple treatments in sequence across different time periods.
+                  Subjects serve as their own controls, increasing precision. The design tests for carryover effects
+                  (residual effects from previous treatments) and period effects (time-dependent changes).
+                </p>
+              </div>
+            </div>
+          ) : designType === 'incomplete' ? (
+            <div className="space-y-4">
               <div>
                 <label className="block text-gray-100 font-medium mb-2">
-                  Number of Blocks
+                  Incomplete Design Type
                 </label>
-                <input
-                  type="number"
-                  min="2"
-                  max="20"
-                  value={nBlocks}
-                  onChange={(e) => setNBlocks(parseInt(e.target.value) || 2)}
-                  className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-pink-500"
-                />
+                <select
+                  value={incompleteType}
+                  onChange={(e) => setIncompleteType(e.target.value)}
+                  className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="bib">Balanced Incomplete Block (BIB)</option>
+                  <option value="youden">Youden Square</option>
+                </select>
+              </div>
+
+              {incompleteType === 'bib' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-gray-100 font-medium mb-2">
+                      Number of Treatments
+                    </label>
+                    <input
+                      type="number"
+                      min="3"
+                      max="15"
+                      value={nTreatments}
+                      onChange={(e) => setNTreatments(parseInt(e.target.value) || 4)}
+                      className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-100 font-medium mb-2">
+                      Block Size (k)
+                    </label>
+                    <input
+                      type="number"
+                      min="2"
+                      max={nTreatments - 1}
+                      value={blockSize}
+                      onChange={(e) => setBlockSize(parseInt(e.target.value) || 2)}
+                      className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <p className="text-gray-400 text-xs mt-1">
+                      Block size must be less than number of treatments
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-gray-100 font-medium mb-2">
+                      Number of Treatments
+                    </label>
+                    <input
+                      type="number"
+                      min="4"
+                      max="12"
+                      value={nTreatments}
+                      onChange={(e) => setNTreatments(parseInt(e.target.value) || 5)}
+                      className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-100 font-medium mb-2">
+                      Number of Rows
+                    </label>
+                    <input
+                      type="number"
+                      min="2"
+                      max={nTreatments}
+                      value={nRows}
+                      onChange={(e) => setNRows(parseInt(e.target.value) || 3)}
+                      className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-100 font-medium mb-2">
+                      Number of Columns
+                    </label>
+                    <input
+                      type="number"
+                      min="2"
+                      max={nTreatments - 1}
+                      value={nColumns}
+                      onChange={(e) => setNColumns(parseInt(e.target.value) || 3)}
+                      className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <p className="text-gray-400 text-xs mt-1">
+                      Columns &lt; treatments for incomplete design
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-indigo-900/20 rounded-lg p-4 border border-indigo-700/30">
+                <h4 className="text-gray-100 font-semibold mb-2">
+                  About {incompleteType === 'bib' ? 'BIB Designs' : 'Youden Squares'}
+                </h4>
+                <p className="text-indigo-200 text-xs">
+                  {incompleteType === 'bib' ? (
+                    <>
+                      <strong>Balanced Incomplete Block (BIB):</strong> Not all treatments appear in every block.
+                      Each treatment appears the same number of times (r), and every pair of treatments occurs together
+                      in the same number of blocks (λ). Useful when block size must be smaller than the number of treatments.
+                    </>
+                  ) : (
+                    <>
+                      <strong>Youden Square:</strong> An incomplete Latin square where rows are incomplete blocks.
+                      Each treatment appears once per column, but not all treatments appear in each row.
+                      Controls for two blocking factors with fewer runs than a full Latin square.
+                    </>
+                  )}
+                </p>
               </div>
             </div>
           ) : (
@@ -594,6 +982,12 @@ const BlockDesigns = () => {
                   ? `RCBD with ${nTreatments} treatments × ${nBlocks} blocks = ${nTreatments * nBlocks} runs. Data auto-generated with random responses.`
                   : designType === 'latin'
                   ? `Latin Square ${squareSize}×${squareSize} = ${squareSize * squareSize} runs. Each treatment appears once per row and column.`
+                  : designType === 'crossover'
+                  ? `Crossover design: ${nSubjects} subjects, each receiving multiple treatments in sequence across time periods. Data auto-generated with random responses.`
+                  : designType === 'incomplete'
+                  ? incompleteType === 'bib'
+                    ? `Balanced Incomplete Block (BIB): ${nTreatments} treatments, block size ${blockSize}. Not all treatments appear in each block.`
+                    : `Youden Square: ${nTreatments} treatments, ${nRows}×${nColumns} incomplete Latin square. Each treatment appears once per column.`
                   : `Graeco-Latin Square ${squareSize}×${squareSize} = ${squareSize * squareSize} runs. Two orthogonal Latin squares superimposed.`
                 }
               </p>
@@ -658,6 +1052,29 @@ const BlockDesigns = () => {
               interactionMeans={result.interaction_means}
               blockType={randomBlocks ? 'random' : 'fixed'}
             />
+          )}
+
+          {/* Missing Data Analysis */}
+          {result.missing_data && designType === 'rcbd' && (
+            <MissingDataPanel missingData={result.missing_data} />
+          )}
+
+          {/* ANCOVA Results */}
+          {result.ancova && designType === 'rcbd' && (
+            <AncovaResults
+              ancovaData={result.ancova}
+              unadjustedMeans={result.treatment_means || {}}
+            />
+          )}
+
+          {/* Crossover Results */}
+          {designType === 'crossover' && result && (
+            <CrossoverResults crossoverData={result} />
+          )}
+
+          {/* Incomplete Block Results */}
+          {designType === 'incomplete' && result && (
+            <IncompleteBlockResults incompleteData={result} />
           )}
         </div>
       )}

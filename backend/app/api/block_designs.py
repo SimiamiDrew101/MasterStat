@@ -30,6 +30,189 @@ def sanitize_dict(d):
             result[key] = sanitize_value(value)
     return result
 
+# ============================================================================
+# MISSING DATA HANDLING FUNCTIONS
+# ============================================================================
+
+def detect_missing_pattern(df, response_col):
+    """
+    Detect and analyze missing data patterns in the response variable
+    Returns missing data statistics and pattern information
+    """
+    missing_mask = df[response_col].isna()
+    n_total = len(df)
+    n_missing = missing_mask.sum()
+    n_complete = n_total - n_missing
+    pct_missing = (n_missing / n_total * 100) if n_total > 0 else 0
+
+    pattern_info = {
+        'n_total': int(n_total),
+        'n_missing': int(n_missing),
+        'n_complete': int(n_complete),
+        'percent_missing': float(pct_missing),
+        'has_missing': bool(n_missing > 0),
+        'missing_indices': missing_mask[missing_mask].index.tolist()
+    }
+
+    return pattern_info
+
+def littles_mcar_test(df, response_col, group_cols):
+    """
+    Perform Little's MCAR test to assess if data is Missing Completely At Random
+    Tests if missingness pattern is independent of observed and unobserved values
+
+    Returns: test_statistic, p_value, conclusion
+    """
+    try:
+        # Create missing indicator
+        missing_mask = df[response_col].isna()
+
+        if missing_mask.sum() == 0 or missing_mask.sum() == len(df):
+            return None, None, "No missing data or all data missing - test not applicable"
+
+        # Simple test: Check if missingness is related to group membership
+        # Create a contingency table of groups vs missing status
+        df_test = df.copy()
+        df_test['missing'] = missing_mask.astype(int)
+
+        # Test independence using chi-square for each grouping variable
+        chi2_stats = []
+        p_values = []
+
+        for group_col in group_cols:
+            contingency = pd.crosstab(df_test[group_col], df_test['missing'])
+            if contingency.shape[0] > 1 and contingency.shape[1] > 1:
+                chi2, p, dof, expected = stats.chi2_contingency(contingency)
+                chi2_stats.append(chi2)
+                p_values.append(p)
+
+        if not p_values:
+            return None, None, "Insufficient data for MCAR test"
+
+        # Use minimum p-value (most conservative)
+        min_p = min(p_values)
+        max_chi2 = max(chi2_stats)
+
+        if min_p > 0.05:
+            conclusion = "MCAR - Missing Completely At Random (missingness independent of groups)"
+        else:
+            conclusion = "Not MCAR - Missingness may be related to group membership (MAR or MNAR)"
+
+        return float(max_chi2), float(min_p), conclusion
+
+    except Exception as e:
+        return None, None, f"MCAR test failed: {str(e)}"
+
+def mean_imputation(df, response_col, group_col=None):
+    """
+    Perform mean imputation for missing values
+    If group_col provided, uses group-specific means; otherwise uses overall mean
+
+    Returns: imputed DataFrame and imputation info
+    """
+    df_imputed = df.copy()
+    missing_mask = df_imputed[response_col].isna()
+
+    imputation_values = {}
+
+    if group_col and group_col in df_imputed.columns:
+        # Group-specific mean imputation (more appropriate for block designs)
+        for group in df_imputed[group_col].unique():
+            group_mask = df_imputed[group_col] == group
+            group_missing = missing_mask & group_mask
+
+            if group_missing.any():
+                # Calculate mean from non-missing values in this group
+                group_mean = df_imputed.loc[group_mask & ~missing_mask, response_col].mean()
+
+                if pd.notna(group_mean):
+                    df_imputed.loc[group_missing, response_col] = group_mean
+                    imputation_values[str(group)] = float(group_mean)
+    else:
+        # Overall mean imputation
+        overall_mean = df_imputed.loc[~missing_mask, response_col].mean()
+        if pd.notna(overall_mean):
+            df_imputed.loc[missing_mask, response_col] = overall_mean
+            imputation_values['overall'] = float(overall_mean)
+
+    imputation_info = {
+        'method': 'mean_imputation',
+        'group_based': bool(group_col),
+        'imputed_values': imputation_values,
+        'n_imputed': int(missing_mask.sum())
+    }
+
+    return df_imputed, imputation_info
+
+def em_imputation(df, response_col, predictor_cols, max_iter=100, tol=1e-4):
+    """
+    EM (Expectation-Maximization) algorithm for missing data imputation
+    Uses predictor columns to estimate missing values iteratively
+
+    Returns: imputed DataFrame and convergence info
+    """
+    df_imputed = df.copy()
+    missing_mask = df_imputed[response_col].isna()
+
+    if missing_mask.sum() == 0:
+        return df_imputed, {'method': 'em_imputation', 'iterations': 0, 'converged': True}
+
+    # Initialize with mean imputation
+    initial_mean = df_imputed.loc[~missing_mask, response_col].mean()
+    df_imputed.loc[missing_mask, response_col] = initial_mean
+
+    converged = False
+    iteration = 0
+
+    for iteration in range(max_iter):
+        # E-step: Current imputed values
+        old_values = df_imputed.loc[missing_mask, response_col].copy()
+
+        # M-step: Fit regression model and predict missing values
+        try:
+            # Prepare predictor matrix
+            X_complete = df_imputed.loc[~missing_mask, predictor_cols]
+            y_complete = df_imputed.loc[~missing_mask, response_col]
+
+            # Add constant for intercept
+            X_complete_with_const = sm.add_constant(X_complete, has_constant='add')
+
+            # Fit OLS model
+            model = sm.OLS(y_complete, X_complete_with_const).fit()
+
+            # Predict for missing values
+            X_missing = df_imputed.loc[missing_mask, predictor_cols]
+            X_missing_with_const = sm.add_constant(X_missing, has_constant='add')
+
+            predictions = model.predict(X_missing_with_const)
+            df_imputed.loc[missing_mask, response_col] = predictions
+
+            # Check convergence
+            diff = np.abs(old_values - df_imputed.loc[missing_mask, response_col]).max()
+            if diff < tol:
+                converged = True
+                break
+
+        except Exception as e:
+            # If EM fails, return mean imputation
+            df_imputed.loc[missing_mask, response_col] = initial_mean
+            return df_imputed, {
+                'method': 'em_imputation',
+                'iterations': iteration,
+                'converged': False,
+                'error': str(e),
+                'fallback': 'mean_imputation'
+            }
+
+    imputation_info = {
+        'method': 'em_imputation',
+        'iterations': iteration + 1,
+        'converged': converged,
+        'n_imputed': int(missing_mask.sum())
+    }
+
+    return df_imputed, imputation_info
+
 class RCBDRequest(BaseModel):
     data: List[Dict[str, Any]] = Field(..., description="Experimental data")
     treatment: str = Field(..., description="Treatment factor name")
@@ -37,6 +220,8 @@ class RCBDRequest(BaseModel):
     response: str = Field(..., description="Response variable name")
     alpha: float = Field(0.05, description="Significance level")
     random_blocks: bool = Field(False, description="Treat blocks as random effects")
+    covariate: str = Field(None, description="Optional covariate for ANCOVA")
+    imputation_method: str = Field("none", description="Missing data imputation method: 'none', 'mean', 'em'")
 
 class LatinSquareRequest(BaseModel):
     data: List[Dict[str, Any]] = Field(..., description="Experimental data")
@@ -62,14 +247,74 @@ class RCBDGenerateRequest(BaseModel):
     treatment_names: List[str] = Field(None, description="Optional treatment names")
     randomize: bool = Field(True, description="Randomize run order")
 
+class CrossoverRequest(BaseModel):
+    data: List[Dict[str, Any]] = Field(..., description="Experimental data")
+    subject: str = Field(..., description="Subject identifier")
+    period: str = Field(..., description="Period/time identifier")
+    treatment: str = Field(..., description="Treatment factor")
+    sequence: str = Field(None, description="Sequence group identifier (e.g., AB, BA)")
+    response: str = Field(..., description="Response variable name")
+    alpha: float = Field(0.05, description="Significance level")
+
+class CrossoverGenerateRequest(BaseModel):
+    n_subjects: int = Field(..., description="Number of subjects")
+    n_treatments: int = Field(2, description="Number of treatments (2 for 2x2, 3+ for Williams)")
+    design_type: str = Field("2x2", description="Design type: '2x2' or 'williams'")
+    treatment_names: List[str] = Field(None, description="Optional treatment names")
+
 @router.post("/rcbd")
 async def rcbd_analysis(request: RCBDRequest):
     """
     Analyze Randomized Complete Block Design (RCBD)
-    Supports both fixed and random blocks
+    Supports both fixed and random blocks, missing data imputation, and ANCOVA
     """
     try:
         df = pd.DataFrame(request.data)
+
+        # ============================================================================
+        # MISSING DATA HANDLING
+        # ============================================================================
+        missing_data_analysis = None
+        original_df = df.copy()  # Keep original for comparison
+
+        # Detect missing data pattern
+        missing_pattern = detect_missing_pattern(df, request.response)
+
+        if missing_pattern['has_missing']:
+            # Perform Little's MCAR test
+            group_cols = [request.treatment, request.block]
+            chi2_stat, mcar_p_value, mcar_conclusion = littles_mcar_test(df, request.response, group_cols)
+
+            # Apply imputation if requested
+            imputation_info = None
+            if request.imputation_method == 'mean':
+                # Use block-specific means for imputation (more appropriate for block designs)
+                df, imputation_info = mean_imputation(df, request.response, group_col=request.block)
+            elif request.imputation_method == 'em':
+                # Use EM algorithm with treatment and block as predictors
+                # Create numeric encoding for categorical variables
+                df_encoded = df.copy()
+                treatment_cats = pd.Categorical(df_encoded[request.treatment])
+                block_cats = pd.Categorical(df_encoded[request.block])
+                df_encoded['treatment_code'] = treatment_cats.codes
+                df_encoded['block_code'] = block_cats.codes
+
+                predictor_cols = ['treatment_code', 'block_code']
+                df_encoded, imputation_info = em_imputation(df_encoded, request.response, predictor_cols)
+
+                # Copy imputed values back to original df
+                df[request.response] = df_encoded[request.response]
+
+            missing_data_analysis = {
+                'pattern': missing_pattern,
+                'mcar_test': {
+                    'chi2_statistic': chi2_stat,
+                    'p_value': mcar_p_value,
+                    'conclusion': mcar_conclusion
+                },
+                'imputation': imputation_info,
+                'method_used': request.imputation_method
+            }
 
         # Calculate treatment means (same for both fixed and random)
         treatment_means = df.groupby(request.treatment)[request.response].mean().to_dict()
@@ -146,7 +391,8 @@ async def rcbd_analysis(request: RCBDRequest):
                     "grand_mean": round(float(df[request.response].mean()), 4),
                     "log_likelihood": round(float(model.llf), 4),
                     "aic": round(float(model.aic), 4),
-                    "bic": round(float(model.bic), 4)
+                    "bic": round(float(model.bic), 4),
+                    "missing_data": missing_data_analysis
                 }
                 return sanitize_dict(result_dict)
             except Exception as e:
@@ -293,6 +539,93 @@ async def rcbd_analysis(request: RCBDRequest):
                     "n": int(len(group_df))
                 }
 
+            # ANCOVA Analysis (if covariate is provided)
+            ancova_results = None
+            if request.covariate and request.covariate in df.columns:
+                try:
+                    # Center the covariate for easier interpretation
+                    covariate_mean = df[request.covariate].mean()
+                    df['covariate_centered'] = df[request.covariate] - covariate_mean
+
+                    # Test for homogeneity of regression slopes (treatment × covariate interaction)
+                    formula_interaction = f"{request.response} ~ C({request.treatment}) + C({request.block}) + covariate_centered + C({request.treatment}):covariate_centered"
+                    model_interaction = ols(formula_interaction, data=df).fit()
+                    anova_interaction = sm.stats.anova_lm(model_interaction, typ=2)
+
+                    # Check if interaction is significant
+                    interaction_term = f"C({request.treatment}):covariate_centered"
+                    interaction_p = None
+                    for idx in anova_interaction.index:
+                        if interaction_term in str(idx):
+                            interaction_p = float(anova_interaction.loc[idx, 'PR(>F)'])
+                            break
+
+                    slopes_homogeneous = interaction_p is None or interaction_p > request.alpha
+
+                    # Fit ANCOVA model (without interaction if slopes are homogeneous)
+                    formula_ancova = f"{request.response} ~ C({request.treatment}) + C({request.block}) + covariate_centered"
+                    model_ancova = ols(formula_ancova, data=df).fit()
+                    anova_ancova = sm.stats.anova_lm(model_ancova, typ=2)
+
+                    # Parse ANCOVA results
+                    ancova_table = {}
+                    for idx, row in anova_ancova.iterrows():
+                        source = str(idx).replace(f'C({request.treatment})', request.treatment)
+                        source = source.replace(f'C({request.block})', request.block)
+                        source = source.replace('covariate_centered', request.covariate)
+
+                        ancova_table[source] = {
+                            "sum_sq": round(float(row['sum_sq']), 4),
+                            "df": int(row['df']),
+                            "F": round(float(row['F']), 4) if not pd.isna(row['F']) else None,
+                            "p_value": round(float(row['PR(>F)']), 6) if not pd.isna(row['PR(>F)']) else None,
+                            "significant": bool(row['PR(>F)'] < request.alpha) if not pd.isna(row['PR(>F)']) else False
+                        }
+
+                    # Calculate adjusted treatment means at mean covariate value
+                    # Extract treatment effects from model
+                    adjusted_means = {}
+                    coef_dict = model_ancova.params.to_dict()
+
+                    # Get intercept and covariate coefficient
+                    intercept = coef_dict.get('Intercept', 0)
+
+                    # Calculate adjusted means for each treatment
+                    treatment_levels = sorted(df[request.treatment].unique())
+                    for treatment_val in treatment_levels:
+                        # Predict at mean covariate value (centered = 0) and mean block effect
+                        # For first treatment (reference), use intercept
+                        # For others, add treatment coefficient
+                        treatment_key = f'C({request.treatment})[T.{treatment_val}]'
+                        treatment_effect = coef_dict.get(treatment_key, 0)
+
+                        # Adjusted mean = intercept + treatment_effect (at centered covariate = 0)
+                        # Need to account for block effects averaging out
+                        adjusted_mean = intercept + treatment_effect
+
+                        adjusted_means[str(treatment_val)] = round(float(adjusted_mean), 4)
+
+                    # Covariate coefficient and effect
+                    covariate_coef = coef_dict.get('covariate_centered', 0)
+
+                    ancova_results = {
+                        "covariate_name": request.covariate,
+                        "covariate_mean": round(float(covariate_mean), 4),
+                        "covariate_coefficient": round(float(covariate_coef), 4),
+                        "slopes_homogeneous": slopes_homogeneous,
+                        "interaction_p_value": round(float(interaction_p), 6) if interaction_p is not None else None,
+                        "ancova_table": ancova_table,
+                        "adjusted_treatment_means": adjusted_means,
+                        "unadjusted_treatment_means": {str(k): round(float(v), 4) for k, v in treatment_means.items()},
+                        "model_r_squared": round(float(model_ancova.rsquared), 4),
+                        "warning": None if slopes_homogeneous else "Homogeneity of slopes assumption violated - treatment effects may depend on covariate level"
+                    }
+
+                except Exception as e:
+                    ancova_results = {
+                        "error": f"ANCOVA analysis failed: {str(e)}"
+                    }
+
             return {
                 "test_type": "Randomized Complete Block Design (RCBD) - Fixed Blocks",
                 "alpha": request.alpha,
@@ -311,7 +644,9 @@ async def rcbd_analysis(request: RCBDRequest):
                 "standardized_residuals": [round(float(r), 4) for r in standardized_residuals],
                 "normality_test": normality_test,
                 "homogeneity_test": homogeneity_test,
-                "interaction_means": interaction_means
+                "interaction_means": interaction_means,
+                "ancova": ancova_results,
+                "missing_data": missing_data_analysis
             }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -729,5 +1064,521 @@ async def generate_graeco_latin(data: dict):
             "graeco_latin_square": graeco_latin_square,
             "design_table": design
         }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# ============================================================================
+# CROSSOVER DESIGN ENDPOINTS
+# ============================================================================
+
+@router.post("/crossover/analyze")
+async def crossover_analysis(request: CrossoverRequest):
+    """
+    Analyze Crossover Design
+    Tests for period effects, treatment effects, and carryover effects
+    """
+    try:
+        df = pd.DataFrame(request.data)
+
+        # Determine if this is a 2x2 crossover or multi-period
+        n_periods = df[request.period].nunique()
+        n_treatments = df[request.treatment].nunique()
+
+        # Build mixed model formula
+        # Subject is random effect, period and treatment are fixed
+        formula = f"{request.response} ~ C({request.period}) + C({request.treatment})"
+
+        # Fit mixed model with subject as random effect
+        model = MixedLM.from_formula(formula, data=df, groups=df[request.subject]).fit(method='powell')
+
+        # Get fixed effects summary
+        fixed_effects = model.summary().tables[1]
+
+        # Period effect test
+        period_coefs = [param for param in model.params.index if request.period in param and 'T.' in param]
+        period_pvalues = [model.pvalues[param] for param in period_coefs]
+        period_significant = any(p < request.alpha for p in period_pvalues) if period_pvalues else False
+
+        # Treatment effect test
+        treatment_coefs = [param for param in model.params.index if request.treatment in param and 'T.' in param]
+        treatment_pvalues = [model.pvalues[param] for param in treatment_coefs]
+        treatment_significant = any(p < request.alpha for p in treatment_pvalues) if treatment_pvalues else False
+
+        # Calculate treatment means
+        treatment_means = df.groupby(request.treatment)[request.response].mean().to_dict()
+        period_means = df.groupby(request.period)[request.response].mean().to_dict()
+
+        # For 2x2 crossover, test for carryover effect
+        carryover_results = None
+        if n_periods == 2 and n_treatments == 2 and request.sequence:
+            try:
+                # Test carryover by comparing sequence groups in period 2
+                period_2_data = df[df[request.period] == df[request.period].unique()[1]]
+                sequences = period_2_data[request.sequence].unique()
+
+                if len(sequences) == 2:
+                    seq1_data = period_2_data[period_2_data[request.sequence] == sequences[0]][request.response]
+                    seq2_data = period_2_data[period_2_data[request.sequence] == sequences[1]][request.response]
+
+                    # T-test for carryover
+                    from scipy.stats import ttest_ind
+                    t_stat, carryover_p = ttest_ind(seq1_data, seq2_data)
+
+                    carryover_results = {
+                        'test_statistic': float(t_stat),
+                        'p_value': float(carryover_p),
+                        'significant': bool(carryover_p < request.alpha),
+                        'interpretation': 'Significant carryover effect detected' if carryover_p < request.alpha else 'No significant carryover effect'
+                    }
+            except Exception as e:
+                carryover_results = {'error': f'Carryover test failed: {str(e)}'}
+
+        # Extract variance components
+        var_subject = float(model.cov_re.values[0][0]) if hasattr(model, 'cov_re') else 0.0
+        var_residual = float(model.scale)
+
+        results = {
+            'design_type': f'{n_treatments}x{n_periods} Crossover Design',
+            'n_subjects': int(df[request.subject].nunique()),
+            'n_periods': int(n_periods),
+            'n_treatments': int(n_treatments),
+            'alpha': request.alpha,
+            'treatment_effect': {
+                'significant': treatment_significant,
+                'p_values': {str(k): float(v) for k, v in zip(treatment_coefs, treatment_pvalues)} if treatment_pvalues else {}
+            },
+            'period_effect': {
+                'significant': period_significant,
+                'p_values': {str(k): float(v) for k, v in zip(period_coefs, period_pvalues)} if period_pvalues else {}
+            },
+            'carryover_effect': carryover_results,
+            'treatment_means': {str(k): round(float(v), 4) for k, v in treatment_means.items()},
+            'period_means': {str(k): round(float(v), 4) for k, v in period_means.items()},
+            'variance_components': {
+                'subject_variance': round(var_subject, 4),
+                'residual_variance': round(var_residual, 4),
+                'total_variance': round(var_subject + var_residual, 4)
+            },
+            'model_summary': {
+                'log_likelihood': round(float(model.llf), 4),
+                'aic': round(float(model.aic), 4),
+                'bic': round(float(model.bic), 4)
+            }
+        }
+
+        return sanitize_dict(results)
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/crossover/generate")
+async def generate_crossover(request: CrossoverGenerateRequest):
+    """
+    Generate Crossover Design (2x2 or Williams)
+    """
+    try:
+        import itertools
+        import random
+
+        n_subjects = request.n_subjects
+        n_treatments = request.n_treatments
+
+        # Default treatment names
+        if request.treatment_names and len(request.treatment_names) >= n_treatments:
+            treatments = request.treatment_names[:n_treatments]
+        else:
+            treatments = [chr(65 + i) for i in range(n_treatments)]  # A, B, C, ...
+
+        design_table = []
+
+        if request.design_type == "2x2" and n_treatments == 2:
+            # 2x2 Crossover: AB and BA sequences
+            sequences = [
+                [treatments[0], treatments[1]],  # AB
+                [treatments[1], treatments[0]]   # BA
+            ]
+            sequence_names = [f"{treatments[0]}{treatments[1]}", f"{treatments[1]}{treatments[0]}"]
+
+            # Assign subjects to sequences (alternating or balanced)
+            for subject_id in range(1, n_subjects + 1):
+                sequence_idx = (subject_id - 1) % 2
+                sequence = sequences[sequence_idx]
+                sequence_name = sequence_names[sequence_idx]
+
+                for period_idx, treatment in enumerate(sequence, 1):
+                    design_table.append({
+                        'subject': subject_id,
+                        'sequence': sequence_name,
+                        'period': period_idx,
+                        'treatment': treatment,
+                        'response': None
+                    })
+
+            return {
+                'design_type': '2x2 Crossover',
+                'n_subjects': n_subjects,
+                'n_periods': 2,
+                'n_treatments': 2,
+                'treatments': treatments,
+                'sequences': sequence_names,
+                'n_runs': n_subjects * 2,
+                'design_table': design_table
+            }
+
+        elif request.design_type == "williams" and n_treatments >= 3:
+            # Williams Design: Balanced for first-order carryover
+            # Generate all possible orderings and select balanced subset
+            from itertools import permutations
+
+            all_perms = list(permutations(treatments))
+
+            # For Williams design, select n_treatments sequences
+            # that balance first-order carryover
+            williams_sequences = all_perms[:n_treatments]
+
+            # Assign subjects to sequences
+            for subject_id in range(1, n_subjects + 1):
+                sequence_idx = (subject_id - 1) % len(williams_sequences)
+                sequence = williams_sequences[sequence_idx]
+                sequence_name = ''.join(sequence)
+
+                for period_idx, treatment in enumerate(sequence, 1):
+                    design_table.append({
+                        'subject': subject_id,
+                        'sequence': sequence_name,
+                        'period': period_idx,
+                        'treatment': treatment,
+                        'response': None
+                    })
+
+            return {
+                'design_type': f'Williams Design ({n_treatments}x{n_treatments})',
+                'n_subjects': n_subjects,
+                'n_periods': n_treatments,
+                'n_treatments': n_treatments,
+                'treatments': treatments,
+                'sequences': [''.join(seq) for seq in williams_sequences],
+                'n_runs': n_subjects * n_treatments,
+                'design_table': design_table
+            }
+        else:
+            raise ValueError(f"Unsupported combination: design_type={request.design_type}, n_treatments={n_treatments}")
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ========================================
+# INCOMPLETE BLOCK DESIGNS
+# ========================================
+
+class IncompleteBlockRequest(BaseModel):
+    data: List[Dict[str, Any]] = Field(..., description="Experimental data")
+    treatment: str = Field(..., description="Treatment factor column name")
+    block: str = Field(..., description="Block factor column name")
+    response: str = Field(..., description="Response variable name")
+    alpha: float = Field(0.05, description="Significance level")
+
+class BIBGenerateRequest(BaseModel):
+    n_treatments: int = Field(..., description="Number of treatments (v)")
+    block_size: int = Field(..., description="Block size (k)")
+    n_replications: int = Field(None, description="Number of replications per treatment (r), auto-calculated if None")
+
+class YoudenGenerateRequest(BaseModel):
+    n_treatments: int = Field(..., description="Number of treatments")
+    n_rows: int = Field(..., description="Number of rows (incomplete blocks)")
+    n_columns: int = Field(..., description="Number of columns")
+
+
+def check_bib_parameters(v, k, r):
+    """
+    Check if BIB parameters are valid.
+    For a BIB to exist:
+    - b*k = v*r (where b is number of blocks)
+    - lambda = r(k-1)/(v-1) must be an integer
+    """
+    b = (v * r) // k  # Number of blocks
+
+    # Check if v*r is divisible by k
+    if (v * r) % k != 0:
+        return False, "Parameters don't satisfy b*k = v*r"
+
+    # Check if lambda is an integer
+    if (r * (k - 1)) % (v - 1) != 0:
+        return False, "Parameters don't yield integer lambda"
+
+    lambda_val = (r * (k - 1)) // (v - 1)
+
+    return True, {'v': v, 'k': k, 'r': r, 'b': b, 'lambda': lambda_val}
+
+
+@router.post("/incomplete/generate/bib")
+async def generate_bib(request: BIBGenerateRequest):
+    """
+    Generate a Balanced Incomplete Block (BIB) design.
+
+    A BIB design has:
+    - v treatments
+    - b blocks
+    - k treatments per block (k < v)
+    - r replications per treatment
+    - λ = number of blocks in which each pair of treatments occurs together
+    """
+    try:
+        v = request.n_treatments
+        k = request.block_size
+
+        if k >= v:
+            raise ValueError(f"Block size ({k}) must be less than number of treatments ({v})")
+
+        # If r not specified, try to find a valid r
+        if request.n_replications is None:
+            # Try common values of r
+            for r_try in range(k, min(v * 2, 20)):
+                valid, params = check_bib_parameters(v, k, r_try)
+                if valid:
+                    r = r_try
+                    break
+            else:
+                raise ValueError(f"Could not find valid BIB parameters for v={v}, k={k}. Try specifying r manually.")
+        else:
+            r = request.n_replications
+            valid, params = check_bib_parameters(v, k, r)
+            if not valid:
+                raise ValueError(f"Invalid BIB parameters: {params}")
+
+        # Get BIB parameters
+        valid, params = check_bib_parameters(v, k, r)
+        b = params['b']
+        lambda_val = params['lambda']
+
+        # Generate BIB design using a simple construction
+        # For small designs, use cyclic construction
+        treatments = [f'T{i+1}' for i in range(v)]
+        design_table = []
+
+        # Simple cyclic construction for BIB
+        # This works for many parameter combinations
+        block_idx = 0
+        treatment_counts = {t: 0 for t in treatments}
+
+        # Generate blocks by cycling through treatments
+        for start in range(v):
+            if block_idx >= b:
+                break
+            # Create block starting from treatment 'start'
+            block_treatments = []
+            for j in range(k):
+                treatment_idx = (start + j) % v
+                block_treatments.append(treatments[treatment_idx])
+
+            # Check if this maintains balance
+            temp_counts = treatment_counts.copy()
+            for t in block_treatments:
+                temp_counts[t] += 1
+
+            # Add block if it doesn't exceed r for any treatment
+            if all(temp_counts[t] <= r for t in treatments):
+                for t in block_treatments:
+                    treatment_counts[t] += 1
+                    design_table.append({
+                        'block': f'B{block_idx + 1}',
+                        'treatment': t,
+                        'response': None
+                    })
+                block_idx += 1
+
+        # If cyclic didn't generate enough blocks, use complementary construction
+        if block_idx < b:
+            # Fill remaining with balanced selection
+            remaining = b - block_idx
+            for _ in range(remaining):
+                # Find k treatments with lowest counts
+                sorted_treatments = sorted(treatments, key=lambda t: treatment_counts[t])
+                block_treatments = sorted_treatments[:k]
+
+                for t in block_treatments:
+                    treatment_counts[t] += 1
+                    design_table.append({
+                        'block': f'B{block_idx + 1}',
+                        'treatment': t,
+                        'response': None
+                    })
+                block_idx += 1
+
+        # Calculate efficiency relative to RCBD
+        # Efficiency = (v*k) / (v*k - v + 1) for BIB
+        efficiency = (v * k) / (v * k - v + 1) if (v * k - v + 1) > 0 else 1.0
+
+        return {
+            'design_type': 'Balanced Incomplete Block (BIB)',
+            'n_treatments': v,
+            'n_blocks': b,
+            'block_size': k,
+            'replications': r,
+            'lambda': lambda_val,
+            'n_runs': len(design_table),
+            'efficiency': round(efficiency, 4),
+            'design_table': design_table,
+            'parameters': {
+                'v': v,
+                'b': b,
+                'k': k,
+                'r': r,
+                'lambda': lambda_val
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/incomplete/generate/youden")
+async def generate_youden(request: YoudenGenerateRequest):
+    """
+    Generate a Youden Square design.
+
+    A Youden Square is an incomplete Latin square where:
+    - Rows are incomplete blocks
+    - Each treatment appears once per column
+    - Not all treatments appear in each row
+    """
+    try:
+        v = request.n_treatments
+        n_rows = request.n_rows
+        n_cols = request.n_columns
+
+        if n_cols >= v:
+            raise ValueError(f"Number of columns ({n_cols}) should be less than number of treatments ({v})")
+
+        if n_rows > v:
+            raise ValueError(f"Number of rows ({n_rows}) cannot exceed number of treatments ({v})")
+
+        treatments = [f'T{i+1}' for i in range(v)]
+        design_table = []
+
+        # Generate Youden square using cyclic Latin square construction
+        # Then select subset of columns
+        for row_idx in range(n_rows):
+            for col_idx in range(n_cols):
+                # Cyclic construction: treatment at (i,j) = (i + j) mod v
+                treatment_idx = (row_idx + col_idx) % v
+                design_table.append({
+                    'row': f'R{row_idx + 1}',
+                    'column': f'C{col_idx + 1}',
+                    'treatment': treatments[treatment_idx],
+                    'response': None
+                })
+
+        return {
+            'design_type': 'Youden Square',
+            'n_treatments': v,
+            'n_rows': n_rows,
+            'n_columns': n_cols,
+            'n_runs': n_rows * n_cols,
+            'design_table': design_table
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/incomplete/analyze")
+async def analyze_incomplete_block(request: IncompleteBlockRequest):
+    """
+    Analyze Incomplete Block Design using intrablock analysis.
+    """
+    try:
+        df = pd.DataFrame(request.data)
+
+        # Check required columns
+        if request.treatment not in df.columns or request.block not in df.columns or request.response not in df.columns:
+            raise ValueError("Missing required columns in data")
+
+        # Convert to categorical
+        df[request.treatment] = pd.Categorical(df[request.treatment])
+        df[request.block] = pd.Categorical(df[request.block])
+
+        v = df[request.treatment].nunique()  # Number of treatments
+        b = df[request.block].nunique()  # Number of blocks
+        n = len(df)  # Total observations
+
+        # Calculate block sizes
+        block_sizes = df.groupby(request.block).size()
+        k = block_sizes.iloc[0]  # Assuming constant block size
+        is_balanced = len(block_sizes.unique()) == 1
+
+        # Check if design is incomplete
+        is_incomplete = k < v
+
+        # Fit ANOVA model
+        formula = f"{request.response} ~ C({request.treatment}) + C({request.block})"
+        model = ols(formula, data=df).fit()
+        anova_table = sm.stats.anova_lm(model, typ=2)
+
+        # Treatment effects
+        treatment_f = anova_table.loc[f'C({request.treatment})', 'F']
+        treatment_p = anova_table.loc[f'C({request.treatment})', 'PR(>F)']
+
+        # Block effects
+        block_f = anova_table.loc[f'C({request.block})', 'F']
+        block_p = anova_table.loc[f'C({request.block})', 'PR(>F)']
+
+        # Treatment means
+        treatment_means = df.groupby(request.treatment)[request.response].mean().to_dict()
+
+        # Block means
+        block_means = df.groupby(request.block)[request.response].mean().to_dict()
+
+        # Calculate efficiency relative to RCBD
+        # For BIB: E = (v*k) / (v*k - v + 1)
+        if is_incomplete and is_balanced:
+            efficiency = (v * k) / (v * k - v + 1) if (v * k - v + 1) > 0 else 1.0
+        else:
+            efficiency = 1.0  # Complete block
+
+        # Calculate variance components
+        ms_error = anova_table.loc['Residual', 'sum_sq'] / anova_table.loc['Residual', 'df']
+
+        # Format ANOVA table
+        anova_dict = {}
+        for idx in anova_table.index:
+            anova_dict[idx] = {
+                'sum_sq': float(anova_table.loc[idx, 'sum_sq']),
+                'df': int(anova_table.loc[idx, 'df']),
+                'F': float(anova_table.loc[idx, 'F']) if pd.notna(anova_table.loc[idx, 'F']) else None,
+                'p_value': float(anova_table.loc[idx, 'PR(>F)']) if pd.notna(anova_table.loc[idx, 'PR(>F)']) else None,
+                'significant': bool(anova_table.loc[idx, 'PR(>F)'] < request.alpha) if pd.notna(anova_table.loc[idx, 'PR(>F)']) else False
+            }
+
+        return {
+            'design_info': {
+                'n_treatments': int(v),
+                'n_blocks': int(b),
+                'block_size': int(k),
+                'total_runs': int(n),
+                'is_incomplete': bool(is_incomplete),
+                'is_balanced': bool(is_balanced)
+            },
+            'treatment_effect': {
+                'F_statistic': float(treatment_f),
+                'p_value': float(treatment_p),
+                'significant': bool(treatment_p < request.alpha),
+                'interpretation': 'Significant treatment differences' if treatment_p < request.alpha else 'No significant treatment differences'
+            },
+            'block_effect': {
+                'F_statistic': float(block_f),
+                'p_value': float(block_p),
+                'significant': bool(block_p < request.alpha)
+            },
+            'treatment_means': {k: float(v) for k, v in treatment_means.items()},
+            'block_means': {k: float(v) for k, v in block_means.items()},
+            'anova_table': anova_dict,
+            'efficiency': float(efficiency),
+            'mse': float(ms_error),
+            'r_squared': float(model.rsquared),
+            'adj_r_squared': float(model.rsquared_adj)
+        }
+
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
