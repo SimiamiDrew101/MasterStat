@@ -116,7 +116,7 @@ const InfluenceDiagnostics = ({ influenceData }) => {
             <h6 className="font-semibold text-gray-300 mb-2">Cook's Distance:</h6>
             <p className="mb-2">
               Measures overall influence of each observation on the fitted model.
-              Values > {thresholds.cooks_d.toFixed(4)} suggest potential influence.
+              Values {'>'} {thresholds.cooks_d.toFixed(4)} suggest potential influence.
             </p>
             <p className="text-yellow-200">
               <strong>Action:</strong> Investigate high values for data entry errors or genuine outliers.
@@ -126,7 +126,7 @@ const InfluenceDiagnostics = ({ influenceData }) => {
             <h6 className="font-semibold text-gray-300 mb-2">DFFITS:</h6>
             <p className="mb-2">
               Measures change in fitted value when observation is deleted.
-              |Values| > {thresholds.dffits.toFixed(4)} indicate substantial influence.
+              |Values| {'>'} {thresholds.dffits.toFixed(4)} indicate substantial influence.
             </p>
             <p className="text-yellow-200">
               <strong>Action:</strong> Consider sensitivity analysis with/without influential points.
