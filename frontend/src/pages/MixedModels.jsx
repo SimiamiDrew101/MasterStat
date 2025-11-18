@@ -15,6 +15,8 @@ import ModelComparisonTable from '../components/ModelComparisonTable'
 import VarianceDecomposition from '../components/VarianceDecomposition'
 import BLUPsPlot from '../components/BLUPsPlot'
 import RandomEffectsQQPlot from '../components/RandomEffectsQQPlot'
+import GrowthCurvePlot from '../components/GrowthCurvePlot'
+import GrowthCurveResults from '../components/GrowthCurveResults'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -51,6 +53,15 @@ const MixedModels = () => {
   )
   const [subjectName, setSubjectName] = useState('Subject')
   const [withinFactorName, setWithinFactorName] = useState('Time')
+
+  // Growth Curve state
+  const [growthCurveTableData, setGrowthCurveTableData] = useState(
+    Array(20).fill(null).map(() => Array(3).fill('')) // SubjectID, Time, Response
+  )
+  const [growthSubjectID, setGrowthSubjectID] = useState('SubjectID')
+  const [growthTimeVar, setGrowthTimeVar] = useState('Time')
+  const [polynomialOrder, setPolynomialOrder] = useState('linear')
+  const [randomEffectsStructure, setRandomEffectsStructure] = useState('intercept_slope')
 
   // Shared state
   const [responseName, setResponseName] = useState('Response')
@@ -151,7 +162,7 @@ const MixedModels = () => {
           [factorNames[1]]: row[1], // Factor B (nested in A)
           [responseName]: parseFloat(row[2])
         }))
-    } else {
+    } else if (analysisType === 'repeated-measures') {
       // Repeated measures
       return tableData
         .filter(row => row[0] && row[1] && row[2])
@@ -159,6 +170,15 @@ const MixedModels = () => {
           [subjectName]: row[0], // Subject ID
           [withinFactorName]: row[1], // Within-subjects factor (Time, Condition, etc.)
           [responseName]: parseFloat(row[2])
+        }))
+    } else if (analysisType === 'growth-curve') {
+      // Growth curve - use growthCurveTableData
+      return growthCurveTableData
+        .filter(row => row[0] && row[1] && row[2])
+        .map(row => ({
+          [growthSubjectID]: row[0], // Subject ID
+          [growthTimeVar]: parseFloat(row[1]), // Time (numeric)
+          [responseName]: parseFloat(row[2]) // Response
         }))
     }
   }
@@ -215,7 +235,7 @@ const MixedModels = () => {
         }
 
         response = await axios.post(`${API_URL}/api/mixed/nested-design`, payload)
-      } else {
+      } else if (analysisType === 'repeated-measures') {
         // Repeated measures
         const payload = {
           data: data,
@@ -226,6 +246,19 @@ const MixedModels = () => {
         }
 
         response = await axios.post(`${API_URL}/api/mixed/repeated-measures`, payload)
+      } else if (analysisType === 'growth-curve') {
+        // Growth curve
+        const payload = {
+          data: data,
+          subject_id: growthSubjectID,
+          time_var: growthTimeVar,
+          response: responseName,
+          polynomial_order: polynomialOrder,
+          random_effects: randomEffectsStructure,
+          alpha: alpha
+        }
+
+        response = await axios.post(`${API_URL}/api/mixed/growth-curve`, payload)
       }
 
       setResult(response.data)
@@ -394,6 +427,41 @@ const MixedModels = () => {
       setSubjectName('Subject')
       setWithinFactorName('Time')
       setResponseName('Score')
+    } else if (analysisType === 'growth-curve') {
+      // Generate random growth curve data
+      // Design: 8 subjects × 5 time points with varying growth rates
+      const subjects = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8']
+      const times = [0, 1, 2, 3, 4]
+
+      const exampleData = []
+
+      subjects.forEach((subject, sIdx) => {
+        // Random baseline for each subject (initial value at time 0)
+        const baseline = 20 + (sIdx - 3.5) * 3
+
+        // Random growth rate for each subject
+        const growthRate = 2 + (sIdx % 4) * 0.5 + randomNormal(0, 0.3)
+
+        times.forEach((time) => {
+          // Linear growth with individual variation
+          const expected = baseline + growthRate * time
+          const response = randomNormal(expected, 0.8)
+
+          exampleData.push([
+            subject,
+            time.toString(),
+            response.toFixed(2)
+          ])
+        })
+      })
+
+      const newTableData = [...exampleData, ...Array(Math.max(0, 20 - exampleData.length)).fill(null).map(() => Array(3).fill(''))]
+      setGrowthCurveTableData(newTableData)
+      setGrowthSubjectID('SubjectID')
+      setGrowthTimeVar('Time')
+      setResponseName('Value')
+      setPolynomialOrder('linear')
+      setRandomEffectsStructure('intercept_slope')
     }
   }
 
@@ -480,6 +548,23 @@ const MixedModels = () => {
             <h4 className="text-lg font-semibold text-gray-100 mb-2">Repeated Measures ANOVA</h4>
             <p className="text-sm text-gray-300">
               Within-subjects design with multiple measurements per subject. Includes sphericity tests and corrections.
+            </p>
+          </button>
+          <button
+            onClick={() => {
+              setAnalysisType('growth-curve')
+              setResult(null)
+              setError(null)
+            }}
+            className={`p-4 rounded-lg border-2 transition ${
+              analysisType === 'growth-curve'
+                ? 'border-emerald-500 bg-emerald-500/20'
+                : 'border-slate-600 hover:border-emerald-400'
+            }`}
+          >
+            <h4 className="text-lg font-semibold text-gray-100 mb-2">Growth Curve Model</h4>
+            <p className="text-sm text-gray-300">
+              Longitudinal data with linear, quadratic, or cubic trends. Random intercepts and slopes for individual trajectories.
             </p>
           </button>
         </div>

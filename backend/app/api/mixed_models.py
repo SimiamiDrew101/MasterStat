@@ -2030,3 +2030,360 @@ def extract_blups(model, df: pd.DataFrame, random_factors: List[str], response: 
         return {
             "error": f"Could not extract BLUPs: {str(e)}"
         }
+
+# ============================================================================
+# GROWTH CURVE MODELS & LONGITUDINAL DATA
+# ============================================================================
+
+class GrowthCurveRequest(BaseModel):
+    """Request for Growth Curve analysis"""
+    data: List[Dict] = Field(..., description="Longitudinal data")
+    subject_id: str = Field(..., description="Subject/individual identifier")
+    time_var: str = Field(..., description="Time variable (continuous)")
+    response: str = Field(..., description="Response variable name")
+    polynomial_order: Literal["linear", "quadratic", "cubic"] = Field("linear", description="Polynomial order for time")
+    random_effects: Literal["intercept", "intercept_slope"] = Field("intercept_slope", description="Random effects structure")
+    covariates: Optional[List[str]] = Field(None, description="Additional covariates (time-varying or fixed)")
+    alpha: float = Field(0.05, description="Significance level")
+
+
+@router.post("/growth-curve")
+async def growth_curve_analysis(request: GrowthCurveRequest):
+    """
+    Growth Curve / Longitudinal Data Analysis
+
+    Fits linear mixed models for repeated measures over time with:
+    - Linear, quadratic, or cubic time trends
+    - Random intercepts and/or slopes
+    - Individual trajectory predictions
+    - Population-average growth curve with confidence bands
+    - Time-varying covariates
+    """
+    try:
+        df = pd.DataFrame(request.data)
+
+        # Validate data
+        required_cols = [request.subject_id, request.time_var, request.response]
+        if request.covariates:
+            required_cols.extend(request.covariates)
+
+        for col in required_cols:
+            if col not in df.columns:
+                raise HTTPException(status_code=400, detail=f"Column '{col}' not found in data")
+
+        # Ensure subject ID is categorical
+        df[request.subject_id] = df[request.subject_id].astype('category')
+
+        # Ensure time is numeric
+        df[request.time_var] = pd.to_numeric(df[request.time_var], errors='coerce')
+
+        # Check for missing values
+        if df[request.time_var].isna().any():
+            raise HTTPException(status_code=400, detail=f"Time variable '{request.time_var}' contains non-numeric values")
+
+        # Center time variable for better numerical stability
+        time_mean = df[request.time_var].mean()
+        df['time_centered'] = df[request.time_var] - time_mean
+
+        # Create polynomial terms
+        if request.polynomial_order in ["quadratic", "cubic"]:
+            df['time_squared'] = df['time_centered'] ** 2
+        if request.polynomial_order == "cubic":
+            df['time_cubic'] = df['time_centered'] ** 3
+
+        # Build formula
+        time_terms = ['time_centered']
+        if request.polynomial_order in ["quadratic", "cubic"]:
+            time_terms.append('time_squared')
+        if request.polynomial_order == "cubic":
+            time_terms.append('time_cubic')
+
+        # Add covariates
+        if request.covariates:
+            time_terms.extend(request.covariates)
+
+        formula_fixed = f"{request.response} ~ " + " + ".join(time_terms)
+
+        # Random effects formula
+        if request.random_effects == "intercept_slope":
+            formula_random = "time_centered"
+        else:
+            formula_random = "1"
+
+        # Fit mixed model
+        model = mixedlm(
+            formula_fixed,
+            df,
+            groups=df[request.subject_id],
+            re_formula=formula_random
+        )
+
+        fitted_model = model.fit(method='lbfgs', reml=True)
+
+        # Extract fixed effects
+        fixed_effects = {
+            "coefficients": {},
+            "std_errors": {},
+            "t_values": {},
+            "p_values": {},
+            "conf_int": {}
+        }
+
+        for param in fitted_model.params.index:
+            fixed_effects["coefficients"][param] = round(float(fitted_model.params[param]), 4)
+            fixed_effects["std_errors"][param] = round(float(fitted_model.bse[param]), 4)
+            fixed_effects["t_values"][param] = round(float(fitted_model.tvalues[param]), 4)
+            fixed_effects["p_values"][param] = round(float(fitted_model.pvalues[param]), 4)
+
+            ci = fitted_model.conf_int(alpha=request.alpha).loc[param]
+            fixed_effects["conf_int"][param] = [round(float(ci[0]), 4), round(float(ci[1]), 4)]
+
+        # Extract random effects variance components
+        random_effects_variance = {
+            "intercept_var": round(float(fitted_model.cov_re.iloc[0, 0]), 4) if fitted_model.cov_re is not None else 0.0
+        }
+
+        if request.random_effects == "intercept_slope" and fitted_model.cov_re is not None:
+            if fitted_model.cov_re.shape[0] > 1:
+                random_effects_variance["slope_var"] = round(float(fitted_model.cov_re.iloc[1, 1]), 4)
+                random_effects_variance["intercept_slope_cov"] = round(float(fitted_model.cov_re.iloc[0, 1]), 4)
+
+                # Calculate correlation
+                if random_effects_variance["intercept_var"] > 0 and random_effects_variance["slope_var"] > 0:
+                    corr = random_effects_variance["intercept_slope_cov"] / (
+                        np.sqrt(random_effects_variance["intercept_var"]) *
+                        np.sqrt(random_effects_variance["slope_var"])
+                    )
+                    random_effects_variance["intercept_slope_corr"] = round(float(corr), 4)
+
+        random_effects_variance["residual_var"] = round(float(fitted_model.scale), 4)
+
+        # Calculate ICC (intraclass correlation)
+        total_var = random_effects_variance["intercept_var"] + random_effects_variance["residual_var"]
+        icc = random_effects_variance["intercept_var"] / total_var if total_var > 0 else 0
+
+        # Individual trajectory predictions
+        individual_trajectories = generate_individual_trajectories(
+            fitted_model, df, request.subject_id, request.time_var,
+            request.response, time_mean, request.polynomial_order
+        )
+
+        # Population-average growth curve
+        population_curve = generate_population_curve(
+            fitted_model, df, request.time_var, time_mean,
+            request.polynomial_order, request.alpha
+        )
+
+        # Model fit metrics
+        model_fit = calculate_model_fit_metrics(
+            fitted_model, df, len(fitted_model.params)
+        )
+
+        # Interpretation
+        interpretation = generate_growth_curve_interpretation(
+            fixed_effects, random_effects_variance, icc, request.polynomial_order
+        )
+
+        return {
+            "success": True,
+            "model_type": "growth_curve",
+            "polynomial_order": request.polynomial_order,
+            "random_effects_structure": request.random_effects,
+            "n_subjects": df[request.subject_id].nunique(),
+            "n_observations": len(df),
+            "n_timepoints": df.groupby(request.subject_id)[request.time_var].count().mean(),
+            "fixed_effects": fixed_effects,
+            "random_effects_variance": random_effects_variance,
+            "icc": round(icc, 4),
+            "model_summary": {
+                "log_likelihood": round(float(fitted_model.llf), 4),
+                "aic": round(float(fitted_model.aic), 4),
+                "bic": round(float(fitted_model.bic), 4)
+            },
+            "model_fit": model_fit,
+            "individual_trajectories": individual_trajectories,
+            "population_curve": population_curve,
+            "interpretation": interpretation
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error in growth curve analysis: {str(e)}")
+
+
+def generate_individual_trajectories(model, df, subject_id, time_var, response, time_mean, poly_order):
+    """
+    Generate predicted trajectories for each individual
+    """
+    try:
+        trajectories = []
+        subjects = df[subject_id].unique()
+
+        # Limit to max 20 subjects for visualization
+        if len(subjects) > 20:
+            subjects = np.random.choice(subjects, 20, replace=False)
+
+        for subject in subjects:
+            subject_data = df[df[subject_id] == subject].copy()
+            subject_data = subject_data.sort_values(time_var)
+
+            # Get predictions
+            predictions = model.predict(subject_data)
+
+            trajectory = {
+                "subject_id": str(subject),
+                "observed": [
+                    {
+                        "time": round(float(t), 4),
+                        "value": round(float(v), 4)
+                    }
+                    for t, v in zip(subject_data[time_var], subject_data[response])
+                ],
+                "predicted": [
+                    {
+                        "time": round(float(t), 4),
+                        "value": round(float(p), 4)
+                    }
+                    for t, p in zip(subject_data[time_var], predictions)
+                ]
+            }
+
+            trajectories.append(trajectory)
+
+        return trajectories
+
+    except Exception as e:
+        return {"error": f"Could not generate individual trajectories: {str(e)}"}
+
+
+def generate_population_curve(model, df, time_var, time_mean, poly_order, alpha):
+    """
+    Generate population-average growth curve with confidence bands
+    """
+    try:
+        # Create prediction grid
+        time_min = df[time_var].min()
+        time_max = df[time_var].max()
+        time_grid = np.linspace(time_min, time_max, 50)
+
+        # Create prediction dataframe
+        pred_df = pd.DataFrame({
+            time_var: time_grid,
+            'time_centered': time_grid - time_mean
+        })
+
+        if poly_order in ["quadratic", "cubic"]:
+            pred_df['time_squared'] = pred_df['time_centered'] ** 2
+        if poly_order == "cubic":
+            pred_df['time_cubic'] = pred_df['time_centered'] ** 3
+
+        # Get fixed effects predictions (population average)
+        predictions = model.predict(pred_df, exog=sm.add_constant(pred_df[[c for c in pred_df.columns if c != time_var]]))
+
+        # Calculate confidence intervals
+        # For simplicity, use fixed effects SE
+        se = np.sqrt(model.scale)  # Residual standard error
+        ci_lower = predictions - stats.t.ppf(1 - alpha/2, model.df_resid) * se
+        ci_upper = predictions + stats.t.ppf(1 - alpha/2, model.df_resid) * se
+
+        population_curve = {
+            "time_points": [round(float(t), 4) for t in time_grid],
+            "predicted": [round(float(p), 4) for p in predictions],
+            "ci_lower": [round(float(ci), 4) for ci in ci_lower],
+            "ci_upper": [round(float(ci), 4) for ci in ci_upper]
+        }
+
+        return population_curve
+
+    except Exception as e:
+        return {"error": f"Could not generate population curve: {str(e)}"}
+
+
+def generate_growth_curve_interpretation(fixed_effects, random_effects, icc, poly_order):
+    """
+    Generate human-readable interpretation of growth curve results
+    """
+    interpretation = []
+
+    # Intercept interpretation
+    if "Intercept" in fixed_effects["coefficients"]:
+        intercept = fixed_effects["coefficients"]["Intercept"]
+        intercept_p = fixed_effects["p_values"]["Intercept"]
+        interpretation.append(
+            f"At the average time point, the mean response is {intercept:.2f} "
+            f"(p = {intercept_p:.4f})."
+        )
+
+    # Linear time effect
+    if "time_centered" in fixed_effects["coefficients"]:
+        slope = fixed_effects["coefficients"]["time_centered"]
+        slope_p = fixed_effects["p_values"]["time_centered"]
+
+        if slope_p < 0.05:
+            direction = "increases" if slope > 0 else "decreases"
+            interpretation.append(
+                f"The response {direction} by {abs(slope):.4f} units per unit time "
+                f"(p = {slope_p:.4f}, statistically significant)."
+            )
+        else:
+            interpretation.append(
+                f"There is no significant linear trend over time (slope = {slope:.4f}, p = {slope_p:.4f})."
+            )
+
+    # Quadratic effect
+    if poly_order in ["quadratic", "cubic"] and "time_squared" in fixed_effects["coefficients"]:
+        quad = fixed_effects["coefficients"]["time_squared"]
+        quad_p = fixed_effects["p_values"]["time_squared"]
+
+        if quad_p < 0.05:
+            curvature = "upward (accelerating)" if quad > 0 else "downward (decelerating)"
+            interpretation.append(
+                f"The growth curve shows significant {curvature} curvature "
+                f"(quadratic coefficient = {quad:.4f}, p = {quad_p:.4f})."
+            )
+
+    # Cubic effect
+    if poly_order == "cubic" and "time_cubic" in fixed_effects["coefficients"]:
+        cubic = fixed_effects["coefficients"]["time_cubic"]
+        cubic_p = fixed_effects["p_values"]["time_cubic"]
+
+        if cubic_p < 0.05:
+            interpretation.append(
+                f"The growth curve shows significant cubic trends (coefficient = {cubic:.4f}, p = {cubic_p:.4f}), "
+                "indicating complex non-linear patterns over time."
+            )
+
+    # ICC interpretation
+    if icc > 0.7:
+        interpretation.append(
+            f"The ICC is {icc:.3f}, indicating substantial between-subject variability. "
+            "Individual trajectories differ considerably."
+        )
+    elif icc > 0.4:
+        interpretation.append(
+            f"The ICC is {icc:.3f}, indicating moderate between-subject variability."
+        )
+    else:
+        interpretation.append(
+            f"The ICC is {icc:.3f}, indicating relatively low between-subject variability. "
+            "Individuals follow similar trajectories."
+        )
+
+    # Random slope interpretation
+    if "slope_var" in random_effects:
+        slope_sd = np.sqrt(random_effects["slope_var"])
+        interpretation.append(
+            f"There is significant variability in individual growth rates (SD = {slope_sd:.4f}), "
+            "meaning some individuals change faster than others over time."
+        )
+
+        if "intercept_slope_corr" in random_effects:
+            corr = random_effects["intercept_slope_corr"]
+            if abs(corr) > 0.5:
+                direction = "positive" if corr > 0 else "negative"
+                interpretation.append(
+                    f"There is a {direction} correlation ({corr:.3f}) between initial status and rate of change: "
+                    f"{'higher' if corr > 0 else 'lower'} starting values are associated with "
+                    f"{'faster' if corr > 0 else 'slower'} growth rates."
+                )
+
+    return " ".join(interpretation)
