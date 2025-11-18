@@ -10,6 +10,9 @@ import HierarchicalMeansPlot from '../components/HierarchicalMeansPlot'
 import NestedBoxPlots from '../components/NestedBoxPlots'
 import ProfilePlot from '../components/ProfilePlot'
 import WithinSubjectVariabilityPlot from '../components/WithinSubjectVariabilityPlot'
+import ICCDisplay from '../components/ICCDisplay'
+import ModelComparisonTable from '../components/ModelComparisonTable'
+import VarianceDecomposition from '../components/VarianceDecomposition'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -868,6 +871,20 @@ const MixedModels = () => {
                 </div>
               </div>
             </div>
+          )}
+
+          {/* ICC Display - Phase 1 Enhancement */}
+          {result.icc && <ICCDisplay iccData={result.icc} />}
+
+          {/* Model Fit Metrics - Phase 1 Enhancement */}
+          {result.model_fit && <ModelComparisonTable modelFit={result.model_fit} modelName={result.model_type || "Current Model"} />}
+
+          {/* Variance Decomposition - Phase 1 Enhancement */}
+          {result.variance_components && (
+            <VarianceDecomposition
+              varianceComponents={result.variance_components}
+              iccData={result.icc}
+            />
           )}
 
           {/* Sphericity Test Results (Repeated Measures only) */}

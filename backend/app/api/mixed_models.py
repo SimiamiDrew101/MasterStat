@@ -143,6 +143,20 @@ async def mixed_model_anova(request: MixedModelANOVARequest):
             request.include_interactions and len(all_factors) == 2
         )
 
+        # Calculate ICC for random factors
+        icc_results = {}
+        for random_factor in request.random_factors:
+            icc_results[random_factor] = calculate_icc(
+                df,
+                random_factor,
+                request.response,
+                icc_type="icc2"
+            )
+
+        # Enhanced model fit metrics
+        n_params = len(all_factors) + (1 if request.include_interactions and len(all_factors) == 2 else 0)
+        model_fit = calculate_model_fit_metrics(model, df, n_params)
+
         return {
             "model_type": "Mixed Model ANOVA",
             "fixed_factors": request.fixed_factors,
@@ -154,6 +168,7 @@ async def mixed_model_anova(request: MixedModelANOVARequest):
                 for k, v in variance_components.items()
             },
             "variance_percentages": variance_percentages,
+            "icc": icc_results,
             "model_summary": {
                 "r_squared": round(float(model.rsquared), 4),
                 "adj_r_squared": round(float(model.rsquared_adj), 4),
@@ -161,6 +176,7 @@ async def mixed_model_anova(request: MixedModelANOVARequest):
                 "aic": round(float(model.aic), 4),
                 "bic": round(float(model.bic), 4)
             },
+            "model_fit": model_fit,
             "plot_data": plot_data,
             "interpretation": generate_interpretation(
                 anova_results,
@@ -694,6 +710,20 @@ async def split_plot_analysis(request: SplitPlotRequest):
             request.block
         )
 
+        # Calculate ICC for blocks (random effect)
+        icc_results = {}
+        if request.block:
+            icc_results[request.block] = calculate_icc(
+                df,
+                request.block,
+                request.response,
+                icc_type="icc2"
+            )
+
+        # Enhanced model fit metrics
+        n_params = 3 + (1 if request.block else 0)  # whole-plot + subplot + interaction + block
+        model_fit = calculate_model_fit_metrics(model, df, n_params)
+
         # Handle NaN/inf values in model summary
         def safe_float(value):
             """Convert float to rounded value, handling NaN/inf"""
@@ -712,6 +742,7 @@ async def split_plot_analysis(request: SplitPlotRequest):
                 for k, v in variance_components.items()
             },
             "variance_percentages": variance_percentages,
+            "icc": icc_results,
             "model_summary": {
                 "r_squared": safe_float(model.rsquared),
                 "adj_r_squared": safe_float(model.rsquared_adj),
@@ -719,6 +750,7 @@ async def split_plot_analysis(request: SplitPlotRequest):
                 "aic": safe_float(model.aic),
                 "bic": safe_float(model.bic)
             },
+            "model_fit": model_fit,
             "plot_data": plot_data,
             "interpretation": generate_split_plot_interpretation(
                 anova_results,
@@ -1128,6 +1160,10 @@ async def nested_design_analysis(request: NestedDesignRequest):
             request.response
         )
 
+        # Enhanced model fit metrics
+        n_params = 2  # factor_a + factor_b_nested
+        model_fit = calculate_model_fit_metrics(model, df, n_params)
+
         # Generate interpretation
         interpretation = generate_nested_interpretation(
             request.factor_a,
@@ -1152,6 +1188,7 @@ async def nested_design_analysis(request: NestedDesignRequest):
                 f"ICC(Total)": round(icc_b_in_a, 4) if icc_b_in_a is not None else 0
             },
             "model_summary": model_summary,
+            "model_fit": model_fit,
             "plot_data": plot_data,
             "interpretation": interpretation
         }
@@ -1498,6 +1535,40 @@ async def repeated_measures_anova(request: RepeatedMeasuresRequest):
             request.alpha
         )
 
+        # Calculate ICC for subjects (random effect in repeated measures)
+        icc_results = {}
+        if request.subject:
+            icc_results[request.subject] = calculate_icc(
+                df, request.subject, request.response, icc_type="icc2"
+            )
+
+        # Enhanced model fit metrics
+        # For repeated measures: within_factor + subjects (+ error)
+        n_params = n_conditions + n_subjects
+        # Create a simple model object wrapper for compatibility
+        class ModelWrapper:
+            def __init__(self, anova_table, n_obs):
+                # Approximate log-likelihood from SS and df
+                ss_error = anova_table["Error"]["sum_sq"]
+                df_error = anova_table["Error"]["df"]
+                mse = ss_error / df_error if df_error > 0 else 1
+
+                # Ensure mse is positive and finite
+                if mse <= 0 or np.isinf(mse) or np.isnan(mse):
+                    mse = 1
+
+                self.llf = -0.5 * n_obs * (np.log(2 * np.pi * mse) + 1)
+
+                # Ensure llf is finite
+                if np.isinf(self.llf) or np.isnan(self.llf):
+                    self.llf = -n_obs  # Reasonable default
+
+                self.aic = -2 * self.llf + 2 * n_params
+                self.bic = -2 * self.llf + np.log(n_obs) * n_params
+
+        model_wrapper = ModelWrapper(anova_table, len(df))
+        model_fit = calculate_model_fit_metrics(model_wrapper, df, n_params)
+
         return {
             "model_type": "Repeated Measures ANOVA",
             "within_factor": request.within_factor,
@@ -1507,7 +1578,9 @@ async def repeated_measures_anova(request: RepeatedMeasuresRequest):
             "sphericity": sphericity_results,
             "corrected_tests": corrected_tests,
             "plot_data": plot_data,
-            "interpretation": interpretation
+            "interpretation": interpretation,
+            "icc": icc_results,
+            "model_fit": model_fit
         }
 
     except Exception as e:
@@ -1615,3 +1688,176 @@ def generate_repeated_measures_interpretation(within_factor: str, anova_table: D
         interpretations.append("Sphericity test not applicable (< 3 conditions)")
 
     return interpretations
+
+
+# ============================================================================
+# ICC (INTRACLASS CORRELATION COEFFICIENT) CALCULATIONS
+# ============================================================================
+
+def calculate_icc(df: pd.DataFrame, groups: str, response: str, icc_type: str = "icc2") -> Dict:
+    """
+    Calculate Intraclass Correlation Coefficient (ICC)
+    
+    Parameters:
+    - df: DataFrame with data
+    - groups: Column name for grouping variable (e.g., subjects, clusters)
+    - response: Column name for response variable
+    - icc_type: Type of ICC to calculate
+      - "icc1": ICC(1) - Each target is rated by a different set of k raters randomly selected from a larger population
+      - "icc2": ICC(2) - Each target is rated by the same set of k raters (consistency)
+      - "icc3": ICC(3) - Each target is rated by the same set of k raters (absolute agreement)
+    
+    Returns:
+    Dictionary with ICC value, confidence interval, F-statistic, and interpretation
+    """
+    try:
+        # Group data
+        grouped = df.groupby(groups)[response]
+        
+        # Calculate group statistics
+        k = grouped.count().mean()  # Average number of observations per group
+        n = grouped.ngroups  # Number of groups
+        
+        # Calculate between-group and within-group variance
+        grand_mean = df[response].mean()
+        
+        # Between-group sum of squares (BMS)
+        group_means = grouped.mean()
+        group_sizes = grouped.count()
+        ss_between = sum(group_sizes * (group_means - grand_mean) ** 2)
+        ms_between = ss_between / (n - 1)
+        
+        # Within-group sum of squares (WMS)
+        ss_within = sum([
+            sum((df[df[groups] == group][response] - group_means[group]) ** 2)
+            for group in group_means.index
+        ])
+        df_within = sum(group_sizes - 1)
+        ms_within = ss_within / df_within if df_within > 0 else 0
+        
+        # Calculate ICC based on type
+        if icc_type == "icc1":
+            # ICC(1): Single rater, absolute agreement
+            icc = (ms_between - ms_within) / (ms_between + (k - 1) * ms_within)
+        elif icc_type == "icc2":
+            # ICC(2): Average of k raters, consistency
+            icc = (ms_between - ms_within) / ms_between
+        elif icc_type == "icc3":
+            # ICC(3): Average of k raters, absolute agreement  
+            icc = (ms_between - ms_within) / (ms_between + (ms_within / k))
+        else:
+            icc = (ms_between - ms_within) / ms_between  # Default to ICC(2)
+        
+        # Bound ICC between 0 and 1
+        icc = max(0, min(1, icc))
+        
+        # F-statistic for significance test
+        f_statistic = ms_between / ms_within if ms_within > 0 else np.inf
+        df1 = n - 1
+        df2 = df_within
+        p_value = 1 - stats.f.cdf(f_statistic, df1, df2) if ms_within > 0 else 0
+        
+        # Confidence interval (95%)
+        alpha = 0.05
+        f_lower = stats.f.ppf(alpha / 2, df1, df2)
+        f_upper = stats.f.ppf(1 - alpha / 2, df1, df2)
+        
+        ci_lower = (f_statistic / f_upper - 1) / (f_statistic / f_upper + k - 1)
+        ci_upper = (f_statistic / f_lower - 1) / (f_statistic / f_lower + k - 1)
+        
+        ci_lower = max(0, min(1, ci_lower))
+        ci_upper = max(0, min(1, ci_upper))
+        
+        # Interpretation
+        if icc < 0.5:
+            interpretation = "Poor reliability"
+            quality = "poor"
+        elif icc < 0.75:
+            interpretation = "Moderate reliability"
+            quality = "moderate"
+        elif icc < 0.9:
+            interpretation = "Good reliability"
+            quality = "good"
+        else:
+            interpretation = "Excellent reliability"
+            quality = "excellent"
+        
+        return {
+            "icc": round(float(icc), 4),
+            "icc_type": icc_type.upper(),
+            "ci_lower": round(float(ci_lower), 4),
+            "ci_upper": round(float(ci_upper), 4),
+            "f_statistic": round(float(f_statistic), 4),
+            "p_value": round(float(p_value), 6),
+            "df1": int(df1),
+            "df2": int(df2),
+            "n_groups": int(n),
+            "avg_group_size": round(float(k), 2),
+            "interpretation": interpretation,
+            "quality": quality,
+            "ms_between": round(float(ms_between), 4),
+            "ms_within": round(float(ms_within), 4)
+        }
+        
+    except Exception as e:
+        return {
+            "error": f"Could not calculate ICC: {str(e)}",
+            "icc": None
+        }
+
+
+def calculate_model_fit_metrics(model, df: pd.DataFrame, n_params: int) -> Dict:
+    """
+    Calculate comprehensive model fit metrics
+    
+    Parameters:
+    - model: Fitted statsmodels model
+    - df: Original dataframe
+    - n_params: Number of parameters in model
+    
+    Returns:
+    Dictionary with AIC, BIC, log-likelihood, and other fit metrics
+    """
+    try:
+        n_obs = len(df)
+        
+        # Extract from model if available
+        aic = float(model.aic) if hasattr(model, 'aic') else None
+        bic = float(model.bic) if hasattr(model, 'bic') else None
+        log_likelihood = float(model.llf) if hasattr(model, 'llf') else None
+        
+        # Calculate additional metrics
+        if aic is not None and bic is not None:
+            # CAIC (Consistent AIC)
+            caic = aic + 2 * n_params * (n_params + 1) / (n_obs - n_params - 1)
+            
+            # Adjusted BIC
+            adj_bic = bic - n_params * np.log(2 * np.pi)
+            
+            # AIC weight (for model comparison)
+            # This is relative and needs multiple models, so we'll include delta_aic placeholder
+            
+            return {
+                "aic": round(aic, 2),
+                "bic": round(bic, 2),
+                "caic": round(caic, 2),
+                "adj_bic": round(adj_bic, 2),
+                "log_likelihood": round(log_likelihood, 4) if log_likelihood else None,
+                "n_parameters": n_params,
+                "n_observations": n_obs,
+                "aic_per_obs": round(aic / n_obs, 4),
+                "bic_per_obs": round(bic / n_obs, 4)
+            }
+        
+        return {
+            "aic": aic,
+            "bic": bic,
+            "log_likelihood": log_likelihood,
+            "n_parameters": n_params,
+            "n_observations": n_obs
+        }
+        
+    except Exception as e:
+        return {
+            "error": f"Could not calculate fit metrics: {str(e)}"
+        }
