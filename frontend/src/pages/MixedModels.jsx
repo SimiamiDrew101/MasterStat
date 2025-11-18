@@ -13,6 +13,8 @@ import WithinSubjectVariabilityPlot from '../components/WithinSubjectVariability
 import ICCDisplay from '../components/ICCDisplay'
 import ModelComparisonTable from '../components/ModelComparisonTable'
 import VarianceDecomposition from '../components/VarianceDecomposition'
+import BLUPsPlot from '../components/BLUPsPlot'
+import RandomEffectsQQPlot from '../components/RandomEffectsQQPlot'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -886,6 +888,12 @@ const MixedModels = () => {
               iccData={result.icc}
             />
           )}
+
+          {/* BLUPs Caterpillar Plot - Phase 3 Enhancement */}
+          {result.blups && <BLUPsPlot blupsData={result.blups} />}
+
+          {/* Random Effects Q-Q Plot - Phase 3 Enhancement */}
+          {result.blups && <RandomEffectsQQPlot blupsData={result.blups} />}
 
           {/* Sphericity Test Results (Repeated Measures only) */}
           {analysisType === 'repeated-measures' && result.sphericity && (
