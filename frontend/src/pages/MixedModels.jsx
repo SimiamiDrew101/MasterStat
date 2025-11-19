@@ -1078,7 +1078,7 @@ const MixedModels = () => {
           {result.icc && analysisType !== 'growth-curve' && <ICCDisplay iccData={result.icc} />}
 
           {/* Model Fit Metrics - Phase 1 Enhancement */}
-          {result.model_fit && <ModelComparisonTable modelFit={result.model_fit} modelName={result.model_type || "Current Model"} />}
+          {result.model_fit && analysisType !== 'growth-curve' && <ModelComparisonTable modelFit={result.model_fit} modelName={result.model_type || "Current Model"} />}
 
           {/* Variance Decomposition - Phase 1 Enhancement */}
           {result.variance_components && analysisType !== 'growth-curve' && (
@@ -1366,6 +1366,28 @@ const MixedModels = () => {
             </div>
           )}
 
+          {/* Growth Curve Specific Visualizations */}
+          {analysisType === 'growth-curve' && (
+            <>
+              {/* Growth Curve Results Summary */}
+              <GrowthCurveResults
+                key={`gc-${result?.n_observations}-${result?.model_summary?.log_likelihood}`}
+                result={result}
+              />
+
+              {/* Growth Curve Spaghetti Plot */}
+              {result.individual_trajectories && result.population_curve && (
+                <GrowthCurvePlot
+                  key={`plot-${result?.n_observations}-${result?.model_summary?.log_likelihood}`}
+                  individualTrajectories={result.individual_trajectories}
+                  populationCurve={result.population_curve}
+                  timeVar={growthTimeVar}
+                  responseVar={responseName}
+                />
+              )}
+            </>
+          )}
+
           {/* Visualizations */}
           {result.plot_data && (
             <>
@@ -1602,28 +1624,6 @@ const MixedModels = () => {
                       profileData={result.plot_data.profile_data}
                       withinFactor={result.within_factor || withinFactorName}
                       responseName={responseName}
-                    />
-                  )}
-                </>
-              )}
-
-              {/* Growth Curve Specific Visualizations */}
-              {analysisType === 'growth-curve' && (
-                <>
-                  {/* Growth Curve Results Summary */}
-                  <GrowthCurveResults
-                    key={`gc-${result?.n_observations}-${result?.model_summary?.log_likelihood}`}
-                    result={result}
-                  />
-
-                  {/* Growth Curve Spaghetti Plot */}
-                  {result.individual_trajectories && result.population_curve && (
-                    <GrowthCurvePlot
-                      key={`plot-${result?.n_observations}-${result?.model_summary?.log_likelihood}`}
-                      individualTrajectories={result.individual_trajectories}
-                      populationCurve={result.population_curve}
-                      timeVar={growthTimeVar}
-                      responseVar={responseName}
                     />
                   )}
                 </>
