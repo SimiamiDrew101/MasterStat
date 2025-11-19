@@ -1,8 +1,54 @@
 # Mixed Models Enhancement Plan
 
 **Date Created:** 2025-11-17
-**Status:** Planning Phase
-**Expected Completion:** 18-25 hours
+**Date Updated:** 2025-11-18
+**Status:** Phase 4 In Progress (Phases 1-3 Complete)
+**Expected Completion:** 10-15 hours remaining
+
+---
+
+## ✅ **COMPLETED PHASES**
+
+### **Phase 1: ICC & Model Fit Metrics** (COMPLETE - Commit: a7963a0)
+- ✅ ICC calculation for all design types
+- ✅ Model fit metrics (AIC, BIC, CAIC, Adjusted BIC)
+- ✅ ICCDisplay component with gauges
+- ✅ ModelComparisonTable component
+- ✅ VarianceDecomposition component
+- ✅ Integrated into all 4 design types
+
+### **Phase 2: Sphericity Testing** (PRE-EXISTING - Marked complete)
+- ✅ Mauchly's test already implemented in repeated measures
+- ✅ Greenhouse-Geisser and Huynh-Feldt corrections
+- ✅ Sphericity violation warnings
+
+### **Phase 3: BLUPs & Random Effects Diagnostics** (COMPLETE - Commit: a4577ad)
+- ✅ extract_blups() function with empirical Bayes shrinkage
+- ✅ BLUPsPlot component (caterpillar plot with outlier detection)
+- ✅ RandomEffectsQQPlot component for normality checking
+- ✅ Shrinkage visualization and confidence intervals
+- ✅ Integrated into mixed-anova, split-plot, nested-design
+- ✅ Safe float handling for inf/nan values
+
+### **Phase 4: Growth Curves & Longitudinal Data** (IN PROGRESS - Commit: 9975c5b)
+#### COMPLETED:
+- ✅ Backend /api/mixed/growth-curve endpoint
+- ✅ Polynomial time effects (linear, quadratic, cubic)
+- ✅ Random intercepts and slopes
+- ✅ Individual trajectory predictions
+- ✅ Population-average curve with CI bands
+- ✅ GrowthCurvePlot component (spaghetti plot)
+- ✅ GrowthCurveResults component
+- ✅ Partial MixedModels.jsx integration (button, state, API call, example data)
+
+#### REMAINING:
+- ⏳ Add safe_float() to growth curve functions (prevent nan/inf)
+- ⏳ Complete MixedModels.jsx integration:
+  - Add polynomial order selector UI
+  - Add random effects structure selector UI
+  - Add results display section
+  - Wire up GrowthCurvePlot and GrowthCurveResults components
+- ⏳ Test and verify all functionality
 
 ---
 
@@ -10,17 +56,22 @@
 
 ### ✅ **What's Already Implemented:**
 - 4 design types: Mixed ANOVA, Split-Plot, Nested, Repeated Measures
+- 5th design type (Growth Curve) - 80% complete
 - Fixed vs random effect specification
 - Variance components visualization
 - Hierarchical means plots
 - Excel-like data entry with keyboard navigation
 - Comprehensive visualization components
+- **NEW:** ICC & Model Fit (Phase 1)
+- **NEW:** BLUPs & Random Effects Diagnostics (Phase 3)
+- **NEW:** Growth Curve Models (Phase 4 - partial)
 
 ### 📊 **Current Endpoints:**
-- POST `/api/mixed-models/mixed-model-anova`
-- POST `/api/mixed-models/split-plot`
-- POST `/api/mixed-models/nested-design`
-- POST `/api/mixed-models/repeated-measures`
+- POST `/api/mixed/mixed-model-anova`
+- POST `/api/mixed/split-plot`
+- POST `/api/mixed/nested-design`
+- POST `/api/mixed/repeated-measures`
+- POST `/api/mixed/growth-curve` **(NEW - Phase 4)**
 
 ---
 

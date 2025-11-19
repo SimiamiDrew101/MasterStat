@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Nested Design Test</title>
+    <script>
+        async function testNestedDesign() {
+            console.log('Testing Nested Design...');
+
+            const data = [
+                {"School": "S1", "Teacher": "T1", "Response": 75},
+                {"School": "S1", "Teacher": "T1", "Response": 78},
+                {"School": "S1", "Teacher": "T2", "Response": 72},
+                {"School": "S1", "Teacher": "T2", "Response": 74},
+                {"School": "S2", "Teacher": "T3", "Response": 85},
+                {"School": "S2", "Teacher": "T3", "Response": 87},
+                {"School": "S2", "Teacher": "T4", "Response": 82},
+                {"School": "S2", "Teacher": "T4", "Response": 84}
+            ];
+
+            const payload = {
+                data: data,
+                factor_a: "School",
+                factor_b_nested: "Teacher",
+                response: "Response",
+                alpha: 0.05
+            };
+
+            try {
+                const response = await fetch('http://localhost:8000/api/mixed/nested-design', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                console.log('✓ Response received');
+                console.log('Has variance_components:', !!result.variance_components);
+                console.log('Has icc:', !!result.icc);
+                console.log('Has model_fit:', !!result.model_fit);
+
+                console.log('variance_components structure:', result.variance_components);
+                console.log('icc structure:', result.icc);
+                console.log('model_fit structure:', result.model_fit);
+
+                document.getElementById('result').innerHTML = `
+                    <h2>Test Results:</h2>
+                    <pre>${JSON.stringify(result, null, 2)}</pre>
+                `;
+            } catch (error) {
+                console.error('✗ Error:', error);
+                document.getElementById('result').innerHTML = `
+                    <h2>Error:</h2>
+                    <pre>${error.message}</pre>
+                `;
+            }
+        }
+    </script>
+</head>
+<body>
+    <h1>Nested Design Test</h1>
+    <button onclick="testNestedDesign()">Run Test</button>
+    <div id="result"></div>
+</body>
+</html>

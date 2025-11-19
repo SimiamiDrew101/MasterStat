@@ -2059,6 +2059,15 @@ async def growth_curve_analysis(request: GrowthCurveRequest):
     - Population-average growth curve with confidence bands
     - Time-varying covariates
     """
+    def safe_float(value, default=0.0):
+        """Convert value to float, handling NaN/inf by returning default"""
+        try:
+            if pd.isna(value) or np.isinf(value):
+                return default
+            return float(value)
+        except:
+            return default
+
     try:
         df = pd.DataFrame(request.data)
 
@@ -2130,23 +2139,23 @@ async def growth_curve_analysis(request: GrowthCurveRequest):
         }
 
         for param in fitted_model.params.index:
-            fixed_effects["coefficients"][param] = round(float(fitted_model.params[param]), 4)
-            fixed_effects["std_errors"][param] = round(float(fitted_model.bse[param]), 4)
-            fixed_effects["t_values"][param] = round(float(fitted_model.tvalues[param]), 4)
-            fixed_effects["p_values"][param] = round(float(fitted_model.pvalues[param]), 4)
+            fixed_effects["coefficients"][param] = round(safe_float(fitted_model.params[param]), 4)
+            fixed_effects["std_errors"][param] = round(safe_float(fitted_model.bse[param]), 4)
+            fixed_effects["t_values"][param] = round(safe_float(fitted_model.tvalues[param]), 4)
+            fixed_effects["p_values"][param] = round(safe_float(fitted_model.pvalues[param]), 4)
 
             ci = fitted_model.conf_int(alpha=request.alpha).loc[param]
-            fixed_effects["conf_int"][param] = [round(float(ci[0]), 4), round(float(ci[1]), 4)]
+            fixed_effects["conf_int"][param] = [round(safe_float(ci[0]), 4), round(safe_float(ci[1]), 4)]
 
         # Extract random effects variance components
         random_effects_variance = {
-            "intercept_var": round(float(fitted_model.cov_re.iloc[0, 0]), 4) if fitted_model.cov_re is not None else 0.0
+            "intercept_var": round(safe_float(fitted_model.cov_re.iloc[0, 0]), 4) if fitted_model.cov_re is not None else 0.0
         }
 
         if request.random_effects == "intercept_slope" and fitted_model.cov_re is not None:
             if fitted_model.cov_re.shape[0] > 1:
-                random_effects_variance["slope_var"] = round(float(fitted_model.cov_re.iloc[1, 1]), 4)
-                random_effects_variance["intercept_slope_cov"] = round(float(fitted_model.cov_re.iloc[0, 1]), 4)
+                random_effects_variance["slope_var"] = round(safe_float(fitted_model.cov_re.iloc[1, 1]), 4)
+                random_effects_variance["intercept_slope_cov"] = round(safe_float(fitted_model.cov_re.iloc[0, 1]), 4)
 
                 # Calculate correlation
                 if random_effects_variance["intercept_var"] > 0 and random_effects_variance["slope_var"] > 0:
@@ -2154,9 +2163,9 @@ async def growth_curve_analysis(request: GrowthCurveRequest):
                         np.sqrt(random_effects_variance["intercept_var"]) *
                         np.sqrt(random_effects_variance["slope_var"])
                     )
-                    random_effects_variance["intercept_slope_corr"] = round(float(corr), 4)
+                    random_effects_variance["intercept_slope_corr"] = round(safe_float(corr), 4)
 
-        random_effects_variance["residual_var"] = round(float(fitted_model.scale), 4)
+        random_effects_variance["residual_var"] = round(safe_float(fitted_model.scale), 4)
 
         # Calculate ICC (intraclass correlation)
         total_var = random_effects_variance["intercept_var"] + random_effects_variance["residual_var"]
@@ -2191,14 +2200,14 @@ async def growth_curve_analysis(request: GrowthCurveRequest):
             "random_effects_structure": request.random_effects,
             "n_subjects": df[request.subject_id].nunique(),
             "n_observations": len(df),
-            "n_timepoints": df.groupby(request.subject_id)[request.time_var].count().mean(),
+            "n_timepoints": round(safe_float(df.groupby(request.subject_id)[request.time_var].count().mean()), 2),
             "fixed_effects": fixed_effects,
             "random_effects_variance": random_effects_variance,
-            "icc": round(icc, 4),
+            "icc": round(safe_float(icc), 4),
             "model_summary": {
-                "log_likelihood": round(float(fitted_model.llf), 4),
-                "aic": round(float(fitted_model.aic), 4),
-                "bic": round(float(fitted_model.bic), 4)
+                "log_likelihood": round(safe_float(fitted_model.llf), 4),
+                "aic": round(safe_float(fitted_model.aic), 4),
+                "bic": round(safe_float(fitted_model.bic), 4)
             },
             "model_fit": model_fit,
             "individual_trajectories": individual_trajectories,
@@ -2214,6 +2223,15 @@ def generate_individual_trajectories(model, df, subject_id, time_var, response, 
     """
     Generate predicted trajectories for each individual
     """
+    def safe_float(value, default=0.0):
+        """Convert value to float, handling NaN/inf by returning default"""
+        try:
+            if pd.isna(value) or np.isinf(value):
+                return default
+            return float(value)
+        except:
+            return default
+
     try:
         trajectories = []
         subjects = df[subject_id].unique()
@@ -2233,15 +2251,15 @@ def generate_individual_trajectories(model, df, subject_id, time_var, response, 
                 "subject_id": str(subject),
                 "observed": [
                     {
-                        "time": round(float(t), 4),
-                        "value": round(float(v), 4)
+                        "time": round(safe_float(t), 4),
+                        "value": round(safe_float(v), 4)
                     }
                     for t, v in zip(subject_data[time_var], subject_data[response])
                 ],
                 "predicted": [
                     {
-                        "time": round(float(t), 4),
-                        "value": round(float(p), 4)
+                        "time": round(safe_float(t), 4),
+                        "value": round(safe_float(p), 4)
                     }
                     for t, p in zip(subject_data[time_var], predictions)
                 ]
@@ -2259,6 +2277,15 @@ def generate_population_curve(model, df, time_var, time_mean, poly_order, alpha)
     """
     Generate population-average growth curve with confidence bands
     """
+    def safe_float(value, default=0.0):
+        """Convert value to float, handling NaN/inf by returning default"""
+        try:
+            if pd.isna(value) or np.isinf(value):
+                return default
+            return float(value)
+        except:
+            return default
+
     try:
         # Create prediction grid
         time_min = df[time_var].min()
@@ -2286,10 +2313,10 @@ def generate_population_curve(model, df, time_var, time_mean, poly_order, alpha)
         ci_upper = predictions + stats.t.ppf(1 - alpha/2, model.df_resid) * se
 
         population_curve = {
-            "time_points": [round(float(t), 4) for t in time_grid],
-            "predicted": [round(float(p), 4) for p in predictions],
-            "ci_lower": [round(float(ci), 4) for ci in ci_lower],
-            "ci_upper": [round(float(ci), 4) for ci in ci_upper]
+            "time_points": [round(safe_float(t), 4) for t in time_grid],
+            "predicted": [round(safe_float(p), 4) for p in predictions],
+            "ci_lower": [round(safe_float(ci), 4) for ci in ci_lower],
+            "ci_upper": [round(safe_float(ci), 4) for ci in ci_upper]
         }
 
         return population_curve

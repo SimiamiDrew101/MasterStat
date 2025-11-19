@@ -76,10 +76,12 @@ const MixedModels = () => {
   // Get current data based on analysis type
   const tableData = analysisType === 'mixed-anova' ? mixedTableData :
                     analysisType === 'split-plot' ? splitPlotTableData :
-                    analysisType === 'nested' ? nestedTableData : repeatedTableData
+                    analysisType === 'nested' ? nestedTableData :
+                    analysisType === 'growth-curve' ? growthCurveTableData : repeatedTableData
   const setTableData = analysisType === 'mixed-anova' ? setMixedTableData :
                        analysisType === 'split-plot' ? setSplitPlotTableData :
-                       analysisType === 'nested' ? setNestedTableData : setRepeatedTableData
+                       analysisType === 'nested' ? setNestedTableData :
+                       analysisType === 'growth-curve' ? setGrowthCurveTableData : setRepeatedTableData
   const factorNames = analysisType === 'mixed-anova' ? mixedFactorNames :
                       analysisType === 'split-plot' ? splitPlotFactorNames : nestedFactorNames
   const setFactorNames = analysisType === 'mixed-anova' ? setMixedFactorNames :
@@ -745,6 +747,111 @@ const MixedModels = () => {
                 </p>
               </div>
             </div>
+          ) : analysisType === 'growth-curve' ? (
+            /* Growth Curve Configuration */
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Subject Identifier */}
+                <div className="bg-slate-700/30 rounded-lg p-4">
+                  <label className="block text-gray-200 font-medium mb-2">Subject Identifier</label>
+                  <input
+                    type="text"
+                    value={growthSubjectID}
+                    onChange={(e) => setGrowthSubjectID(e.target.value)}
+                    className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="e.g., SubjectID, PatientID"
+                  />
+                  <p className="text-xs text-gray-400 mt-2">
+                    Column identifying each individual/subject
+                  </p>
+                </div>
+
+                {/* Time Variable */}
+                <div className="bg-slate-700/30 rounded-lg p-4">
+                  <label className="block text-gray-200 font-medium mb-2">Time Variable</label>
+                  <input
+                    type="text"
+                    value={growthTimeVar}
+                    onChange={(e) => setGrowthTimeVar(e.target.value)}
+                    className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    placeholder="e.g., Time, Age, Day"
+                  />
+                  <p className="text-xs text-gray-400 mt-2">
+                    Continuous time variable (numeric values)
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Polynomial Order */}
+                <div className="bg-slate-700/30 rounded-lg p-4">
+                  <label className="block text-gray-200 font-medium mb-3">Polynomial Order for Time</label>
+                  <div className="space-y-2">
+                    <label className="flex items-center space-x-2 text-gray-300 cursor-pointer">
+                      <input
+                        type="radio"
+                        checked={polynomialOrder === 'linear'}
+                        onChange={() => setPolynomialOrder('linear')}
+                        className="w-4 h-4 text-emerald-500"
+                      />
+                      <span>Linear</span>
+                    </label>
+                    <label className="flex items-center space-x-2 text-gray-300 cursor-pointer">
+                      <input
+                        type="radio"
+                        checked={polynomialOrder === 'quadratic'}
+                        onChange={() => setPolynomialOrder('quadratic')}
+                        className="w-4 h-4 text-emerald-500"
+                      />
+                      <span>Quadratic</span>
+                    </label>
+                    <label className="flex items-center space-x-2 text-gray-300 cursor-pointer">
+                      <input
+                        type="radio"
+                        checked={polynomialOrder === 'cubic'}
+                        onChange={() => setPolynomialOrder('cubic')}
+                        className="w-4 h-4 text-emerald-500"
+                      />
+                      <span>Cubic</span>
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">
+                    {polynomialOrder === 'linear' && 'Straight line growth'}
+                    {polynomialOrder === 'quadratic' && 'Curved growth (acceleration/deceleration)'}
+                    {polynomialOrder === 'cubic' && 'S-shaped or complex growth patterns'}
+                  </p>
+                </div>
+
+                {/* Random Effects Structure */}
+                <div className="bg-slate-700/30 rounded-lg p-4">
+                  <label className="block text-gray-200 font-medium mb-3">Random Effects Structure</label>
+                  <div className="space-y-2">
+                    <label className="flex items-center space-x-2 text-gray-300 cursor-pointer">
+                      <input
+                        type="radio"
+                        checked={randomEffectsStructure === 'intercept'}
+                        onChange={() => setRandomEffectsStructure('intercept')}
+                        className="w-4 h-4 text-emerald-500"
+                      />
+                      <span>Intercept Only</span>
+                    </label>
+                    <label className="flex items-center space-x-2 text-gray-300 cursor-pointer">
+                      <input
+                        type="radio"
+                        checked={randomEffectsStructure === 'intercept_slope'}
+                        onChange={() => setRandomEffectsStructure('intercept_slope')}
+                        className="w-4 h-4 text-emerald-500"
+                      />
+                      <span>Intercept + Slope</span>
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">
+                    {randomEffectsStructure === 'intercept' && 'Subjects differ in baseline only (parallel trajectories)'}
+                    {randomEffectsStructure === 'intercept_slope' && 'Subjects differ in baseline AND growth rate (non-parallel)'}
+                  </p>
+                </div>
+              </div>
+            </div>
           ) : (
             /* Repeated Measures Configuration */
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -816,12 +923,14 @@ const MixedModels = () => {
                     {analysisType === 'split-plot' ? `${factorNames[0]} (WP)` :
                      analysisType === 'nested' ? `${factorNames[0]}` :
                      analysisType === 'repeated-measures' ? subjectName :
+                     analysisType === 'growth-curve' ? growthSubjectID :
                      factorNames[0]}
                   </th>
                   <th className="px-4 py-2 text-left text-gray-200 font-medium">
                     {analysisType === 'split-plot' ? `${factorNames[1]} (SP)` :
                      analysisType === 'nested' ? `${factorNames[1]}(${factorNames[0]})` :
                      analysisType === 'repeated-measures' ? withinFactorName :
+                     analysisType === 'growth-curve' ? growthTimeVar :
                      factorNames[1]}
                   </th>
                   <th className="px-4 py-2 text-left text-gray-200 font-medium">{responseName}</th>
@@ -924,6 +1033,7 @@ const MixedModels = () => {
            analysisType === 'mixed-anova' ? 'Run Mixed Model ANOVA' :
            analysisType === 'split-plot' ? 'Run Split-Plot Analysis' :
            analysisType === 'nested' ? 'Run Nested Design Analysis' :
+           analysisType === 'growth-curve' ? 'Run Growth Curve Analysis' :
            'Run Repeated Measures ANOVA'}
         </button>
       </div>
@@ -1486,6 +1596,24 @@ const MixedModels = () => {
                       profileData={result.plot_data.profile_data}
                       withinFactor={result.within_factor || withinFactorName}
                       responseName={responseName}
+                    />
+                  )}
+                </>
+              )}
+
+              {/* Growth Curve Specific Visualizations */}
+              {analysisType === 'growth-curve' && (
+                <>
+                  {/* Growth Curve Results Summary */}
+                  <GrowthCurveResults result={result} />
+
+                  {/* Growth Curve Spaghetti Plot */}
+                  {result.individual_trajectories && result.population_curve && (
+                    <GrowthCurvePlot
+                      individualTrajectories={result.individual_trajectories}
+                      populationCurve={result.population_curve}
+                      timeVar={growthTimeVar}
+                      responseVar={responseName}
                     />
                   )}
                 </>

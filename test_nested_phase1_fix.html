@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Nested Design Phase 1 Fix</title>
+    <script>
+        async function testNestedDesign() {
+            console.log('Testing Nested Design with Phase 1 Components...');
+
+            const data = [
+                {"School": "S1", "Teacher": "T1", "Response": 75},
+                {"School": "S1", "Teacher": "T1", "Response": 78},
+                {"School": "S1", "Teacher": "T2", "Response": 72},
+                {"School": "S1", "Teacher": "T2", "Response": 74},
+                {"School": "S2", "Teacher": "T3", "Response": 85},
+                {"School": "S2", "Teacher": "T3", "Response": 87},
+                {"School": "S2", "Teacher": "T4", "Response": 82},
+                {"School": "S2", "Teacher": "T4", "Response": 84}
+            ];
+
+            const payload = {
+                data: data,
+                factor_a: "School",
+                factor_b_nested: "Teacher",
+                response: "Response",
+                alpha: 0.05
+            };
+
+            try {
+                const response = await fetch('http://localhost:8000/api/mixed/nested-design', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+
+                console.log('✓ Response received');
+                console.log('Status:', response.status);
+
+                // Check Phase 1 components
+                console.log('\nPhase 1 Components Check:');
+                console.log('✓ ICC present:', !!result.icc);
+                console.log('  ICC keys:', Object.keys(result.icc || {}));
+                console.log('  ICC(School):', result.icc?.['ICC(School)']);
+                console.log('  ICC(Total):', result.icc?.['ICC(Total)']);
+
+                console.log('✓ Model Fit present:', !!result.model_fit);
+                if (result.model_fit) {
+                    console.log('  AIC:', result.model_fit.aic);
+                    console.log('  BIC:', result.model_fit.bic);
+                }
+
+                console.log('✓ Variance Components present:', !!result.variance_components);
+                if (result.variance_components) {
+                    console.log('  Components:', Object.keys(result.variance_components));
+                }
+
+                document.getElementById('result').innerHTML = `
+                    <h2>✅ Test Passed!</h2>
+                    <h3>ICC Data:</h3>
+                    <pre>${JSON.stringify(result.icc, null, 2)}</pre>
+                    <h3>Model Fit:</h3>
+                    <pre>${JSON.stringify(result.model_fit, null, 2)}</pre>
+                    <h3>Variance Components:</h3>
+                    <pre>${JSON.stringify(result.variance_components, null, 2)}</pre>
+                `;
+            } catch (error) {
+                console.error('✗ Error:', error);
+                document.getElementById('result').innerHTML = `
+                    <h2>❌ Test Failed</h2>
+                    <pre>${error.message}</pre>
+                `;
+            }
+        }
+    </script>
+    <style>
+        body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #fff; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        pre { background: #2a2a2a; padding: 10px; border-radius: 5px; overflow-x: auto; }
+        h2 { color: #4ade80; }
+        h3 { color: #60a5fa; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Nested Design Phase 1 Fix Test</h1>
+    <p>This tests that nested designs work with Phase 1 components (ICC, Model Fit, Variance Decomposition)</p>
+    <button onclick="testNestedDesign()">Run Test</button>
+    <div id="result"></div>
+</body>
+</html>
