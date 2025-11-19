@@ -91,9 +91,11 @@ const MixedModels = () => {
 
   // Handle cell changes
   const handleCellChange = (rowIndex, colIndex, value) => {
+    console.log(`Cell changed: row ${rowIndex}, col ${colIndex}, value: ${value}, analysisType: ${analysisType}`)
     const newData = [...tableData]
     newData[rowIndex][colIndex] = value
     setTableData(newData)
+    console.log('Updated tableData:', newData.slice(0, 5)) // Log first 5 rows
 
     // Auto-add row if typing in last row
     if (rowIndex === tableData.length - 1 && value.trim() !== '') {
@@ -260,7 +262,9 @@ const MixedModels = () => {
           alpha: alpha
         }
 
+        console.log('Growth Curve Payload:', payload)
         response = await axios.post(`${API_URL}/api/mixed/growth-curve`, payload)
+        console.log('Growth Curve Response:', response.data)
       }
 
       setResult(response.data)
@@ -396,7 +400,7 @@ const MixedModels = () => {
       setNestedTableData(newTableData)
       setNestedFactorNames(['School', 'Teacher'])
       setResponseName('Score')
-    } else {
+    } else if (analysisType === 'repeated-measures') {
       // Generate random data for Repeated Measures ANOVA
       // Design: 5 subjects × 4 time points with systematic increase
       const subjects = ['S1', 'S2', 'S3', 'S4', 'S5']
@@ -1050,7 +1054,7 @@ const MixedModels = () => {
       {result && (
         <div className="space-y-6">
           {/* Model Summary */}
-          {result.model_summary && (
+          {result.model_summary && analysisType !== 'growth-curve' && (
             <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
               <h3 className="text-xl font-bold text-gray-100 mb-4">Model Summary</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -1071,13 +1075,13 @@ const MixedModels = () => {
           )}
 
           {/* ICC Display - Phase 1 Enhancement */}
-          {result.icc && <ICCDisplay iccData={result.icc} />}
+          {result.icc && analysisType !== 'growth-curve' && <ICCDisplay iccData={result.icc} />}
 
           {/* Model Fit Metrics - Phase 1 Enhancement */}
           {result.model_fit && <ModelComparisonTable modelFit={result.model_fit} modelName={result.model_type || "Current Model"} />}
 
           {/* Variance Decomposition - Phase 1 Enhancement */}
-          {result.variance_components && (
+          {result.variance_components && analysisType !== 'growth-curve' && (
             <VarianceDecomposition
               varianceComponents={result.variance_components}
               iccData={result.icc}
@@ -1197,6 +1201,7 @@ const MixedModels = () => {
           )}
 
           {/* ANOVA Table with EMS */}
+          {result.anova_table && (
           <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
             <h3 className="text-xl font-bold text-gray-100 mb-4">ANOVA Table</h3>
             <div className="overflow-x-auto">
@@ -1265,9 +1270,10 @@ const MixedModels = () => {
               * Significant at α = {alpha}. Expected Mean Squares (EMS) show what each MS estimates.
             </p>
           </div>
+          )}
 
           {/* Variance Components */}
-          {result.variance_components && (
+          {result.variance_components && analysisType !== 'growth-curve' && (
             <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
               <h3 className="text-xl font-bold text-gray-100 mb-4">Variance Components</h3>
 
@@ -1347,7 +1353,7 @@ const MixedModels = () => {
           )}
 
           {/* Interpretation */}
-          {result.interpretation && result.interpretation.length > 0 && (
+          {result.interpretation && result.interpretation.length > 0 && analysisType !== 'growth-curve' && (
             <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
               <h3 className="text-xl font-bold text-gray-100 mb-4">Interpretation</h3>
               <div className="space-y-2">
@@ -1605,11 +1611,15 @@ const MixedModels = () => {
               {analysisType === 'growth-curve' && (
                 <>
                   {/* Growth Curve Results Summary */}
-                  <GrowthCurveResults result={result} />
+                  <GrowthCurveResults
+                    key={`gc-${result?.n_observations}-${result?.model_summary?.log_likelihood}`}
+                    result={result}
+                  />
 
                   {/* Growth Curve Spaghetti Plot */}
                   {result.individual_trajectories && result.population_curve && (
                     <GrowthCurvePlot
+                      key={`plot-${result?.n_observations}-${result?.model_summary?.log_likelihood}`}
                       individualTrajectories={result.individual_trajectories}
                       populationCurve={result.population_curve}
                       timeVar={growthTimeVar}

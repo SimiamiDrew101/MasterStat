@@ -10,6 +10,39 @@ import itertools
 
 router = APIRouter()
 
+
+def safe_float(value, default=0.0):
+    """
+    Global helper to convert value to float, handling NaN/inf by returning default.
+    Essential for JSON serialization in API responses.
+    """
+    try:
+        if value is None:
+            return default
+        if pd.isna(value) or np.isinf(value):
+            return default
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+
+def make_json_safe(obj):
+    """
+    Recursively convert all nan/inf values in a nested structure to safe defaults.
+    Essential for FastAPI JSON response serialization.
+    """
+    if isinstance(obj, dict):
+        return {k: make_json_safe(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [make_json_safe(item) for item in obj]
+    elif isinstance(obj, float):
+        return safe_float(obj)
+    elif isinstance(obj, (np.floating, np.integer)):
+        return safe_float(float(obj))
+    else:
+        return obj
+
+
 # ============================================================================
 # MIXED MODEL ANOVA WITH EXPECTED MEAN SQUARES
 # ============================================================================
@@ -1831,9 +1864,13 @@ def calculate_model_fit_metrics(model, df: pd.DataFrame, n_params: int) -> Dict:
         
         # Calculate additional metrics
         if aic is not None and bic is not None:
-            # CAIC (Consistent AIC)
-            caic = aic + 2 * n_params * (n_params + 1) / (n_obs - n_params - 1)
-            
+            # CAIC (Consistent AIC) - check for division by zero
+            denominator = n_obs - n_params - 1
+            if denominator > 0:
+                caic = aic + 2 * n_params * (n_params + 1) / denominator
+            else:
+                caic = None
+
             # Adjusted BIC
             adj_bic = bic - n_params * np.log(2 * np.pi)
             
@@ -1843,7 +1880,7 @@ def calculate_model_fit_metrics(model, df: pd.DataFrame, n_params: int) -> Dict:
             return {
                 "aic": round(aic, 2),
                 "bic": round(bic, 2),
-                "caic": round(caic, 2),
+                "caic": round(caic, 2) if caic is not None else None,
                 "adj_bic": round(adj_bic, 2),
                 "log_likelihood": round(log_likelihood, 4) if log_likelihood else None,
                 "n_parameters": n_params,
@@ -2193,7 +2230,7 @@ async def growth_curve_analysis(request: GrowthCurveRequest):
             fixed_effects, random_effects_variance, icc, request.polynomial_order
         )
 
-        return {
+        response = {
             "success": True,
             "model_type": "growth_curve",
             "polynomial_order": request.polynomial_order,
@@ -2214,6 +2251,9 @@ async def growth_curve_analysis(request: GrowthCurveRequest):
             "population_curve": population_curve,
             "interpretation": interpretation
         }
+
+        # Ensure all values are JSON-safe (no nan/inf)
+        return make_json_safe(response)
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error in growth curve analysis: {str(e)}")
@@ -2304,7 +2344,8 @@ def generate_population_curve(model, df, time_var, time_mean, poly_order, alpha)
             pred_df['time_cubic'] = pred_df['time_centered'] ** 3
 
         # Get fixed effects predictions (population average)
-        predictions = model.predict(pred_df, exog=sm.add_constant(pred_df[[c for c in pred_df.columns if c != time_var]]))
+        # For MixedLM, predict needs the full dataframe with correct column structure
+        predictions = model.predict(pred_df)
 
         # Calculate confidence intervals
         # For simplicity, use fixed effects SE
