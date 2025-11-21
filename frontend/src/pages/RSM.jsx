@@ -27,6 +27,10 @@ const RSM = () => {
   const [canonicalResult, setCanonicalResult] = useState(null)
   const [optimizationResult, setOptimizationResult] = useState(null)
   const [steepestAscentResult, setSteepestAscentResult] = useState(null)
+  const [confirmationRunsResult, setConfirmationRunsResult] = useState(null)
+  const [ridgeAnalysisResult, setRidgeAnalysisResult] = useState(null)
+  const [targetResponse, setTargetResponse] = useState('')
+  const [nConfirmationRuns, setNConfirmationRuns] = useState(3)
   const [surfaceData, setSurfaceData] = useState(null)
 
   // UI state
@@ -262,6 +266,72 @@ const RSM = () => {
       setSteepestAscentResult(response.data)
     } catch (err) {
       setError(err.response?.data?.detail || err.message || 'Steepest ascent failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Calculate confirmation runs
+  const handleConfirmationRuns = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      if (!optimizationResult || !optimizationResult.optimal_point) {
+        throw new Error('Run optimization first to get optimal point')
+      }
+
+      if (!modelResult || !modelResult.coefficients) {
+        throw new Error('Model not fitted')
+      }
+
+      // Get residual mean square from model (if available)
+      const varianceEstimate = modelResult.anova?.Residual?.mean_sq || null
+
+      const response = await axios.post(`${API_URL}/api/rsm/confirmation-runs`, {
+        optimal_point: optimizationResult.optimal_point,
+        coefficients: Object.fromEntries(
+          Object.entries(modelResult.coefficients).map(([k, v]) => [k, v.estimate])
+        ),
+        factors: factorNames,
+        n_runs: nConfirmationRuns,
+        variance_estimate: varianceEstimate
+      })
+
+      setConfirmationRunsResult(response.data)
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'Confirmation runs calculation failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Calculate ridge analysis
+  const handleRidgeAnalysis = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      if (!modelResult || !modelResult.coefficients) {
+        throw new Error('Fit a model first')
+      }
+
+      if (!targetResponse || targetResponse === '') {
+        throw new Error('Enter target response value')
+      }
+
+      const response = await axios.post(`${API_URL}/api/rsm/ridge-analysis`, {
+        coefficients: Object.fromEntries(
+          Object.entries(modelResult.coefficients).map(([k, v]) => [k, v.estimate])
+        ),
+        factors: factorNames,
+        target_response: parseFloat(targetResponse),
+        n_points: 50
+      })
+
+      setRidgeAnalysisResult(response.data)
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'Ridge analysis failed')
     } finally {
       setLoading(false)
     }
@@ -813,6 +883,92 @@ const RSM = () => {
               <p className="text-gray-300 text-sm mt-4">
                 <strong>Method:</strong> {optimizationResult.method}
               </p>
+
+              {/* Confirmation Runs Button */}
+              <div className="mt-6 flex items-center gap-4">
+                <input
+                  type="number"
+                  value={nConfirmationRuns}
+                  onChange={(e) => setNConfirmationRuns(parseInt(e.target.value) || 3)}
+                  min="1"
+                  max="10"
+                  className="px-4 py-2 bg-slate-700 text-gray-100 rounded-lg w-24"
+                />
+                <button
+                  onClick={handleConfirmationRuns}
+                  disabled={loading}
+                  className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-lg font-semibold hover:from-cyan-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                >
+                  <span>Calculate Confirmation Runs</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Confirmation Runs Results */}
+          {confirmationRunsResult && (
+            <div className="bg-gradient-to-r from-cyan-900/30 to-teal-900/30 backdrop-blur-lg rounded-2xl p-6 border border-cyan-700/50">
+              <h3 className="text-2xl font-bold text-gray-100 mb-4">Confirmation Runs</h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-slate-700/50 rounded-lg p-4">
+                  <p className="text-gray-400 text-sm">Predicted Response</p>
+                  <p className="text-2xl font-bold text-cyan-300">{confirmationRunsResult.predicted_response}</p>
+                </div>
+                {confirmationRunsResult.prediction_interval && (
+                  <>
+                    <div className="bg-slate-700/50 rounded-lg p-4">
+                      <p className="text-gray-400 text-sm">95% PI Lower</p>
+                      <p className="text-2xl font-bold text-gray-100">{confirmationRunsResult.prediction_interval.lower}</p>
+                    </div>
+                    <div className="bg-slate-700/50 rounded-lg p-4">
+                      <p className="text-gray-400 text-sm">95% PI Upper</p>
+                      <p className="text-2xl font-bold text-gray-100">{confirmationRunsResult.prediction_interval.upper}</p>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <h4 className="text-gray-100 font-semibold mb-3">Recommended Confirmation Runs:</h4>
+              <div className="overflow-x-auto bg-slate-700/30 rounded-lg">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-700/70">
+                      <th className="px-4 py-2 text-center text-gray-100 font-semibold border-b border-slate-600">Run</th>
+                      {factorNames.map((factor, idx) => (
+                        <th key={idx} className="px-4 py-2 text-center text-gray-100 font-semibold border-b border-slate-600">
+                          {factor}
+                        </th>
+                      ))}
+                      <th className="px-4 py-2 text-center text-gray-100 font-semibold border-b border-slate-600">Predicted</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {confirmationRunsResult.confirmation_runs.map((run, idx) => (
+                      <tr key={idx} className="border-b border-slate-700/30 hover:bg-slate-600/10">
+                        <td className="px-4 py-2 text-center text-gray-100 font-bold">{run.run_number}</td>
+                        {factorNames.map((factor, fIdx) => (
+                          <td key={fIdx} className="px-4 py-2 text-center text-gray-100">
+                            {run[factor]}
+                          </td>
+                        ))}
+                        <td className="px-4 py-2 text-center text-cyan-300 font-semibold">{run.predicted_response}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {confirmationRunsResult.recommendations && (
+                <div className="mt-6 bg-slate-700/30 rounded-lg p-4">
+                  <h5 className="font-semibold text-gray-100 mb-2">Recommendations:</h5>
+                  <ul className="list-disc list-inside space-y-1 text-gray-300 text-sm">
+                    {confirmationRunsResult.recommendations.map((rec, idx) => (
+                      <li key={idx}>{rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 
@@ -860,6 +1016,77 @@ const RSM = () => {
               </p>
             </div>
           )}
+
+          {/* Ridge Analysis Controls */}
+          {modelResult && numFactors === 2 && (
+            <div className="bg-gradient-to-r from-indigo-900/30 to-violet-900/30 backdrop-blur-lg rounded-2xl p-6 border border-indigo-700/50">
+              <h3 className="text-2xl font-bold text-gray-100 mb-4">Ridge Analysis</h3>
+              <p className="text-gray-300 text-sm mb-4">
+                Find all factor combinations that achieve a specific target response value.
+              </p>
+
+              <div className="flex items-center gap-4">
+                <div>
+                  <label className="block text-gray-400 text-sm mb-2">Target Response:</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={targetResponse}
+                    onChange={(e) => setTargetResponse(e.target.value)}
+                    placeholder="Enter target value"
+                    className="px-4 py-2 bg-slate-700 text-gray-100 rounded-lg w-40"
+                  />
+                </div>
+                <button
+                  onClick={handleRidgeAnalysis}
+                  disabled={loading || !targetResponse}
+                  className="mt-6 px-6 py-3 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-lg font-semibold hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                >
+                  <span>Calculate Ridge</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Ridge Analysis Results */}
+          {ridgeAnalysisResult && (
+            <div className="bg-gradient-to-r from-indigo-900/30 to-violet-900/30 backdrop-blur-lg rounded-2xl p-6 border border-indigo-700/50">
+              <h3 className="text-2xl font-bold text-gray-100 mb-4">
+                Ridge Analysis Results
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-slate-700/50 rounded-lg p-4">
+                  <p className="text-gray-400 text-sm">Target Response</p>
+                  <p className="text-2xl font-bold text-indigo-300">{ridgeAnalysisResult.target_response}</p>
+                </div>
+                {ridgeAnalysisResult.stationary_response && (
+                  <div className="bg-slate-700/50 rounded-lg p-4">
+                    <p className="text-gray-400 text-sm">Stationary Response</p>
+                    <p className="text-2xl font-bold text-gray-100">{ridgeAnalysisResult.stationary_response}</p>
+                  </div>
+                )}
+                {ridgeAnalysisResult.distance_to_target && (
+                  <div className="bg-slate-700/50 rounded-lg p-4">
+                    <p className="text-gray-400 text-sm">Distance to Target</p>
+                    <p className="text-2xl font-bold text-gray-100">{ridgeAnalysisResult.distance_to_target}</p>
+                  </div>
+                )}
+              </div>
+
+              {ridgeAnalysisResult.ridge_points && ridgeAnalysisResult.ridge_points.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-gray-300 text-sm">
+                    <strong>Ridge Points:</strong> {ridgeAnalysisResult.n_points} factor combinations found
+                  </p>
+                </div>
+              )}
+
+              <p className="text-gray-300 text-sm mt-4 bg-slate-700/30 rounded-lg p-4">
+                <strong>Interpretation:</strong> {ridgeAnalysisResult.interpretation}
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -897,6 +1124,7 @@ const RSM = () => {
                 optimizationResult={optimizationResult}
                 canonicalResult={canonicalResult}
                 steepestAscentResult={steepestAscentResult}
+                ridgeAnalysisResult={ridgeAnalysisResult}
               />
             </>
           ) : (

@@ -9,7 +9,8 @@ const ContourPlot = ({
   experimentalData = null,
   optimizationResult = null,
   canonicalResult = null,
-  steepestAscentResult = null
+  steepestAscentResult = null,
+  ridgeAnalysisResult = null
 }) => {
   if (!surfaceData || surfaceData.length === 0) return null
 
@@ -189,6 +190,33 @@ const ContourPlot = ({
           hoverinfo: 'skip'
         })
       }
+    }
+  }
+
+  // 6. Ridge analysis contour (if available)
+  if (ridgeAnalysisResult && ridgeAnalysisResult.ridge_points && ridgeAnalysisResult.ridge_points.length > 0) {
+    const ridgeX = ridgeAnalysisResult.ridge_points.map(point => point[factor1])
+    const ridgeY = ridgeAnalysisResult.ridge_points.map(point => point[factor2])
+
+    // Only plot if we have valid coordinates
+    if (ridgeX.length > 0 && ridgeY.length > 0 && ridgeX.every(x => x !== undefined) && ridgeY.every(y => y !== undefined)) {
+      // Close the contour by adding first point at the end
+      ridgeX.push(ridgeX[0])
+      ridgeY.push(ridgeY[0])
+
+      traces.push({
+        type: 'scatter',
+        mode: 'lines',
+        x: ridgeX,
+        y: ridgeY,
+        line: {
+          color: '#a855f7',
+          width: 3,
+          dash: 'dot'
+        },
+        name: `Ridge (Y=${ridgeAnalysisResult.target_response})`,
+        hovertemplate: `${factor1}: %{x:.2f}<br>${factor2}: %{y:.2f}<br>Response: ${ridgeAnalysisResult.target_response}<extra></extra>`
+      })
     }
   }
 
