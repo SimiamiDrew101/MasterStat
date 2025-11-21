@@ -896,6 +896,7 @@ const RSM = () => {
                 })()}
                 optimizationResult={optimizationResult}
                 canonicalResult={canonicalResult}
+                steepestAscentResult={steepestAscentResult}
               />
             </>
           ) : (

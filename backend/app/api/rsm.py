@@ -665,3 +665,201 @@ async def optimize_response(request: OptimizationRequest):
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+class ConfirmationRunsRequest(BaseModel):
+    optimal_point: Dict[str, float] = Field(..., description="Optimal factor levels")
+    coefficients: Dict[str, Any] = Field(..., description="Model coefficients")
+    factors: List[str] = Field(..., description="Factor names")
+    n_runs: int = Field(3, description="Number of confirmation runs to recommend")
+    variance_estimate: Optional[float] = Field(None, description="Estimated variance from model")
+
+
+class RidgeAnalysisRequest(BaseModel):
+    coefficients: Dict[str, Any] = Field(..., description="Model coefficients from second-order model")
+    factors: List[str] = Field(..., description="Factor names")
+    target_response: float = Field(..., description="Target response value for ridge analysis")
+    n_points: int = Field(50, description="Number of points for ridge contours")
+
+
+@router.post("/confirmation-runs")
+async def calculate_confirmation_runs(request: ConfirmationRunsRequest):
+    """
+    Calculate recommended confirmation runs at optimal point
+    Includes prediction interval and recommended replications
+    """
+    try:
+        k = len(request.factors)
+
+        # Build prediction function
+        def predict(x):
+            y = request.coefficients.get('Intercept', 0.0)
+            for i, factor in enumerate(request.factors):
+                y += request.coefficients.get(factor, 0.0) * x[i]
+            for i, factor in enumerate(request.factors):
+                quad_key = f"I({factor}**2)"
+                y += request.coefficients.get(quad_key, 0.0) * x[i]**2
+            for i in range(k):
+                for j in range(i+1, k):
+                    int_key = f"{request.factors[i]}:{request.factors[j]}"
+                    y += request.coefficients.get(int_key, 0.0) * x[i] * x[j]
+            return y
+
+        # Predicted response at optimal point
+        x_opt = np.array([request.optimal_point[f] for f in request.factors])
+        y_pred = predict(x_opt)
+
+        # Calculate prediction interval if variance provided
+        if request.variance_estimate and request.variance_estimate > 0:
+            # Standard error of prediction (simplified - assumes center point)
+            # For more accurate, would need X'X matrix from original fit
+            se_pred = np.sqrt(request.variance_estimate * (1 + 1/request.n_runs))
+
+            # 95% prediction interval (t-distribution with large df ≈ z-distribution)
+            from scipy.stats import t
+            t_value = t.ppf(0.975, df=20)  # Assuming ~20 df, adjust as needed
+
+            lower_bound = y_pred - t_value * se_pred
+            upper_bound = y_pred + t_value * se_pred
+
+            prediction_interval = {
+                "lower": round(float(lower_bound), 4),
+                "upper": round(float(upper_bound), 4),
+                "confidence_level": 0.95
+            }
+        else:
+            prediction_interval = None
+
+        # Generate confirmation run design
+        confirmation_runs = []
+        for i in range(request.n_runs):
+            run = {
+                "run_number": i + 1,
+                **{f: round(float(request.optimal_point[f]), 4) for f in request.factors},
+                "predicted_response": round(float(y_pred), 4)
+            }
+            confirmation_runs.append(run)
+
+        # Calculate statistical power (simplified)
+        if request.variance_estimate:
+            # Detectable difference with 80% power
+            effect_size = 2.8 * np.sqrt(request.variance_estimate / request.n_runs)
+        else:
+            effect_size = None
+
+        return {
+            "optimal_point": {f: round(float(request.optimal_point[f]), 4) for f in request.factors},
+            "predicted_response": round(float(y_pred), 4),
+            "confirmation_runs": confirmation_runs,
+            "n_runs": request.n_runs,
+            "prediction_interval": prediction_interval,
+            "minimum_detectable_effect": round(float(effect_size), 4) if effect_size else None,
+            "recommendations": [
+                f"Run {request.n_runs} confirmation experiments at the optimal point",
+                "Monitor actual response vs. predicted response",
+                "If actual response falls outside prediction interval, investigate model adequacy",
+                "Consider additional center point replicates if high variability observed"
+            ]
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/ridge-analysis")
+async def ridge_analysis(request: RidgeAnalysisRequest):
+    """
+    Perform ridge analysis to find factor combinations achieving target response
+    Shows stable operating regions
+    """
+    try:
+        k = len(request.factors)
+
+        # Extract linear coefficients (b) and quadratic matrix (B)
+        b = np.array([request.coefficients.get(f, 0.0) for f in request.factors])
+
+        B = np.zeros((k, k))
+        for i, f1 in enumerate(request.factors):
+            quad_key = f"I({f1}**2)"
+            if quad_key in request.coefficients:
+                B[i, i] = request.coefficients[quad_key]
+            for j, f2 in enumerate(request.factors):
+                if i < j:
+                    int_key = f"{f1}:{f2}"
+                    if int_key in request.coefficients:
+                        B[i, j] = B[j, i] = request.coefficients[int_key] / 2
+
+        intercept = request.coefficients.get('Intercept', 0.0)
+
+        # Find stationary point
+        try:
+            B_inv = np.linalg.inv(B)
+            x_s = -0.5 * np.dot(B_inv, b)
+            stationary_point = {request.factors[i]: round(float(x_s[i]), 4) for i in range(k)}
+
+            # Predicted response at stationary point
+            y_s = intercept + np.dot(b, x_s) + np.dot(x_s, np.dot(B, x_s))
+        except np.linalg.LinAlgError:
+            stationary_point = None
+            y_s = None
+
+        # Calculate ridge of target response
+        # For 2D case, we can calculate the ridge contour
+        if k == 2:
+            # Generate ridge points
+            ridge_points = []
+            theta_values = np.linspace(0, 2*np.pi, request.n_points)
+
+            for theta in theta_values:
+                # Direction vector
+                d = np.array([np.cos(theta), np.sin(theta)])
+
+                # Solve for radius R where y(R*d) = target_response
+                # This is a quadratic equation in R
+                a_coef = np.dot(d, np.dot(B, d))
+                b_coef = np.dot(b, d)
+                c_coef = intercept - request.target_response
+
+                # Solve quadratic: a*R^2 + b*R + c = 0
+                discriminant = b_coef**2 - 4*a_coef*c_coef
+
+                if discriminant >= 0 and abs(a_coef) > 1e-10:
+                    r1 = (-b_coef + np.sqrt(discriminant)) / (2*a_coef)
+                    r2 = (-b_coef - np.sqrt(discriminant)) / (2*a_coef)
+
+                    # Use positive radius in reasonable range
+                    for r in [r1, r2]:
+                        if 0 < r < 5:  # Reasonable range for coded variables
+                            point = r * d
+                            ridge_points.append({
+                                request.factors[0]: round(float(point[0]), 4),
+                                request.factors[1]: round(float(point[1]), 4),
+                                "radius": round(float(r), 4)
+                            })
+                            break
+
+            # Calculate distance from stationary point to target
+            distance_to_stationary = None
+            if stationary_point and y_s is not None:
+                distance_to_stationary = round(float(abs(y_s - request.target_response)), 4)
+        else:
+            ridge_points = []
+            distance_to_stationary = None
+
+        return {
+            "target_response": request.target_response,
+            "stationary_point": stationary_point,
+            "stationary_response": round(float(y_s), 4) if y_s is not None else None,
+            "distance_to_target": distance_to_stationary,
+            "ridge_points": ridge_points,
+            "n_points": len(ridge_points),
+            "interpretation": (
+                f"Ridge analysis shows factor combinations achieving response = {request.target_response}. "
+                f"Points on the ridge represent stable operating conditions with equivalent response."
+                if ridge_points else
+                "Ridge analysis could not be computed. Target response may be outside feasible region."
+            )
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

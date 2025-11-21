@@ -8,7 +8,8 @@ const ContourPlot = ({
   responseName,
   experimentalData = null,
   optimizationResult = null,
-  canonicalResult = null
+  canonicalResult = null,
+  steepestAscentResult = null
 }) => {
   if (!surfaceData || surfaceData.length === 0) return null
 
@@ -135,6 +136,60 @@ const ContourPlot = ({
       name: 'Stationary Point',
       hovertemplate: `${factor1}: ${statX}<br>${factor2}: ${statY}<br>Type: ${canonicalResult.surface_type}<extra></extra>`
     })
+  }
+
+  // 5. Steepest ascent/descent path (if available)
+  if (steepestAscentResult && steepestAscentResult.path && steepestAscentResult.path.length > 0) {
+    const pathX = steepestAscentResult.path.map(point => point[factor1])
+    const pathY = steepestAscentResult.path.map(point => point[factor2])
+
+    // Only plot if we have valid coordinates for both factors
+    if (pathX.length > 0 && pathY.length > 0 && pathX.every(x => x !== undefined) && pathY.every(y => y !== undefined)) {
+      traces.push({
+        type: 'scatter',
+        mode: 'lines+markers',
+        x: pathX,
+        y: pathY,
+        line: {
+          color: '#f59e0b',
+          width: 3
+        },
+        marker: {
+          size: 8,
+          color: '#f59e0b',
+          symbol: 'circle',
+          line: {
+            color: 'white',
+            width: 1
+          }
+        },
+        name: 'Steepest Ascent Path',
+        hovertemplate: `Step: %{text}<br>${factor1}: %{x:.2f}<br>${factor2}: %{y:.2f}<extra></extra>`,
+        text: steepestAscentResult.path.map(point => point.step || 0)
+      })
+
+      // Add arrow to show direction
+      if (pathX.length >= 2) {
+        traces.push({
+          type: 'scatter',
+          mode: 'markers',
+          x: [pathX[pathX.length - 1]],
+          y: [pathY[pathY.length - 1]],
+          marker: {
+            size: 14,
+            color: '#f59e0b',
+            symbol: 'triangle-up',
+            line: {
+              color: 'white',
+              width: 2
+            }
+          },
+          name: 'Path Direction',
+          showlegend: false,
+          hoverinfo: 'skip'
+        })
+      }
+    }
   }
 
   const layout = {
