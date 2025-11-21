@@ -682,6 +682,40 @@ class RidgeAnalysisRequest(BaseModel):
     n_points: int = Field(50, description="Number of points for ridge contours")
 
 
+class DesirabilitySpec(BaseModel):
+    response_name: str = Field(..., description="Name of the response variable")
+    coefficients: Dict[str, Any] = Field(..., description="Model coefficients for this response")
+    goal: str = Field(..., description="'maximize', 'minimize', or 'target'")
+    lower_bound: Optional[float] = Field(None, description="Lower acceptable value")
+    upper_bound: Optional[float] = Field(None, description="Upper acceptable value")
+    target: Optional[float] = Field(None, description="Target value (for 'target' goal)")
+    weight: float = Field(1.0, description="Importance weight for this response")
+    importance: float = Field(1.0, description="Shape parameter (s) for desirability function")
+
+
+class DesirabilityRequest(BaseModel):
+    responses: List[DesirabilitySpec] = Field(..., description="List of response specifications")
+    factors: List[str] = Field(..., description="Factor names")
+    constraints: Optional[Dict[str, List[float]]] = Field(None, description="Factor constraints {factor: [min, max]}")
+
+
+class DesignAugmentationRequest(BaseModel):
+    current_design: List[Dict[str, float]] = Field(..., description="Existing design points")
+    factors: List[str] = Field(..., description="Factor names")
+    n_points: int = Field(3, description="Number of points to add")
+    strategy: str = Field('steep-ascent', description="'steep-ascent', 'model-based', or 'space-filling'")
+    coefficients: Optional[Dict[str, Any]] = Field(None, description="Model coefficients (for model-based strategy)")
+    target: Optional[str] = Field('maximize', description="'maximize' or 'minimize' (for steep-ascent)")
+
+
+class ConstrainedOptimizationRequest(BaseModel):
+    coefficients: Dict[str, Any] = Field(..., description="Model coefficients")
+    factors: List[str] = Field(..., description="Factor names")
+    target: str = Field('maximize', description="'maximize' or 'minimize'")
+    linear_constraints: Optional[List[Dict[str, Any]]] = Field(None, description="Linear constraints: [{coefficients: {}, bound: value, type: 'ineq'/'eq'}]")
+    bounds: Optional[Dict[str, List[float]]] = Field(None, description="Box constraints {factor: [min, max]}")
+
+
 @router.post("/confirmation-runs")
 async def calculate_confirmation_runs(request: ConfirmationRunsRequest):
     """
@@ -859,6 +893,271 @@ async def ridge_analysis(request: RidgeAnalysisRequest):
                 if ridge_points else
                 "Ridge analysis could not be computed. Target response may be outside feasible region."
             )
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/desirability-optimization")
+async def desirability_optimization(request: DesirabilityRequest):
+    """
+    Multi-response optimization using desirability functions
+    Combines multiple responses into a single composite desirability metric
+    """
+    try:
+        from scipy.optimize import differential_evolution
+
+        k = len(request.factors)
+
+        # Build prediction functions for each response
+        def predict_response(x, coefficients):
+            y = coefficients.get('Intercept', 0.0)
+            for i, factor in enumerate(request.factors):
+                y += coefficients.get(factor, 0.0) * x[i]
+            for i, factor in enumerate(request.factors):
+                quad_key = f"I({factor}**2)"
+                y += coefficients.get(quad_key, 0.0) * x[i]**2
+            for i in range(k):
+                for j in range(i+1, k):
+                    int_key = f"{request.factors[i]}:{request.factors[j]}"
+                    y += coefficients.get(int_key, 0.0) * x[i] * x[j]
+            return y
+
+        # Calculate individual desirability
+        def calculate_desirability(y, spec: DesirabilitySpec):
+            if spec.goal == 'maximize':
+                L = spec.lower_bound if spec.lower_bound is not None else 0
+                U = spec.upper_bound if spec.upper_bound is not None else y + 1
+                if y <= L:
+                    return 0.0
+                elif y >= U:
+                    return 1.0
+                else:
+                    return ((y - L) / (U - L)) ** spec.importance
+
+            elif spec.goal == 'minimize':
+                L = spec.lower_bound if spec.lower_bound is not None else y - 1
+                U = spec.upper_bound if spec.upper_bound is not None else 0
+                if y >= U:
+                    return 0.0
+                elif y <= L:
+                    return 1.0
+                else:
+                    return ((U - y) / (U - L)) ** spec.importance
+
+            elif spec.goal == 'target':
+                T = spec.target if spec.target is not None else (spec.lower_bound + spec.upper_bound) / 2
+                L = spec.lower_bound if spec.lower_bound is not None else T - 1
+                U = spec.upper_bound if spec.upper_bound is not None else T + 1
+
+                if y < L or y > U:
+                    return 0.0
+                elif y <= T:
+                    return ((y - L) / (T - L)) ** spec.importance
+                else:
+                    return ((U - y) / (U - T)) ** spec.importance
+
+            return 0.0
+
+        # Composite desirability function (geometric mean with weights)
+        def composite_desirability(x):
+            desirabilities = []
+            weights = []
+            for spec in request.responses:
+                y_pred = predict_response(x, spec.coefficients)
+                d = calculate_desirability(y_pred, spec)
+                desirabilities.append(d)
+                weights.append(spec.weight)
+
+            # Weighted geometric mean
+            if any(d == 0 for d in desirabilities):
+                return 0.0
+
+            total_weight = sum(weights)
+            D = 1.0
+            for d, w in zip(desirabilities, weights):
+                D *= d ** (w / total_weight)
+
+            return D
+
+        # Optimize (maximize composite desirability)
+        objective = lambda x: -composite_desirability(x)
+
+        # Bounds
+        if request.constraints:
+            bounds = [request.constraints.get(f, [-2, 2]) for f in request.factors]
+        else:
+            bounds = [(-2, 2)] * k
+
+        result = differential_evolution(objective, bounds, seed=42, maxiter=1000)
+
+        optimal_x = result.x
+        optimal_point = {request.factors[i]: round(float(optimal_x[i]), 4) for i in range(k)}
+
+        # Calculate individual responses and desirabilities at optimum
+        individual_results = []
+        for spec in request.responses:
+            y_pred = predict_response(optimal_x, spec.coefficients)
+            d = calculate_desirability(y_pred, spec)
+            individual_results.append({
+                "response_name": spec.response_name,
+                "predicted_value": round(float(y_pred), 4),
+                "desirability": round(float(d), 4),
+                "goal": spec.goal,
+                "weight": spec.weight
+            })
+
+        composite_d = composite_desirability(optimal_x)
+
+        return {
+            "optimal_point": optimal_point,
+            "composite_desirability": round(float(composite_d), 4),
+            "individual_results": individual_results,
+            "success": result.success,
+            "method": "Desirability Function Optimization",
+            "interpretation": (
+                f"Composite desirability = {round(float(composite_d), 4)} "
+                f"(0 = unacceptable, 1 = ideal). "
+                "This represents the best compromise among all {len(request.responses)} responses."
+            )
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/design-augmentation")
+async def design_augmentation(request: DesignAugmentationRequest):
+    """
+    Sequential design augmentation - add follow-up runs strategically
+    """
+    try:
+        k = len(request.factors)
+        current_points = np.array([[pt[f] for f in request.factors] for pt in request.current_design])
+
+        new_points = []
+
+        if request.strategy == 'space-filling':
+            # Latin Hypercube Sampling for space-filling
+            from scipy.stats import qmc
+            sampler = qmc.LatinHypercube(d=k, seed=42)
+            sample = sampler.random(n=request.n_points)
+            # Scale to [-2, 2] range (coded units)
+            scaled = qmc.scale(sample, [-2]*k, [2]*k)
+            new_points = scaled.tolist()
+
+        elif request.strategy == 'steep-ascent' and request.coefficients:
+            # Add points along steepest ascent direction
+            linear_coefs = np.array([request.coefficients.get(f, 0.0) for f in request.factors])
+            direction = linear_coefs / np.linalg.norm(linear_coefs) if np.linalg.norm(linear_coefs) > 0 else np.zeros(k)
+
+            # Start from center or last point
+            start = current_points[-1] if len(current_points) > 0 else np.zeros(k)
+
+            for i in range(1, request.n_points + 1):
+                point = start + (i * 0.5 * direction)
+                new_points.append(point.tolist())
+
+        elif request.strategy == 'model-based' and request.coefficients:
+            # Add points near predicted optimum
+            def predict(x):
+                y = request.coefficients.get('Intercept', 0.0)
+                for i, factor in enumerate(request.factors):
+                    y += request.coefficients.get(factor, 0.0) * x[i]
+                    quad_key = f"I({factor}**2)"
+                    y += request.coefficients.get(quad_key, 0.0) * x[i]**2
+                for i in range(k):
+                    for j in range(i+1, k):
+                        int_key = f"{request.factors[i]}:{request.factors[j]}"
+                        y += request.coefficients.get(int_key, 0.0) * x[i] * x[j]
+                return y
+
+            from scipy.optimize import differential_evolution
+            objective = lambda x: -predict(x) if request.target == 'maximize' else predict
+            result = differential_evolution(objective, [(-2, 2)] * k, seed=42, maxiter=500)
+
+            # Add points around optimum
+            optimum = result.x
+            for i in range(request.n_points):
+                # Add small random perturbations
+                point = optimum + np.random.normal(0, 0.3, k)
+                new_points.append(point.tolist())
+
+        # Format output
+        augmented_design = []
+        for i, point in enumerate(new_points):
+            design_point = {request.factors[j]: round(float(point[j]), 4) for j in range(k)}
+            design_point['run_number'] = len(request.current_design) + i + 1
+            augmented_design.append(design_point)
+
+        return {
+            "strategy": request.strategy,
+            "n_new_points": len(augmented_design),
+            "new_points": augmented_design,
+            "total_runs": len(request.current_design) + len(augmented_design),
+            "recommendation": f"Added {len(augmented_design)} runs using {request.strategy} strategy"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/constrained-optimization")
+async def constrained_optimization(request: ConstrainedOptimizationRequest):
+    """
+    Optimization with linear and box constraints
+    """
+    try:
+        from scipy.optimize import minimize, Bounds, LinearConstraint
+
+        k = len(request.factors)
+
+        def predict(x):
+            y = request.coefficients.get('Intercept', 0.0)
+            for i, factor in enumerate(request.factors):
+                y += request.coefficients.get(factor, 0.0) * x[i]
+                quad_key = f"I({factor}**2)"
+                y += request.coefficients.get(quad_key, 0.0) * x[i]**2
+            for i in range(k):
+                for j in range(i+1, k):
+                    int_key = f"{request.factors[i]}:{request.factors[j]}"
+                    y += request.coefficients.get(int_key, 0.0) * x[i] * x[j]
+            return y
+
+        objective = lambda x: -predict(x) if request.target == 'maximize' else predict
+
+        # Box constraints
+        if request.bounds:
+            lb = [request.bounds.get(f, [-2, 2])[0] for f in request.factors]
+            ub = [request.bounds.get(f, [-2, 2])[1] for f in request.factors]
+        else:
+            lb, ub = [-2]*k, [2]*k
+
+        bounds = Bounds(lb, ub)
+
+        # Linear constraints
+        constraints = []
+        if request.linear_constraints:
+            for lc in request.linear_constraints:
+                A = [lc['coefficients'].get(f, 0.0) for f in request.factors]
+                constraint = LinearConstraint(A, -np.inf if lc['type'] == 'ineq' else lc['bound'], lc['bound'])
+                constraints.append(constraint)
+
+        # Optimize
+        x0 = np.zeros(k)  # Start at center
+        result = minimize(objective, x0, method='SLSQP', bounds=bounds, constraints=constraints if constraints else ())
+
+        optimal_point = {request.factors[i]: round(float(result.x[i]), 4) for i in range(k)}
+        predicted_response = round(float(predict(result.x)), 4)
+
+        return {
+            "optimal_point": optimal_point,
+            "predicted_response": predicted_response,
+            "success": result.success,
+            "method": "Sequential Least Squares Programming (SLSQP)",
+            "n_constraints": len(request.linear_constraints) if request.linear_constraints else 0,
+            "interpretation": f"Optimal solution found respecting all constraints. Response = {predicted_response}"
         }
 
     except Exception as e:
