@@ -10,6 +10,7 @@ import EnhancedANOVA from '../components/EnhancedANOVA'
 import PredictionProfiler from '../components/PredictionProfiler'
 import AdvancedDiagnostics from '../components/AdvancedDiagnostics'
 import ExperimentWizard from '../components/ExperimentWizard'
+import CrossValidationResults from '../components/CrossValidationResults'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -36,6 +37,10 @@ const RSM = () => {
   const [nConfirmationRuns, setNConfirmationRuns] = useState(3)
   const [surfaceData, setSurfaceData] = useState(null)
   const [advancedDiagnostics, setAdvancedDiagnostics] = useState(null)
+  const [cvResults, setCvResults] = useState(null)
+  const [cvLoading, setCvLoading] = useState(false)
+  const [cvError, setCvError] = useState(null)
+  const [kFolds, setKFolds] = useState(5)
 
   // Advanced features state (Features 4-6)
   const [augmentationStrategy, setAugmentationStrategy] = useState('space-filling')
@@ -286,6 +291,48 @@ const RSM = () => {
       setError(err.response?.data?.detail || err.message || 'Failed to fit model')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Run K-fold Cross-Validation (Phase 2 Feature)
+  const handleCrossValidation = async () => {
+    setCvLoading(true)
+    setCvError(null)
+    setCvResults(null)
+
+    try {
+      // Validate data
+      const validRows = tableData.filter(row => {
+        const responseValue = row[row.length - 1]
+        return responseValue !== '' && responseValue !== null && responseValue !== undefined
+      })
+
+      if (validRows.length < kFolds * 2) {
+        throw new Error(`Need at least ${kFolds * 2} complete data points for ${kFolds}-fold cross-validation (found ${validRows.length})`)
+      }
+
+      // Convert to API format
+      const data = validRows.map(row => {
+        const point = {}
+        factorNames.forEach((factor, i) => {
+          point[factor] = parseFloat(row[i])
+        })
+        point[responseName] = parseFloat(row[row.length - 1])
+        return point
+      })
+
+      const response = await axios.post(`${API_URL}/api/rsm/cross-validate`, {
+        data: data,
+        factors: factorNames,
+        response: responseName,
+        k_folds: kFolds
+      })
+
+      setCvResults(response.data)
+    } catch (err) {
+      setCvError(err.response?.data?.detail || err.message || 'Failed to run cross-validation')
+    } finally {
+      setCvLoading(false)
     }
   }
 
@@ -1235,6 +1282,67 @@ const RSM = () => {
               <AdvancedDiagnostics diagnosticsData={advancedDiagnostics} />
             </div>
           )}
+
+          {/* K-fold Cross-Validation (Phase 2 Feature) */}
+          <div className="bg-gradient-to-r from-indigo-900/30 to-blue-900/30 backdrop-blur-lg rounded-2xl p-6 border border-indigo-700/50">
+            <h3 className="text-2xl font-bold text-gray-100 mb-4">Model Validation (K-Fold Cross-Validation)</h3>
+            <p className="text-gray-300 text-sm mb-6">
+              Validate your model's predictive performance using K-fold cross-validation. This technique provides a robust estimate of how well your model generalizes to unseen data by repeatedly training on different subsets of your data.
+            </p>
+
+            {/* Configuration */}
+            {!cvResults && (
+              <div className="mb-6 bg-slate-700/30 rounded-lg p-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                  <div>
+                    <label className="block text-gray-100 font-medium mb-2">Number of Folds (K)</label>
+                    <select
+                      value={kFolds}
+                      onChange={(e) => setKFolds(parseInt(e.target.value))}
+                      disabled={cvLoading}
+                      className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+                    >
+                      <option value={3}>3-Fold CV</option>
+                      <option value={5}>5-Fold CV (Recommended)</option>
+                      <option value={10}>10-Fold CV</option>
+                    </select>
+                    <p className="text-gray-400 text-xs mt-1">
+                      Higher K = more reliable but slower. 5-fold is a good balance.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={handleCrossValidation}
+                    disabled={cvLoading || !tableData.length}
+                    className="flex items-center justify-center gap-2 bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Target className="w-5 h-5" />
+                    <span>{cvLoading ? 'Running Cross-Validation...' : 'Run Cross-Validation'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Results */}
+            <CrossValidationResults
+              cvResults={cvResults}
+              loading={cvLoading}
+              error={cvError}
+            />
+
+            {/* Reset button if results are shown */}
+            {cvResults && !cvLoading && (
+              <button
+                onClick={() => {
+                  setCvResults(null)
+                  setCvError(null)
+                }}
+                className="mt-4 text-indigo-400 hover:text-indigo-300 text-sm font-medium transition-colors"
+              >
+                Run New Cross-Validation
+              </button>
+            )}
+          </div>
 
           {/* Export to Industry Standards (Phase 1 Feature) */}
           <div className="bg-gradient-to-r from-violet-900/30 to-fuchsia-900/30 backdrop-blur-lg rounded-2xl p-6 border border-violet-700/50">

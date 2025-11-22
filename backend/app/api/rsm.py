@@ -2121,6 +2121,12 @@ class DesignRecommendationRequest(BaseModel):
     goal: str = Field("optimization", description="Experiment goal: 'optimization', 'screening', or 'modeling'")
     time_constraint: Optional[str] = Field(None, description="Time constraint: 'low', 'medium', 'high'")
 
+class CrossValidationRequest(BaseModel):
+    data: List[Dict[str, float]] = Field(..., description="Experimental data")
+    factors: List[str] = Field(..., description="Factor variable names")
+    response: str = Field(..., description="Response variable name")
+    k_folds: int = Field(5, description="Number of folds for cross-validation (default: 5)")
+
 
 @router.post("/advanced-diagnostics")
 async def advanced_model_diagnostics(request: ModelDiagnosticsRequest):
@@ -2991,3 +2997,180 @@ async def recommend_design(request: DesignRecommendationRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Design recommendation failed: {str(e)}")
+
+
+# ============================================================================
+# MODEL VALIDATION - K-FOLD CROSS-VALIDATION (Phase 2 - RSM Improvements)
+# ============================================================================
+
+@router.post("/cross-validate")
+async def cross_validate_model(request: CrossValidationRequest):
+    """
+    K-fold cross-validation for RSM models.
+    Provides robust model validation to complement PRESS statistic.
+
+    Returns:
+    - Fold-by-fold performance metrics (R², RMSE, MAE)
+    - Average metrics with standard deviation
+    - Predicted vs actual values for plotting
+    - Interpretation and recommendations
+    """
+    try:
+        from sklearn.model_selection import KFold
+        from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+
+        df = pd.DataFrame(request.data)
+        n = len(df)
+
+        # Validate k_folds
+        if request.k_folds < 2 or request.k_folds > n:
+            raise HTTPException(
+                status_code=400,
+                detail=f"k_folds must be between 2 and {n} (number of observations)"
+            )
+
+        # Validate that each training fold has enough points for second-order model
+        # For k factors, a second-order model has (k+1)(k+2)/2 parameters
+        k = len(request.factors)
+        min_params = (k + 1) * (k + 2) // 2
+        train_size = n - (n // request.k_folds)  # Approximate training size
+
+        if train_size < min_params:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient data for {request.k_folds}-fold CV. Need at least {min_params} observations per training fold for {k}-factor second-order model (you have ~{train_size}). Try fewer folds or collect more data."
+            )
+
+        # Build design matrix for second-order model
+        linear_terms = " + ".join(request.factors)
+        quadratic_terms = " + ".join([f"I({f}**2)" for f in request.factors])
+
+        interaction_terms = []
+        for i in range(len(request.factors)):
+            for j in range(i+1, len(request.factors)):
+                interaction_terms.append(f"{request.factors[i]}:{request.factors[j]}")
+
+        if interaction_terms:
+            formula = f"{request.response} ~ {linear_terms} + {quadratic_terms} + {' + '.join(interaction_terms)}"
+        else:
+            formula = f"{request.response} ~ {linear_terms} + {quadratic_terms}"
+
+        # K-fold cross-validation
+        kfold = KFold(n_splits=request.k_folds, shuffle=True, random_state=42)
+
+        fold_scores = []
+        all_predictions = []
+        all_actuals = []
+
+        for fold_idx, (train_idx, test_idx) in enumerate(kfold.split(df)):
+            try:
+                # Split data
+                df_train = df.iloc[train_idx]
+                df_test = df.iloc[test_idx]
+
+                # Fit model on training fold
+                model = ols(formula, data=df_train).fit()
+
+                # Predict on test fold
+                y_test = df_test[request.response].values
+                y_pred = model.predict(df_test)
+
+                # Calculate metrics for this fold
+                fold_r2 = r2_score(y_test, y_pred)
+                fold_rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+                fold_mae = mean_absolute_error(y_test, y_pred)
+
+                # Check for NaN/Inf values
+                if np.isnan(fold_r2) or np.isinf(fold_r2) or np.isnan(fold_rmse) or np.isinf(fold_rmse):
+                    raise ValueError(f"Fold {fold_idx + 1}: Training set too small to fit model properly")
+
+                fold_scores.append({
+                    "fold": fold_idx + 1,
+                    "r2": round(float(fold_r2), 4),
+                    "rmse": round(float(fold_rmse), 4),
+                    "mae": round(float(fold_mae), 4),
+                    "n_test": len(test_idx)
+                })
+
+                # Store predictions for plotting
+                for actual, pred in zip(y_test, y_pred):
+                    all_predictions.append(float(pred))
+                    all_actuals.append(float(actual))
+
+            except Exception as fold_error:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Fold {fold_idx + 1} failed: {str(fold_error)}. Try reducing k_folds or adding more data."
+                )
+
+        # Calculate average metrics
+        avg_r2 = np.mean([f["r2"] for f in fold_scores])
+        std_r2 = np.std([f["r2"] for f in fold_scores])
+        avg_rmse = np.mean([f["rmse"] for f in fold_scores])
+        std_rmse = np.std([f["rmse"] for f in fold_scores])
+        avg_mae = np.mean([f["mae"] for f in fold_scores])
+        std_mae = np.std([f["mae"] for f in fold_scores])
+
+        # Calculate overall R² from all CV predictions
+        overall_r2 = r2_score(all_actuals, all_predictions)
+
+        # Generate interpretation
+        interpretation = []
+
+        # R² interpretation
+        if avg_r2 > 0.9:
+            interpretation.append("Excellent predictive performance (R² > 0.9)")
+        elif avg_r2 > 0.7:
+            interpretation.append("Good predictive performance (R² > 0.7)")
+        elif avg_r2 > 0.5:
+            interpretation.append(f"Moderate predictive performance (R² = {avg_r2:.3f})")
+        else:
+            interpretation.append(f"Poor predictive performance (R² = {avg_r2:.3f}) - consider model improvements")
+
+        # Consistency interpretation
+        if std_r2 < 0.05:
+            interpretation.append("Very consistent across folds (low variability)")
+        elif std_r2 < 0.10:
+            interpretation.append("Reasonably consistent across folds")
+        elif std_r2 > 0.15:
+            interpretation.append("High variability across folds - may indicate sensitivity to specific data points")
+
+        # Sample size consideration
+        avg_test_size = n / request.k_folds
+        if avg_test_size < 3:
+            interpretation.append(f"Warning: Small test sets ({avg_test_size:.1f} observations per fold). Consider reducing k_folds.")
+
+        # Recommendations
+        recommendations = []
+        if avg_r2 < 0.7:
+            recommendations.append("Consider adding more data points or simplifying the model")
+        if std_r2 > 0.15:
+            recommendations.append("High fold variability suggests model may be sensitive to outliers. Review diagnostics.")
+        if avg_r2 > 0.95 and std_r2 < 0.02:
+            recommendations.append("Excellent and stable model performance. Model is ready for use.")
+
+        return {
+            "k_folds": request.k_folds,
+            "n_observations": n,
+            "fold_scores": fold_scores,
+            "average_metrics": {
+                "r2": round(float(avg_r2), 4),
+                "r2_std": round(float(std_r2), 4),
+                "rmse": round(float(avg_rmse), 4),
+                "rmse_std": round(float(std_rmse), 4),
+                "mae": round(float(avg_mae), 4),
+                "mae_std": round(float(std_mae), 4)
+            },
+            "overall_cv_r2": round(float(overall_r2), 4),
+            "predictions_vs_actual": {
+                "predictions": all_predictions,
+                "actuals": all_actuals
+            },
+            "interpretation": interpretation,
+            "recommendations": recommendations if recommendations else ["Model validation complete. No specific recommendations."]
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Cross-validation failed: {str(e)}")
