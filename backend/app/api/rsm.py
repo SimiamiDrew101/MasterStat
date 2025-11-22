@@ -164,20 +164,20 @@ async def fit_rsm_model(request: RSMRequest):
 
         # Enhanced ANOVA table with more details
         enhanced_anova = {
-            "model": {
-                "ss": round(float(model.ess), 4),  # Explained sum of squares
+            "Model": {
+                "sum_sq": round(float(model.ess), 4),  # Explained sum of squares
                 "df": int(model.df_model),
-                "ms": round(float(model.ess / model.df_model), 4),
-                "f": round(float(model.fvalue), 4) if not pd.isna(model.fvalue) else None,
+                "mean_sq": round(float(model.ess / model.df_model), 4),
+                "F": round(float(model.fvalue), 4) if not pd.isna(model.fvalue) else None,
                 "p_value": round(float(model.f_pvalue), 6) if not pd.isna(model.f_pvalue) else None
             },
-            "residual": {
-                "ss": round(float(model.ssr), 4),  # Residual sum of squares
+            "Residual": {
+                "sum_sq": round(float(model.ssr), 4),  # Residual sum of squares
                 "df": int(model.df_resid),
-                "ms": round(float(model.mse_resid), 4)
+                "mean_sq": round(float(model.mse_resid), 4)
             },
-            "total": {
-                "ss": round(float(model.centered_tss), 4),  # Total sum of squares
+            "Total": {
+                "sum_sq": round(float(model.centered_tss), 4),  # Total sum of squares
                 "df": int(model.df_model + model.df_resid)
             },
             "terms": anova_results  # Detailed breakdown by term
@@ -237,7 +237,8 @@ async def fit_rsm_model(request: RSMRequest):
             "model_type": "Response Surface Model (Second-Order)",
             "coefficients": coefficients,
             "anova_table": anova_results,  # Keep for backward compatibility
-            "enhanced_anova": enhanced_anova,
+            "anova": enhanced_anova,  # Primary ANOVA for frontend access
+            "enhanced_anova": enhanced_anova,  # Alias for compatibility
             "r_squared": round(float(model.rsquared), 4) if not pd.isna(model.rsquared) else None,
             "adj_r_squared": round(float(model.rsquared_adj), 4) if not pd.isna(model.rsquared_adj) else None,
             "rmse": round(float(np.sqrt(model.mse_resid)), 4) if not pd.isna(model.mse_resid) else None,
@@ -689,7 +690,7 @@ async def optimize_response(request: OptimizationRequest):
             "optimal_point": optimal_point,
             "predicted_response": optimal_response,
             "intervals": intervals,
-            "success": result.success,
+            "success": bool(result.success),  # Convert numpy bool to Python bool
             "method": "Differential Evolution"
         }
 
@@ -1211,7 +1212,7 @@ async def constrained_optimization(request: ConstrainedOptimizationRequest):
             "optimal_point": optimal_point,
             "predicted_response": predicted_response,
             "intervals": intervals,
-            "success": result.success,
+            "success": bool(result.success),  # Convert numpy bool to Python bool
             "method": "Sequential Least Squares Programming (SLSQP)",
             "n_constraints": len(request.linear_constraints) if request.linear_constraints else 0,
             "interpretation": f"Optimal solution found respecting all constraints. Response = {predicted_response}"
