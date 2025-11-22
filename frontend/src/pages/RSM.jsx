@@ -80,18 +80,27 @@ const RSM = () => {
     if (wizardData.selectedDesign) {
       setNumFactors(wizardData.nFactors)
 
+      const designCode = wizardData.selectedDesign.design_code
+
+      // Check if this is a sequential approach (not directly generatable)
+      const isSequentialApproach = ['screening-first', 'dsd'].includes(designCode)
+
       // Map design code to our design type
-      if (wizardData.selectedDesign.design_code === 'box-behnken') {
+      if (designCode === 'box-behnken') {
         setDesignType('box-behnken')
-      } else if (wizardData.selectedDesign.design_code === 'face-centered') {
+      } else if (designCode === 'face-centered') {
         setDesignType('ccd')
         setCCDType('face-centered')
-      } else if (wizardData.selectedDesign.design_code === 'rotatable') {
+      } else if (designCode === 'rotatable') {
         setDesignType('ccd')
         setCCDType('rotatable')
-      } else if (wizardData.selectedDesign.design_code === 'inscribed') {
+      } else if (designCode === 'inscribed') {
         setDesignType('ccd')
         setCCDType('inscribed')
+      } else if (isSequentialApproach) {
+        // For sequential approaches, default to face-centered CCD
+        setDesignType('ccd')
+        setCCDType('face-centered')
       }
 
       // Set factor names if provided
@@ -102,19 +111,40 @@ const RSM = () => {
         }
       }
 
-      // Auto-generate the design after wizard completes
+      // Handle sequential approaches differently
+      if (isSequentialApproach) {
+        // Show informational message instead of auto-generating
+        setError(null)
+        setActiveTab('design')
+
+        // Create a helpful info message
+        setTimeout(() => {
+          alert(
+            `📋 Sequential Approach Selected: ${wizardData.selectedDesign.type}\n\n` +
+            `This is a two-stage approach:\n` +
+            `1. First, run a screening experiment (Factorial Designs page)\n` +
+            `2. Then, use RSM on the 2-3 most important factors\n\n` +
+            `For now, the wizard has set up a Face-Centered CCD design.\n` +
+            `You can adjust the settings and generate when ready.`
+          )
+        }, 500)
+        return
+      }
+
+      // Auto-generate the design after wizard completes (for supported designs)
       setTimeout(async () => {
         try {
           setLoading(true)
           let response
-          if (wizardData.selectedDesign.design_code === 'box-behnken') {
+          if (designCode === 'box-behnken') {
             response = await axios.post(`${API_URL}/api/rsm/box-behnken/generate`, {
               n_factors: wizardData.nFactors
             })
           } else {
+            // CCD variants (face-centered, rotatable, inscribed)
             response = await axios.post(`${API_URL}/api/rsm/ccd/generate`, {
               n_factors: wizardData.nFactors,
-              design_type: wizardData.selectedDesign.design_code,
+              design_type: designCode,
               n_center: numCenterPoints
             })
           }
