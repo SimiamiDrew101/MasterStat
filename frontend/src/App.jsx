@@ -7,6 +7,8 @@ import FactorialDesigns from './pages/FactorialDesigns'
 import BlockDesigns from './pages/BlockDesigns'
 import MixedModels from './pages/MixedModels'
 import RSM from './pages/RSM'
+import MixtureDesign from './pages/MixtureDesign'
+import RobustDesign from './pages/RobustDesign'
 import BayesianDOE from './pages/BayesianDOE'
 import ExperimentPlanning from './pages/ExperimentPlanning'
 import { Menu, X, BarChart3 } from 'lucide-react'
@@ -23,6 +25,8 @@ function App() {
     { path: '/blocks', label: 'Block Designs', icon: '🧱' },
     { path: '/mixed', label: 'Mixed Models', icon: '🔀' },
     { path: '/rsm', label: 'Response Surface', icon: '🗻' },
+    { path: '/mixture', label: 'Mixture Designs', icon: '💧' },
+    { path: '/robust', label: 'Robust Design', icon: '🛡️' },
     { path: '/bayesian-doe', label: 'Bayesian DOE', icon: '🎲' },
   ]
 
@@ -81,6 +85,8 @@ function App() {
                 <Route path="/blocks" element={<BlockDesigns />} />
                 <Route path="/mixed" element={<MixedModels />} />
                 <Route path="/rsm" element={<RSM />} />
+                <Route path="/mixture" element={<MixtureDesign />} />
+                <Route path="/robust" element={<RobustDesign />} />
                 <Route path="/bayesian-doe" element={<BayesianDOE />} />
               </Routes>
             </div>
