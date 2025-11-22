@@ -291,7 +291,20 @@ const RSM = () => {
       })
 
       // Download the file
-      const blob = new Blob([response.data.content], { type: response.data.mime_type })
+      let blob
+      if (format === 'pdf') {
+        // PDF comes as base64-encoded, need to decode it
+        const binaryString = atob(response.data.content)
+        const bytes = new Uint8Array(binaryString.length)
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i)
+        }
+        blob = new Blob([bytes], { type: 'application/pdf' })
+      } else {
+        // Text files (JMP, R, Python) as-is
+        blob = new Blob([response.data.content], { type: response.data.mime_type })
+      }
+
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
@@ -1112,7 +1125,16 @@ const RSM = () => {
               Export your complete RSM analysis to industry-standard formats. Share with colleagues or continue analysis in other tools.
             </p>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <button
+                onClick={() => handleExport('pdf')}
+                className="flex flex-col items-center justify-center bg-red-600 hover:bg-red-700 text-white px-6 py-4 rounded-xl font-semibold transition-all duration-200 hover:scale-105"
+              >
+                <span className="text-2xl mb-2">📄</span>
+                <span>PDF Report</span>
+                <span className="text-xs opacity-80 mt-1">Complete Report (.pdf)</span>
+              </button>
+
               <button
                 onClick={() => handleExport('jmp')}
                 className="flex flex-col items-center justify-center bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-xl font-semibold transition-all duration-200 hover:scale-105"
@@ -1143,7 +1165,7 @@ const RSM = () => {
 
             <div className="mt-4 bg-slate-700/30 rounded-lg p-4">
               <p className="text-gray-300 text-sm">
-                <strong>What's exported:</strong> Complete analysis including data, model formula, coefficients, ANOVA, diagnostics, and visualization code ready to run in your preferred tool.
+                <strong>What's exported:</strong> Complete analysis including data, model formula, coefficients, ANOVA, diagnostics, and visualization code ready to run in your preferred tool. PDF report includes publication-ready tables and summaries.
               </p>
             </div>
           </div>

@@ -1809,6 +1809,18 @@ async def export_model(request: ExportRequest):
                 "mime_type": "text/plain"
             }
 
+        elif request.format == 'pdf':
+            # Generate PDF report
+            import base64
+            pdf_bytes = generate_pdf_report(request)
+            pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
+            return {
+                "format": "pdf",
+                "filename": f"rsm_analysis_{request.response}.pdf",
+                "content": pdf_base64,
+                "mime_type": "application/pdf"
+            }
+
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported format: {request.format}")
 
@@ -2325,3 +2337,244 @@ async def advanced_model_diagnostics(request: ModelDiagnosticsRequest):
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+def generate_pdf_report(request: ExportRequest) -> bytes:
+    """
+    Generate comprehensive PDF report for RSM analysis
+    Includes: Title, Summary, ANOVA, Coefficients, Diagnostics, Recommendations
+    """
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    from io import BytesIO
+    from datetime import datetime
+
+    # Create PDF buffer
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter,
+                           rightMargin=0.75*inch, leftMargin=0.75*inch,
+                           topMargin=0.75*inch, bottomMargin=0.75*inch)
+
+    # Container for PDF elements
+    elements = []
+
+    # Define styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor=colors.HexColor('#1e3a8a'),
+        spaceAfter=30,
+        alignment=TA_CENTER
+    )
+
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=16,
+        textColor=colors.HexColor('#1e40af'),
+        spaceAfter=12,
+        spaceBefore=12
+    )
+
+    # Title Page
+    elements.append(Paragraph("Response Surface Methodology", title_style))
+    elements.append(Paragraph("Complete Analysis Report", title_style))
+    elements.append(Spacer(1, 0.3*inch))
+
+    # Analysis Info
+    info_data = [
+        ["Response Variable:", request.response],
+        ["Factors:", ", ".join(request.factors)],
+        ["Number of Observations:", str(len(request.data))],
+        ["Generated:", datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+        ["Tool:", "MasterStat - Professional DOE Platform"]
+    ]
+
+    info_table = Table(info_data, colWidths=[2.5*inch, 4*inch])
+    info_table.setStyle(TableStyle([
+        ('FONT', (0, 0), (-1, -1), 'Helvetica', 10),
+        ('FONT', (0, 0), (0, -1), 'Helvetica-Bold', 10),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#1e40af')),
+        ('ALIGN', (0, 0), (0, -1), 'RIGHT'),
+        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e0e7ff')),
+    ]))
+    elements.append(info_table)
+    elements.append(Spacer(1, 0.5*inch))
+
+    # Model Summary
+    model_data = request.model_data
+    elements.append(Paragraph("1. Model Summary", heading_style))
+
+    summary_data = [
+        ["Metric", "Value"],
+        ["R²", f"{model_data.get('r_squared', 'N/A'):.4f}"],
+        ["Adjusted R²", f"{model_data.get('adj_r_squared', 'N/A'):.4f}"],
+        ["RMSE", f"{model_data.get('rmse', 'N/A'):.4f}"],
+        ["Model Type", model_data.get('model_type', 'Second-Order RSM')]
+    ]
+
+    summary_table = Table(summary_data, colWidths=[3*inch, 3.5*inch])
+    summary_table.setStyle(TableStyle([
+        ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold', 11),
+        ('FONT', (0, 1), (-1, -1), 'Helvetica', 10),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3b82f6')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f9ff')])
+    ]))
+    elements.append(summary_table)
+    elements.append(Spacer(1, 0.3*inch))
+
+    # ANOVA Table
+    elements.append(Paragraph("2. Analysis of Variance (ANOVA)", heading_style))
+
+    anova = model_data.get('anova', {})
+    anova_data = [["Source", "Sum of Squares", "DF", "Mean Square", "F-value", "P-value"]]
+
+    for source in ['Model', 'Residual', 'Total']:
+        if source in anova:
+            row_data = anova[source]
+            anova_data.append([
+                source,
+                f"{row_data.get('sum_sq', 0):.4f}",
+                str(row_data.get('df', 0)),
+                f"{row_data.get('mean_sq', 0):.4f}" if 'mean_sq' in row_data else "—",
+                f"{row_data.get('F', 0):.4f}" if row_data.get('F') else "—",
+                f"{row_data.get('p_value', 0):.6f}" if row_data.get('p_value') else "—"
+            ])
+
+    anova_table = Table(anova_data, colWidths=[1.3*inch, 1.3*inch, 0.7*inch, 1.3*inch, 1*inch, 1*inch])
+    anova_table.setStyle(TableStyle([
+        ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold', 10),
+        ('FONT', (0, 1), (-1, -1), 'Helvetica', 9),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#10b981')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#d1fae5')])
+    ]))
+    elements.append(anova_table)
+    elements.append(PageBreak())
+
+    # Coefficients Table
+    elements.append(Paragraph("3. Model Coefficients", heading_style))
+
+    coeffs = model_data.get('coefficients', {})
+    coeff_data = [["Term", "Estimate", "Std Error", "t-value", "P-value", "Significant"]]
+
+    for term, coef_info in coeffs.items():
+        if isinstance(coef_info, dict):
+            est = coef_info.get('estimate')
+            p_val = coef_info.get('p_value')
+            sig = "✓" if p_val and p_val < 0.05 else ""
+
+            coeff_data.append([
+                term,
+                f"{est:.4f}" if est is not None else "N/A",
+                f"{coef_info.get('std_error', 0):.4f}" if coef_info.get('std_error') else "N/A",
+                f"{coef_info.get('t_value', 0):.4f}" if coef_info.get('t_value') else "N/A",
+                f"{p_val:.6f}" if p_val is not None else "N/A",
+                sig
+            ])
+
+    coeff_table = Table(coeff_data, colWidths=[1.5*inch, 1*inch, 1*inch, 1*inch, 1*inch, 1*inch])
+    coeff_table.setStyle(TableStyle([
+        ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold', 10),
+        ('FONT', (0, 1), (-1, -1), 'Helvetica', 9),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#8b5cf6')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#ede9fe')])
+    ]))
+    elements.append(coeff_table)
+    elements.append(Spacer(1, 0.3*inch))
+
+    # Experimental Data Summary
+    elements.append(Paragraph("4. Experimental Data", heading_style))
+
+    # Show first 10 rows of data
+    data_headers = request.factors + [request.response]
+    data_rows = [data_headers]
+
+    for i, row in enumerate(request.data[:10]):
+        data_row = [f"{row.get(f, 0):.2f}" for f in data_headers]
+        data_rows.append(data_row)
+
+    if len(request.data) > 10:
+        data_rows.append(["..."] * len(data_headers))
+
+    col_width = 6.5*inch / len(data_headers)
+    data_table = Table(data_rows, colWidths=[col_width] * len(data_headers))
+    data_table.setStyle(TableStyle([
+        ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold', 10),
+        ('FONT', (0, 1), (-1, -1), 'Helvetica', 9),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#f59e0b')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#fef3c7')])
+    ]))
+    elements.append(data_table)
+    elements.append(Spacer(1, 0.2*inch))
+
+    elements.append(Paragraph(f"<i>Showing {min(10, len(request.data))} of {len(request.data)} observations</i>",
+                             styles['Italic']))
+
+    elements.append(PageBreak())
+
+    # Recommendations
+    elements.append(Paragraph("5. Recommendations", heading_style))
+
+    r_squared = model_data.get('r_squared', 0)
+    adj_r_squared = model_data.get('adj_r_squared', 0)
+
+    recommendations = []
+
+    if r_squared > 0.9:
+        recommendations.append("Excellent model fit (R² > 0.9). Model explains variability well.")
+    elif r_squared > 0.7:
+        recommendations.append("Good model fit (R² > 0.7). Model is useful for prediction.")
+    else:
+        recommendations.append("Model fit could be improved. Consider additional factors or transformation.")
+
+    if adj_r_squared and (r_squared - adj_r_squared) > 0.05:
+        recommendations.append("Significant difference between R² and Adjusted R². Model may be overfitted.")
+
+    recommendations.append("Review coefficient p-values to identify significant factors.")
+    recommendations.append("Check residual plots for model adequacy assumptions.")
+    recommendations.append("Validate predictions with confirmation runs at optimal settings.")
+
+    for i, rec in enumerate(recommendations, 1):
+        elements.append(Paragraph(f"{i}. {rec}", styles['BodyText']))
+        elements.append(Spacer(1, 0.1*inch))
+
+    elements.append(Spacer(1, 0.3*inch))
+
+    # Footer note
+    elements.append(Spacer(1, 0.5*inch))
+    footer_style = ParagraphStyle('Footer', parent=styles['Normal'], fontSize=8,
+                                 textColor=colors.grey, alignment=TA_CENTER)
+    elements.append(Paragraph("Generated by MasterStat - Professional Design of Experiments Platform",
+                             footer_style))
+    elements.append(Paragraph("https://github.com/anthropics/masterstat", footer_style))
+
+    # Build PDF
+    doc.build(elements)
+
+    # Get PDF bytes
+    pdf_bytes = buffer.getvalue()
+    buffer.close()
+
+    return pdf_bytes
