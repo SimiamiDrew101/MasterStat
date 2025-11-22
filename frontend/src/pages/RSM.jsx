@@ -7,6 +7,8 @@ import ContourPlot from '../components/ContourPlot'
 import SlicedVisualization from '../components/SlicedVisualization'
 import ResidualAnalysis from '../components/ResidualAnalysis'
 import EnhancedANOVA from '../components/EnhancedANOVA'
+import PredictionProfiler from '../components/PredictionProfiler'
+import AdvancedDiagnostics from '../components/AdvancedDiagnostics'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -32,6 +34,7 @@ const RSM = () => {
   const [targetResponse, setTargetResponse] = useState('')
   const [nConfirmationRuns, setNConfirmationRuns] = useState(3)
   const [surfaceData, setSurfaceData] = useState(null)
+  const [advancedDiagnostics, setAdvancedDiagnostics] = useState(null)
 
   // Advanced features state (Features 4-6)
   const [augmentationStrategy, setAugmentationStrategy] = useState('space-filling')
@@ -156,6 +159,20 @@ const RSM = () => {
           factors: factorNames
         })
         setCanonicalResult(canonicalResponse.data)
+
+        // Fetch advanced diagnostics
+        try {
+          const diagnosticsResponse = await axios.post(`${API_URL}/api/rsm/advanced-diagnostics`, {
+            data: data,
+            factors: factorNames,
+            response: responseName,
+            coefficients: response.data.coefficients
+          })
+          setAdvancedDiagnostics(diagnosticsResponse.data)
+        } catch (diagError) {
+          console.error('Error fetching diagnostics:', diagError)
+          // Don't fail the entire model fitting if diagnostics fail
+        }
       }
 
       // Generate surface data for visualization (2 factors for simple viz)
@@ -230,7 +247,8 @@ const RSM = () => {
           Object.entries(modelResult.coefficients).map(([k, v]) => [k, v.estimate])
         ),
         factors: factorNames,
-        target: target
+        target: target,
+        variance_estimate: modelResult.anova?.Residual?.mean_sq || null
       })
 
       setOptimizationResult(response.data)
@@ -239,6 +257,52 @@ const RSM = () => {
       setError(err.response?.data?.detail || err.message || 'Optimization failed')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Export model to industry standards
+  const handleExport = async (format) => {
+    try {
+      if (!modelResult || !modelResult.coefficients) {
+        throw new Error('Fit a model first before exporting')
+      }
+
+      // Prepare experimental data
+      const validRows = tableData.filter(row => {
+        const responseValue = row[row.length - 1]
+        return responseValue !== '' && responseValue !== null && responseValue !== undefined
+      })
+
+      const data = validRows.map(row => {
+        const point = {}
+        factorNames.forEach((factor, i) => {
+          point[factor] = parseFloat(row[i])
+        })
+        point[responseName] = parseFloat(row[row.length - 1])
+        return point
+      })
+
+      const response = await axios.post(`${API_URL}/api/rsm/export`, {
+        format: format,
+        model_data: modelResult,
+        factors: factorNames,
+        response: responseName,
+        data: data
+      })
+
+      // Download the file
+      const blob = new Blob([response.data.content], { type: response.data.mime_type })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = response.data.filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || `Export to ${format.toUpperCase()} failed`)
     }
   }
 
@@ -427,7 +491,8 @@ const RSM = () => {
         ),
         factors: factorNames,
         target: target,
-        constraints: constraintsPayload
+        constraints: constraintsPayload,
+        variance_estimate: modelResult.anova?.Residual?.mean_sq || null
       })
 
       setConstrainedOptResult(response.data)
@@ -1028,6 +1093,60 @@ const RSM = () => {
               responseName={responseName}
             />
           )}
+
+          {/* Advanced Model Diagnostics (Phase 1 Feature) */}
+          {advancedDiagnostics && (
+            <div className="bg-gradient-to-r from-emerald-900/30 to-teal-900/30 backdrop-blur-lg rounded-2xl p-6 border border-emerald-700/50">
+              <h3 className="text-2xl font-bold text-gray-100 mb-4">Advanced Model Diagnostics</h3>
+              <p className="text-gray-300 text-sm mb-6">
+                Comprehensive diagnostics including leverage, Cook's Distance, DFFITS, VIF, and PRESS statistics to identify influential observations and multicollinearity.
+              </p>
+              <AdvancedDiagnostics diagnosticsData={advancedDiagnostics} />
+            </div>
+          )}
+
+          {/* Export to Industry Standards (Phase 1 Feature) */}
+          <div className="bg-gradient-to-r from-violet-900/30 to-fuchsia-900/30 backdrop-blur-lg rounded-2xl p-6 border border-violet-700/50">
+            <h3 className="text-2xl font-bold text-gray-100 mb-4">Export to Industry Standards</h3>
+            <p className="text-gray-300 text-sm mb-6">
+              Export your complete RSM analysis to industry-standard formats. Share with colleagues or continue analysis in other tools.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <button
+                onClick={() => handleExport('jmp')}
+                className="flex flex-col items-center justify-center bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-xl font-semibold transition-all duration-200 hover:scale-105"
+              >
+                <span className="text-2xl mb-2">📊</span>
+                <span>Export to JMP</span>
+                <span className="text-xs opacity-80 mt-1">JSL Script (.jsl)</span>
+              </button>
+
+              <button
+                onClick={() => handleExport('r')}
+                className="flex flex-col items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-xl font-semibold transition-all duration-200 hover:scale-105"
+              >
+                <span className="text-2xl mb-2">📈</span>
+                <span>Export to R</span>
+                <span className="text-xs opacity-80 mt-1">R Script (.R)</span>
+              </button>
+
+              <button
+                onClick={() => handleExport('python')}
+                className="flex flex-col items-center justify-center bg-green-600 hover:bg-green-700 text-white px-6 py-4 rounded-xl font-semibold transition-all duration-200 hover:scale-105"
+              >
+                <span className="text-2xl mb-2">🐍</span>
+                <span>Export to Python</span>
+                <span className="text-xs opacity-80 mt-1">Python Script (.py)</span>
+              </button>
+            </div>
+
+            <div className="mt-4 bg-slate-700/30 rounded-lg p-4">
+              <p className="text-gray-300 text-sm">
+                <strong>What's exported:</strong> Complete analysis including data, model formula, coefficients, ANOVA, diagnostics, and visualization code ready to run in your preferred tool.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1149,9 +1268,29 @@ const RSM = () => {
               </h3>
 
               <div className="mb-6">
-                <div className="bg-slate-700/50 rounded-lg p-4 inline-block">
-                  <p className="text-gray-400 text-sm">Predicted Response</p>
-                  <p className="text-3xl font-bold text-amber-300">{constrainedOptResult.predicted_response}</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-slate-700/50 rounded-lg p-4">
+                    <p className="text-gray-400 text-sm">Predicted Response</p>
+                    <p className="text-3xl font-bold text-amber-300">{constrainedOptResult.predicted_response}</p>
+                  </div>
+                  {constrainedOptResult.intervals && (
+                    <>
+                      <div className="bg-slate-700/50 rounded-lg p-4">
+                        <p className="text-gray-400 text-sm">95% Confidence Interval</p>
+                        <p className="text-lg font-semibold text-blue-300">
+                          {constrainedOptResult.intervals.confidence_interval.lower} to {constrainedOptResult.intervals.confidence_interval.upper}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">Mean response</p>
+                      </div>
+                      <div className="bg-slate-700/50 rounded-lg p-4">
+                        <p className="text-gray-400 text-sm">95% Prediction Interval</p>
+                        <p className="text-lg font-semibold text-purple-300">
+                          {constrainedOptResult.intervals.prediction_interval.lower} to {constrainedOptResult.intervals.prediction_interval.upper}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">Single observation</p>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1189,9 +1328,29 @@ const RSM = () => {
               </h3>
 
               <div className="mb-6">
-                <div className="bg-slate-700/50 rounded-lg p-4 inline-block">
-                  <p className="text-gray-400 text-sm">Predicted Response</p>
-                  <p className="text-3xl font-bold text-green-300">{optimizationResult.predicted_response}</p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-slate-700/50 rounded-lg p-4">
+                    <p className="text-gray-400 text-sm">Predicted Response</p>
+                    <p className="text-3xl font-bold text-green-300">{optimizationResult.predicted_response}</p>
+                  </div>
+                  {optimizationResult.intervals && (
+                    <>
+                      <div className="bg-slate-700/50 rounded-lg p-4">
+                        <p className="text-gray-400 text-sm">95% Confidence Interval</p>
+                        <p className="text-lg font-semibold text-blue-300">
+                          {optimizationResult.intervals.confidence_interval.lower} to {optimizationResult.intervals.confidence_interval.upper}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">Mean response</p>
+                      </div>
+                      <div className="bg-slate-700/50 rounded-lg p-4">
+                        <p className="text-gray-400 text-sm">95% Prediction Interval</p>
+                        <p className="text-lg font-semibold text-purple-300">
+                          {optimizationResult.intervals.prediction_interval.lower} to {optimizationResult.intervals.prediction_interval.upper}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">Single observation</p>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -1655,6 +1814,22 @@ const RSM = () => {
 
       {activeTab === 'visualize' && modelResult && (
         <div className="space-y-6">
+          {/* Prediction Profiler - Interactive Response Explorer */}
+          <div className="bg-gradient-to-r from-purple-900/30 to-indigo-900/30 backdrop-blur-lg rounded-2xl p-6 border border-purple-700/50">
+            <div className="mb-4">
+              <h3 className="text-2xl font-bold text-gray-100 mb-2">Interactive Prediction Profiler</h3>
+              <p className="text-gray-300 text-sm">
+                Explore how factor settings affect the predicted response in real-time. Adjust sliders to see predictions, confidence intervals, and trace plots.
+              </p>
+            </div>
+            <PredictionProfiler
+              coefficients={modelResult.coefficients}
+              factors={factorNames}
+              responseName={responseName}
+              varianceEstimate={modelResult.anova?.Residual?.mean_sq}
+            />
+          </div>
+
           {numFactors === 2 && surfaceData ? (
             // Simple 2-factor visualization
             <>

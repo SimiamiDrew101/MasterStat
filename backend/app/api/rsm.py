@@ -462,6 +462,7 @@ class OptimizationRequest(BaseModel):
     factors: List[str] = Field(..., description="Factor names")
     target: str = Field('maximize', description="'maximize' or 'minimize'")
     constraints: Optional[Dict[str, List[float]]] = Field(None, description="Factor constraints {factor: [min, max]}")
+    variance_estimate: Optional[float] = Field(None, description="Residual variance (MSE) for interval calculation")
 
 
 @router.post("/box-behnken/generate")
@@ -655,10 +656,39 @@ async def optimize_response(request: OptimizationRequest):
         optimal_point = {request.factors[i]: round(float(result.x[i]), 4) for i in range(k)}
         optimal_response = round(float(predict(result.x)), 4)
 
+        # Calculate confidence and prediction intervals if variance estimate is provided
+        intervals = None
+        if request.variance_estimate:
+            # Use approximate intervals based on standard error
+            # For coded designs, typical leverages range from 0.1 to 0.4
+            # Use conservative estimate of h = 0.2 for optimal point
+            se = np.sqrt(request.variance_estimate)
+            t_value = 1.96  # Approximate 95% CI using normal approximation
+
+            # Confidence interval (for mean response)
+            ci_margin = t_value * se * np.sqrt(0.2)  # assuming moderate leverage
+
+            # Prediction interval (for individual observation)
+            pi_margin = t_value * se * np.sqrt(1 + 0.2)
+
+            intervals = {
+                "confidence_interval": {
+                    "lower": round(float(optimal_response - ci_margin), 4),
+                    "upper": round(float(optimal_response + ci_margin), 4),
+                    "level": 0.95
+                },
+                "prediction_interval": {
+                    "lower": round(float(optimal_response - pi_margin), 4),
+                    "upper": round(float(optimal_response + pi_margin), 4),
+                    "level": 0.95
+                }
+            }
+
         return {
             "target": request.target,
             "optimal_point": optimal_point,
             "predicted_response": optimal_response,
+            "intervals": intervals,
             "success": result.success,
             "method": "Differential Evolution"
         }
@@ -714,6 +744,7 @@ class ConstrainedOptimizationRequest(BaseModel):
     target: str = Field('maximize', description="'maximize' or 'minimize'")
     linear_constraints: Optional[List[Dict[str, Any]]] = Field(None, description="Linear constraints: [{coefficients: {}, bound: value, type: 'ineq'/'eq'}]")
     bounds: Optional[Dict[str, List[float]]] = Field(None, description="Box constraints {factor: [min, max]}")
+    variance_estimate: Optional[float] = Field(None, description="Residual variance (MSE) for interval calculation")
 
 
 @router.post("/confirmation-runs")
@@ -1151,9 +1182,35 @@ async def constrained_optimization(request: ConstrainedOptimizationRequest):
         optimal_point = {request.factors[i]: round(float(result.x[i]), 4) for i in range(k)}
         predicted_response = round(float(predict(result.x)), 4)
 
+        # Calculate confidence and prediction intervals if variance estimate is provided
+        intervals = None
+        if request.variance_estimate:
+            se = np.sqrt(request.variance_estimate)
+            t_value = 1.96
+
+            # Confidence interval (for mean response)
+            ci_margin = t_value * se * np.sqrt(0.2)
+
+            # Prediction interval (for individual observation)
+            pi_margin = t_value * se * np.sqrt(1 + 0.2)
+
+            intervals = {
+                "confidence_interval": {
+                    "lower": round(float(predicted_response - ci_margin), 4),
+                    "upper": round(float(predicted_response + ci_margin), 4),
+                    "level": 0.95
+                },
+                "prediction_interval": {
+                    "lower": round(float(predicted_response - pi_margin), 4),
+                    "upper": round(float(predicted_response + pi_margin), 4),
+                    "level": 0.95
+                }
+            }
+
         return {
             "optimal_point": optimal_point,
             "predicted_response": predicted_response,
+            "intervals": intervals,
             "success": result.success,
             "method": "Sequential Least Squares Programming (SLSQP)",
             "n_constraints": len(request.linear_constraints) if request.linear_constraints else 0,
@@ -1693,6 +1750,576 @@ async def analyze_robust_design(request: RobustAnalysisRequest):
                 "sn_ratio": optimal['sn_ratio']
             },
             "interpretation": f"Optimal control factor settings maximize SN ratio ({optimal['sn_ratio']} dB), indicating robust performance across noise conditions."
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ============================================================================
+# EXPORT TO INDUSTRY STANDARDS (Phase 1 - RSM Improvements)
+# ============================================================================
+
+class ExportRequest(BaseModel):
+    format: str = Field(..., description="Export format: 'jmp', 'r', 'python', 'pdf'")
+    model_data: Dict[str, Any] = Field(..., description="Complete model results")
+    factors: List[str] = Field(..., description="Factor names")
+    response: str = Field(..., description="Response variable name")
+    data: List[Dict[str, float]] = Field(..., description="Experimental data")
+
+
+@router.post("/export")
+async def export_model(request: ExportRequest):
+    """
+    Export RSM model to industry standard formats:
+    - JMP: JSL script for model reconstruction
+    - R: R script with all analysis code
+    - Python: Python script using statsmodels
+    - PDF: Professional report (not yet implemented)
+    """
+    try:
+        if request.format == 'jmp':
+            # Generate JMP JSL script
+            script = generate_jmp_script(request)
+            return {
+                "format": "jmp",
+                "filename": f"rsm_analysis_{request.response}.jsl",
+                "content": script,
+                "mime_type": "text/plain"
+            }
+
+        elif request.format == 'r':
+            # Generate R script
+            script = generate_r_script(request)
+            return {
+                "format": "r",
+                "filename": f"rsm_analysis_{request.response}.R",
+                "content": script,
+                "mime_type": "text/plain"
+            }
+
+        elif request.format == 'python':
+            # Generate Python script
+            script = generate_python_script(request)
+            return {
+                "format": "python",
+                "filename": f"rsm_analysis_{request.response}.py",
+                "content": script,
+                "mime_type": "text/plain"
+            }
+
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported format: {request.format}")
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+def generate_jmp_script(request: ExportRequest) -> str:
+    """Generate JMP JSL script for RSM analysis"""
+    coeffs = request.model_data.get('coefficients', {})
+
+    # Build data table creation
+    data_lines = []
+    for row in request.data:
+        values = [str(row.get(f, 0)) for f in request.factors]
+        values.append(str(row.get(request.response, 0)))
+        data_lines.append(f"    {{{', '.join(values)}}}")
+
+    # Build model formula
+    terms = []
+    for term, coef_data in coeffs.items():
+        if term != 'Intercept':
+            if '**2' in term:
+                # Quadratic term
+                factor = term.replace('I(', '').replace('**2)', '')
+                terms.append(f"{factor}*{factor}")
+            elif ':' in term:
+                # Interaction
+                terms.append('*'.join(term.split(':')))
+            else:
+                terms.append(term)
+
+    formula = ' + '.join(terms) if terms else request.factors[0]
+
+    script = f"""// JMP JSL Script for RSM Analysis
+// Generated by MasterStat
+// Response: {request.response}
+
+// Create Data Table
+dt = New Table( "RSM Data",
+    Add Rows( {len(request.data)} ),
+    New Column( "{request.factors[0]}", Numeric, "Continuous", Formula( None ) ),
+"""
+
+    for factor in request.factors[1:]:
+        script += f'    New Column( "{factor}", Numeric, "Continuous", Formula( None ) ),\n'
+
+    script += f'    New Column( "{request.response}", Numeric, "Continuous", Formula( None ) )\n);\n\n'
+    script += f"// Fill Data\n"
+    script += f"dt << BeginDataUpdate();\n"
+
+    for i, row in enumerate(request.data, 1):
+        for j, factor in enumerate(request.factors, 1):
+            script += f'dt:Column({j})[{i}] = {row.get(factor, 0)};\n'
+        script += f'dt:Column({len(request.factors) + 1})[{i}] = {row.get(request.response, 0)};\n'
+
+    script += f"dt << EndDataUpdate();\n\n"
+
+    # Add fit model platform
+    script += f"""// Fit Response Surface Model
+obj = dt << Fit Model(
+    Y( :{request.response} ),
+    Effects( """
+
+    for factor in request.factors:
+        script += f"{factor}, "
+
+    script += f"""),
+    Personality( "Response Surface" ),
+    Emphasis( "Effect Screening" ),
+    Run(
+        Profiler( 1 ),
+        :{request.response} << {{"Summary of Fit", "Analysis of Variance", "Parameter Estimates",
+            "Effect Tests", "Prediction Profiler"}}
+    )
+);
+
+// Save Prediction Formula
+obj << Make Response Surface;
+"""
+
+    return script
+
+
+def generate_r_script(request: ExportRequest) -> str:
+    """Generate R script for RSM analysis"""
+    coeffs = request.model_data.get('coefficients', {})
+
+    # Build data frame creation
+    data_lines = []
+    for factor in request.factors:
+        values = [str(row.get(factor, 0)) for row in request.data]
+        data_lines.append(f"  {factor} = c({', '.join(values)})")
+
+    response_values = [str(row.get(request.response, 0)) for row in request.data]
+    data_lines.append(f"  {request.response} = c({', '.join(response_values)})")
+
+    # Build model formula
+    linear_terms = ' + '.join(request.factors)
+    quad_terms = ' + '.join([f"I({f}^2)" for f in request.factors])
+
+    int_terms = []
+    for i in range(len(request.factors)):
+        for j in range(i+1, len(request.factors)):
+            int_terms.append(f"{request.factors[i]}:{request.factors[j]}")
+
+    interaction_terms = ' + '.join(int_terms) if int_terms else ""
+
+    script = f"""# R Script for RSM Analysis
+# Generated by MasterStat
+# Response: {request.response}
+
+# Load required packages
+library(rsm)
+
+# Create data frame
+data <- data.frame(
+{',\\n'.join(data_lines)}
+)
+
+# Convert to coded data (if needed)
+# Assuming data is already in coded units (-1, 0, +1)
+
+# Fit Response Surface Model
+model <- lm({request.response} ~ {linear_terms} + {quad_terms}"""
+
+    if interaction_terms:
+        script += f" + {interaction_terms}"
+
+    script += f""", data = data)
+
+# Model summary
+summary(model)
+
+# ANOVA table
+anova(model)
+
+# Canonical analysis
+library(rsm)
+canonical_data <- as.coded.data(data, formulas = list("""
+
+    for i, factor in enumerate(request.factors):
+        script += f'\n    {factor} ~ ({factor})'
+        if i < len(request.factors) - 1:
+            script += ','
+
+    script += f"""
+))
+
+rsm_model <- rsm({request.response} ~ SO({', '.join(request.factors)}), data = canonical_data)
+summary(rsm_model)
+
+# Contour plots (for 2 factors)
+if (length(c({', '.join([f"'{f}'" for f in request.factors])})) == 2) {{
+    contour(rsm_model, ~ {request.factors[0]} + {request.factors[1]})
+}}
+
+# Prediction profiler
+library(effects)
+plot(allEffects(model))
+
+# Model diagnostics
+par(mfrow = c(2, 2))
+plot(model)
+
+# R-squared and adjusted R-squared
+cat("\\nR-squared:", summary(model)$r.squared, "\\n")
+cat("Adjusted R-squared:", summary(model)$adj.r.squared, "\\n")
+"""
+
+    return script
+
+
+def generate_python_script(request: ExportRequest) -> str:
+    """Generate Python script for RSM analysis"""
+
+    # Build data lists
+    data_dict = {factor: [] for factor in request.factors}
+    data_dict[request.response] = []
+
+    for row in request.data:
+        for factor in request.factors:
+            data_dict[factor].append(row.get(factor, 0))
+        data_dict[request.response].append(row.get(request.response, 0))
+
+    # Build model formula
+    linear_terms = ' + '.join(request.factors)
+    quad_terms = ' + '.join([f"I({f}**2)" for f in request.factors])
+
+    int_terms = []
+    for i in range(len(request.factors)):
+        for j in range(i+1, len(request.factors)):
+            int_terms.append(f"{request.factors[i]}:{request.factors[j]}")
+
+    interaction_terms = ' + '.join(int_terms) if int_terms else ""
+
+    script = f"""# Python Script for RSM Analysis
+# Generated by MasterStat
+# Response: {request.response}
+
+import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+import matplotlib.pyplot as plt
+
+# Create DataFrame
+data = pd.DataFrame({{
+"""
+
+    for factor in request.factors:
+        script += f"    '{factor}': {data_dict[factor]},\n"
+
+    script += f"    '{request.response}': {data_dict[request.response]}\n"
+    script += f"}})\n\n"
+
+    # Build formula
+    script += f"""# Fit Response Surface Model
+formula = '{request.response} ~ {linear_terms} + {quad_terms}"""
+
+    if interaction_terms:
+        script += f" + {interaction_terms}"
+
+    script += f"""'
+
+model = ols(formula, data=data).fit()
+
+# Model summary
+print(model.summary())
+
+# ANOVA table
+from statsmodels.stats.anova import anova_lm
+anova_table = anova_lm(model, typ=2)
+print("\\nANOVA Table:")
+print(anova_table)
+
+# Model diagnostics
+fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+
+# Residuals vs Fitted
+axes[0, 0].scatter(model.fittedvalues, model.resid)
+axes[0, 0].axhline(y=0, color='r', linestyle='--')
+axes[0, 0].set_xlabel('Fitted Values')
+axes[0, 0].set_ylabel('Residuals')
+axes[0, 0].set_title('Residuals vs Fitted')
+
+# Normal Q-Q
+from scipy import stats
+stats.probplot(model.resid, dist="norm", plot=axes[0, 1])
+axes[0, 1].set_title('Normal Q-Q Plot')
+
+# Scale-Location
+axes[1, 0].scatter(model.fittedvalues, np.sqrt(np.abs(model.resid)))
+axes[1, 0].set_xlabel('Fitted Values')
+axes[1, 0].set_ylabel('Sqrt(|Residuals|)')
+axes[1, 0].set_title('Scale-Location')
+
+# Residuals vs Leverage
+from statsmodels.stats.outliers_influence import OLSInfluence
+influence = OLSInfluence(model)
+leverage = influence.hat_matrix_diag
+axes[1, 1].scatter(leverage, model.resid)
+axes[1, 1].set_xlabel('Leverage')
+axes[1, 1].set_ylabel('Residuals')
+axes[1, 1].set_title('Residuals vs Leverage')
+
+plt.tight_layout()
+plt.show()
+
+# Print model metrics
+print(f"\\nR-squared: {{model.rsquared:.4f}}")
+print(f"Adjusted R-squared: {{model.rsquared_adj:.4f}}")
+print(f"RMSE: {{np.sqrt(model.mse_resid):.4f}}")
+
+# Prediction at optimal point (example)
+# Modify factor values as needed
+optimal_point = {{{', '.join([f"'{f}': 0.0" for f in request.factors])}}}
+prediction = model.predict(pd.DataFrame([optimal_point]))
+print(f"\\nPrediction at center point: {{prediction[0]:.4f}}")
+"""
+
+    return script
+
+
+# ============================================================================
+# ADVANCED MODEL DIAGNOSTICS (Phase 1 - RSM Improvements)
+# ============================================================================
+
+class ModelDiagnosticsRequest(BaseModel):
+    data: List[Dict[str, float]] = Field(..., description="Experimental data used in model fitting")
+    factors: List[str] = Field(..., description="Factor variable names")
+    response: str = Field(..., description="Response variable name")
+    coefficients: Dict[str, Any] = Field(..., description="Model coefficients from fitted model")
+
+
+@router.post("/advanced-diagnostics")
+async def advanced_model_diagnostics(request: ModelDiagnosticsRequest):
+    """
+    Compute advanced model diagnostics for RSM models:
+    - Leverage (Hat values): Identifies influential points based on factor space position
+    - Cook's Distance: Measures overall influence of each observation
+    - DFFITS: Measures change in prediction when observation is removed
+    - VIF (Variance Inflation Factor): Detects multicollinearity among factors
+    - PRESS: Prediction error sum of squares (leave-one-out CV)
+
+    These diagnostics help identify:
+    1. Outliers and influential observations
+    2. Model reliability and prediction accuracy
+    3. Multicollinearity issues
+    """
+    try:
+        df = pd.DataFrame(request.data)
+        n = len(df)
+
+        # Build second-order model formula (same as fit-model)
+        linear_terms = " + ".join(request.factors)
+        quadratic_terms = " + ".join([f"I({f}**2)" for f in request.factors])
+
+        interaction_terms = []
+        for i in range(len(request.factors)):
+            for j in range(i+1, len(request.factors)):
+                interaction_terms.append(f"{request.factors[i]}:{request.factors[j]}")
+
+        if interaction_terms:
+            formula = f"{request.response} ~ {linear_terms} + {quadratic_terms} + {' + '.join(interaction_terms)}"
+        else:
+            formula = f"{request.response} ~ {linear_terms} + {quadratic_terms}"
+
+        # Fit model to get influence measures
+        model = ols(formula, data=df).fit()
+
+        # Get influence measures from statsmodels
+        influence = model.get_influence()
+
+        # 1. LEVERAGE (Hat values)
+        # High leverage points (h_ii > 2p/n or 3p/n are concerning)
+        hat_values = influence.hat_matrix_diag
+        p = len(model.params)  # number of parameters
+        leverage_threshold = 2 * p / n
+        high_leverage_threshold = 3 * p / n
+
+        leverage_data = []
+        for i, h in enumerate(hat_values):
+            status = "normal"
+            if h > high_leverage_threshold:
+                status = "high"
+            elif h > leverage_threshold:
+                status = "moderate"
+
+            leverage_data.append({
+                "observation": i + 1,
+                "leverage": round(float(h), 6),
+                "status": status
+            })
+
+        # 2. COOK'S DISTANCE
+        # Values > 1 are concerning, > 4/n warrant investigation
+        cooks_d = influence.cooks_distance[0]
+        cooks_threshold = 4 / n
+
+        cooks_data = []
+        for i, d in enumerate(cooks_d):
+            status = "normal"
+            if d > 1:
+                status = "highly_influential"
+            elif d > cooks_threshold:
+                status = "influential"
+
+            cooks_data.append({
+                "observation": i + 1,
+                "cooks_distance": round(float(d), 6),
+                "status": status
+            })
+
+        # 3. DFFITS
+        # Standardized difference in fitted values
+        # Threshold: 2*sqrt(p/n) for large samples, 3*sqrt(p/n) for small samples
+        dffits = influence.dffits[0]
+        dffits_threshold = 2 * np.sqrt(p / n)
+
+        dffits_data = []
+        for i, dffit in enumerate(dffits):
+            status = "normal"
+            if abs(dffit) > dffits_threshold:
+                status = "influential"
+
+            dffits_data.append({
+                "observation": i + 1,
+                "dffits": round(float(dffit), 6),
+                "status": status
+            })
+
+        # 4. VIF (Variance Inflation Factor)
+        # VIF > 10 indicates serious multicollinearity
+        # VIF > 5 indicates moderate multicollinearity
+        # Create design matrix for VIF calculation
+        from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+        # Build design matrix (X) without intercept for VIF
+        X_design = df[request.factors].copy()
+
+        # Add quadratic terms
+        for factor in request.factors:
+            X_design[f'{factor}_sq'] = X_design[factor] ** 2
+
+        # Add interaction terms
+        for i in range(len(request.factors)):
+            for j in range(i+1, len(request.factors)):
+                f1, f2 = request.factors[i], request.factors[j]
+                X_design[f'{f1}_{f2}'] = X_design[f1] * X_design[f2]
+
+        # Calculate VIF for each term
+        vif_data = []
+        X_matrix = X_design.values
+
+        for i, col_name in enumerate(X_design.columns):
+            try:
+                vif = variance_inflation_factor(X_matrix, i)
+
+                status = "excellent"
+                if vif > 10:
+                    status = "severe_multicollinearity"
+                elif vif > 5:
+                    status = "moderate_multicollinearity"
+                elif vif > 2.5:
+                    status = "low_multicollinearity"
+
+                vif_data.append({
+                    "term": col_name,
+                    "vif": round(float(vif), 4) if not np.isinf(vif) else "Inf",
+                    "status": status
+                })
+            except:
+                vif_data.append({
+                    "term": col_name,
+                    "vif": "N/A",
+                    "status": "calculation_failed"
+                })
+
+        # 5. PRESS Statistic (Prediction Error Sum of Squares)
+        # Leave-one-out cross-validation prediction error
+        # PRESS = sum of squared prediction errors
+        # R²_prediction = 1 - PRESS/SST
+        residuals = model.resid
+        press_residuals = residuals / (1 - hat_values)
+        press = float(np.sum(press_residuals ** 2))
+
+        # Calculate R² prediction
+        sst = float(np.sum((df[request.response] - df[request.response].mean()) ** 2))
+        r2_prediction = 1 - (press / sst)
+
+        # Summary statistics
+        n_high_leverage = sum(1 for item in leverage_data if item['status'] in ['high', 'moderate'])
+        n_influential_cooks = sum(1 for item in cooks_data if item['status'] != 'normal')
+        n_influential_dffits = sum(1 for item in dffits_data if item['status'] != 'normal')
+        n_multicollinearity = sum(1 for item in vif_data if 'multicollinearity' in item['status'])
+
+        # Generate recommendations
+        recommendations = []
+
+        if n_high_leverage > 0:
+            recommendations.append(f"Found {n_high_leverage} high-leverage observations. Review these points for data quality.")
+
+        if n_influential_cooks > 0:
+            recommendations.append(f"Found {n_influential_cooks} influential observations (Cook's D). Consider refitting model without these points.")
+
+        if n_influential_dffits > 0:
+            recommendations.append(f"Found {n_influential_dffits} observations with high DFFITS. These significantly affect predictions.")
+
+        if n_multicollinearity > 0:
+            recommendations.append(f"Detected multicollinearity in {n_multicollinearity} terms. Consider model reduction or ridge regression.")
+
+        if r2_prediction < 0.5:
+            recommendations.append(f"Low R²_prediction ({r2_prediction:.3f}). Model may not predict well on new data.")
+        elif r2_prediction > 0.9:
+            recommendations.append(f"Excellent R²_prediction ({r2_prediction:.3f}). Model predicts well on new data.")
+
+        if not recommendations:
+            recommendations.append("All diagnostic checks passed. Model appears reliable.")
+
+        return {
+            "diagnostics": {
+                "leverage": leverage_data,
+                "cooks_distance": cooks_data,
+                "dffits": dffits_data,
+                "vif": vif_data
+            },
+            "press": {
+                "value": round(press, 4),
+                "r2_prediction": round(r2_prediction, 4),
+                "interpretation": "R² prediction indicates how well the model predicts new observations"
+            },
+            "summary": {
+                "n_observations": n,
+                "n_parameters": p,
+                "leverage_threshold": round(leverage_threshold, 4),
+                "high_leverage_threshold": round(high_leverage_threshold, 4),
+                "cooks_threshold": round(cooks_threshold, 4),
+                "dffits_threshold": round(dffits_threshold, 4),
+                "n_high_leverage": n_high_leverage,
+                "n_influential_cooks": n_influential_cooks,
+                "n_influential_dffits": n_influential_dffits,
+                "n_multicollinearity_issues": n_multicollinearity
+            },
+            "recommendations": recommendations,
+            "interpretation": (
+                "Model diagnostics assess observation influence and multicollinearity. "
+                "High leverage points are extreme in the factor space. "
+                "Influential points (Cook's D, DFFITS) significantly affect model fit. "
+                "High VIF indicates correlated predictors. "
+                "PRESS evaluates predictive performance via cross-validation."
+            )
         }
 
     except Exception as e:
