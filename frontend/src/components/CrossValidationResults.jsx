@@ -41,6 +41,19 @@ const CrossValidationResults = ({ cvResults, loading, error }) => {
     return null
   }
 
+  // Safety check for cvResults structure
+  if (!cvResults.fold_scores || !cvResults.average_metrics || !cvResults.predictions_vs_actual) {
+    return (
+      <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-6">
+        <div className="flex items-center gap-3 mb-2">
+          <AlertCircle className="w-6 h-6 text-yellow-400" />
+          <h4 className="text-xl font-bold text-yellow-300">Invalid Cross-Validation Results</h4>
+        </div>
+        <p className="text-yellow-200">The cross-validation results are incomplete. Please try running the analysis again.</p>
+      </div>
+    )
+  }
+
   const { k_folds, n_observations, fold_scores, average_metrics, overall_cv_r2, predictions_vs_actual, interpretation, recommendations } = cvResults
 
   // Prepare data for scatter plot

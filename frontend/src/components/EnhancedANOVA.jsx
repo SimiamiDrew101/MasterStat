@@ -4,16 +4,16 @@ import Plot from 'react-plotly.js'
 const EnhancedANOVA = ({ enhancedAnova, lackOfFitTest, alpha = 0.05 }) => {
   if (!enhancedAnova) return null
 
-  const { model, residual, total, terms, lack_of_fit, pure_error } = enhancedAnova
+  const { Model: model, Residual: residual, Total: total, terms, lack_of_fit, pure_error } = enhancedAnova
 
   // Calculate percentage contributions
-  const modelPct = ((model.ss / total.ss) * 100).toFixed(1)
-  const residualPct = ((residual.ss / total.ss) * 100).toFixed(1)
+  const modelPct = ((model.sum_sq / total.sum_sq) * 100).toFixed(1)
+  const residualPct = ((residual.sum_sq / total.sum_sq) * 100).toFixed(1)
 
   // Prepare data for contribution chart
   const termNames = Object.keys(terms || {})
   const termSS = termNames.map(name => terms[name].sum_sq)
-  const termPct = termSS.map(ss => ((ss / total.ss) * 100).toFixed(1))
+  const termPct = termSS.map(ss => ((ss / total.sum_sq) * 100).toFixed(1))
 
   // Sort by SS for better visualization
   const sortedIndices = termSS
@@ -104,9 +104,9 @@ const EnhancedANOVA = ({ enhancedAnova, lackOfFitTest, alpha = 0.05 }) => {
               <tr className="border-b border-slate-700/50 bg-green-900/10 hover:bg-green-900/20">
                 <td className="px-4 py-3 text-gray-100 font-semibold">Model</td>
                 <td className="px-4 py-3 text-right text-gray-100 font-mono">{model.df}</td>
-                <td className="px-4 py-3 text-right text-gray-100 font-mono">{model.ss.toFixed(4)}</td>
-                <td className="px-4 py-3 text-right text-gray-100 font-mono">{model.ms.toFixed(4)}</td>
-                <td className="px-4 py-3 text-right text-gray-100 font-mono">{model.f?.toFixed(4) || 'N/A'}</td>
+                <td className="px-4 py-3 text-right text-gray-100 font-mono">{model.sum_sq.toFixed(4)}</td>
+                <td className="px-4 py-3 text-right text-gray-100 font-mono">{model.mean_sq.toFixed(4)}</td>
+                <td className="px-4 py-3 text-right text-gray-100 font-mono">{model.F?.toFixed(4) || 'N/A'}</td>
                 <td className="px-4 py-3 text-right font-mono">
                   <span className={model.p_value < alpha ? 'text-green-400' : 'text-gray-400'}>
                     {model.p_value < 0.0001 ? '<0.0001' : model.p_value?.toFixed(6)}
@@ -156,8 +156,8 @@ const EnhancedANOVA = ({ enhancedAnova, lackOfFitTest, alpha = 0.05 }) => {
                 <tr className="border-b border-slate-700/50 bg-red-900/10 hover:bg-red-900/20">
                   <td className="px-4 py-3 text-gray-100 font-semibold">Residual Error</td>
                   <td className="px-4 py-3 text-right text-gray-100 font-mono">{residual.df}</td>
-                  <td className="px-4 py-3 text-right text-gray-100 font-mono">{residual.ss.toFixed(4)}</td>
-                  <td className="px-4 py-3 text-right text-gray-100 font-mono">{residual.ms.toFixed(4)}</td>
+                  <td className="px-4 py-3 text-right text-gray-100 font-mono">{residual.sum_sq.toFixed(4)}</td>
+                  <td className="px-4 py-3 text-right text-gray-100 font-mono">{residual.mean_sq.toFixed(4)}</td>
                   <td className="px-4 py-3 text-right text-gray-400">-</td>
                   <td className="px-4 py-3 text-right text-gray-400">-</td>
                   <td className="px-4 py-3 text-center">
@@ -172,7 +172,7 @@ const EnhancedANOVA = ({ enhancedAnova, lackOfFitTest, alpha = 0.05 }) => {
               <tr className="border-t-2 border-slate-600 bg-slate-700/50">
                 <td className="px-4 py-3 text-gray-100 font-bold">Total</td>
                 <td className="px-4 py-3 text-right text-gray-100 font-mono font-bold">{total.df}</td>
-                <td className="px-4 py-3 text-right text-gray-100 font-mono font-bold">{total.ss.toFixed(4)}</td>
+                <td className="px-4 py-3 text-right text-gray-100 font-mono font-bold">{total.sum_sq.toFixed(4)}</td>
                 <td className="px-4 py-3 text-right text-gray-400">-</td>
                 <td className="px-4 py-3 text-right text-gray-400">-</td>
                 <td className="px-4 py-3 text-right text-gray-400">-</td>
