@@ -1162,3 +1162,538 @@ async def constrained_optimization(request: ConstrainedOptimizationRequest):
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ==================== Feature 7: Mixture Designs ====================
+
+class MixtureDesignRequest(BaseModel):
+    n_components: int = Field(..., description="Number of mixture components")
+    design_type: str = Field(..., description="Design type: 'simplex-lattice' or 'simplex-centroid'")
+    degree: Optional[int] = Field(2, description="Degree for simplex-lattice (2, 3, or 4)")
+    component_names: Optional[List[str]] = Field(None, description="Names for components")
+
+class MixtureModelRequest(BaseModel):
+    data: List[Dict[str, float]] = Field(..., description="Experimental data")
+    components: List[str] = Field(..., description="Component names")
+    response: str = Field(..., description="Response variable name")
+    model_type: str = Field("scheffe", description="Model type: 'scheffe' (linear, quadratic, cubic)")
+    degree: int = Field(2, description="Polynomial degree (1, 2, or 3)")
+
+class MixtureOptimizationRequest(BaseModel):
+    coefficients: Dict[str, float] = Field(..., description="Model coefficients")
+    components: List[str] = Field(..., description="Component names")
+    target: str = Field(..., description="'maximize' or 'minimize'")
+    lower_bounds: Optional[Dict[str, float]] = Field(None, description="Lower bounds for each component")
+    upper_bounds: Optional[Dict[str, float]] = Field(None, description="Upper bounds for each component")
+
+
+def generate_simplex_lattice(n_components: int, degree: int = 2):
+    """
+    Generate Simplex-Lattice design of degree m
+    Each component takes (m+1) equally spaced levels from 0 to 1
+    """
+    import itertools
+
+    # Generate lattice points
+    levels = np.linspace(0, 1, degree + 1)
+
+    # Generate all combinations that sum to 1
+    design_points = []
+
+    # Use itertools to generate all combinations with replacement
+    for combo in itertools.combinations_with_replacement(range(degree + 1), n_components):
+        point = np.array([levels[i] for i in combo])
+        # Check if proportions sum to approximately 1
+        if np.abs(np.sum(point) - 1.0) < 1e-10:
+            # Generate all permutations of this combination
+            for perm in itertools.permutations(point):
+                perm_array = np.array(perm)
+                # Check if this permutation is unique
+                is_duplicate = any(np.allclose(perm_array, dp) for dp in design_points)
+                if not is_duplicate:
+                    design_points.append(perm_array)
+
+    return np.array(design_points)
+
+
+def generate_simplex_centroid(n_components: int):
+    """
+    Generate Simplex-Centroid design
+    Includes all vertices, edges, faces, and overall centroid
+    """
+    import itertools
+
+    design_points = []
+
+    # Generate all non-empty subsets of components
+    for r in range(1, n_components + 1):
+        for subset in itertools.combinations(range(n_components), r):
+            # Equal proportions for selected components, 0 for others
+            point = np.zeros(n_components)
+            point[list(subset)] = 1.0 / len(subset)
+            design_points.append(point)
+
+    return np.array(design_points)
+
+
+@router.post("/mixture-design/generate")
+async def generate_mixture_design(request: MixtureDesignRequest):
+    """
+    Generate mixture experimental design (Simplex-Lattice or Simplex-Centroid)
+    """
+    try:
+        n = request.n_components
+
+        if n < 2:
+            raise ValueError("Need at least 2 components for mixture design")
+
+        if request.design_type == "simplex-lattice":
+            if request.degree not in [2, 3, 4]:
+                raise ValueError("Degree must be 2, 3, or 4 for simplex-lattice design")
+            design_matrix = generate_simplex_lattice(n, request.degree)
+            design_name = f"Simplex-Lattice ({request.degree})"
+        elif request.design_type == "simplex-centroid":
+            design_matrix = generate_simplex_centroid(n)
+            design_name = "Simplex-Centroid"
+        else:
+            raise ValueError(f"Unknown design type: {request.design_type}")
+
+        # Create component names if not provided
+        if request.component_names and len(request.component_names) == n:
+            comp_names = request.component_names
+        else:
+            comp_names = [f"X{i+1}" for i in range(n)]
+
+        # Convert to list of dicts
+        design_data = []
+        for i, point in enumerate(design_matrix):
+            run = {"run": i + 1}
+            for j, comp_name in enumerate(comp_names):
+                run[comp_name] = round(point[j], 6)
+            design_data.append(run)
+
+        return {
+            "design_type": design_name,
+            "n_components": n,
+            "n_runs": len(design_matrix),
+            "components": comp_names,
+            "design_matrix": design_data,
+            "properties": {
+                "constraint": "Components sum to 1.0",
+                "description": f"{design_name} design for {n}-component mixture"
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/mixture-design/fit-model")
+async def fit_mixture_model(request: MixtureModelRequest):
+    """
+    Fit Scheffé mixture model
+    """
+    try:
+        df = pd.DataFrame(request.data)
+        components = request.components
+        response = request.response
+        degree = request.degree
+
+        # Verify components sum to approximately 1
+        component_sums = df[components].sum(axis=1)
+        if not np.allclose(component_sums, 1.0, atol=0.01):
+            raise ValueError("Component proportions must sum to 1.0 for each run")
+
+        # Build Scheffé model formula based on degree
+        terms = []
+
+        # Linear terms (degree >= 1)
+        if degree >= 1:
+            # For Scheffé model, we exclude intercept and use pure mixture terms
+            terms.extend(components)
+
+        # Quadratic terms (degree >= 2): all pairwise interactions
+        if degree >= 2:
+            for i in range(len(components)):
+                for j in range(i + 1, len(components)):
+                    terms.append(f"{components[i]}:{components[j]}")
+
+        # Cubic terms (degree >= 3): three-way interactions
+        if degree >= 3:
+            for i in range(len(components)):
+                for j in range(i + 1, len(components)):
+                    for k in range(j + 1, len(components)):
+                        terms.append(f"{components[i]}:{components[j]}:{components[k]}")
+
+        # Build formula without intercept (mixture constraint handles it)
+        formula = f"{response} ~ {' + '.join(terms)} - 1"
+
+        # Fit model
+        model = ols(formula, data=df).fit()
+
+        # Extract coefficients
+        coefficients = {}
+        for term, coef, se, t_val, p_val in zip(
+            model.model.exog_names,
+            model.params,
+            model.bse,
+            model.tvalues,
+            model.pvalues
+        ):
+            coefficients[term] = {
+                "estimate": round(float(coef), 6),
+                "std_error": round(float(se), 6),
+                "t_value": round(float(t_val), 4),
+                "p_value": round(float(p_val), 6)
+            }
+
+        # Model statistics
+        r_squared = float(model.rsquared)
+        adj_r_squared = float(model.rsquared_adj)
+        rmse = float(np.sqrt(model.mse_resid))
+
+        # ANOVA table
+        anova_table = sm.stats.anova_lm(model, typ=2)
+        anova_dict = {}
+        for idx, row in anova_table.iterrows():
+            anova_dict[idx] = {
+                "sum_sq": round(float(row.get('sum_sq', 0)), 6),
+                "df": int(row.get('df', 0)),
+                "F": round(float(row.get('F', 0)), 4) if pd.notna(row.get('F')) else None,
+                "PR(>F)": round(float(row.get('PR(>F)', 0)), 6) if pd.notna(row.get('PR(>F)')) else None
+            }
+
+        return {
+            "model_type": f"Scheffé {['Linear', 'Quadratic', 'Cubic'][degree-1]} Mixture Model",
+            "formula": formula,
+            "coefficients": coefficients,
+            "r_squared": round(r_squared, 4),
+            "adj_r_squared": round(adj_r_squared, 4),
+            "rmse": round(rmse, 4),
+            "anova": anova_dict,
+            "n_obs": int(model.nobs),
+            "df_resid": int(model.df_resid)
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/mixture-design/optimize")
+async def optimize_mixture(request: MixtureOptimizationRequest):
+    """
+    Optimize mixture response subject to component constraints
+    """
+    try:
+        from scipy.optimize import minimize, LinearConstraint
+
+        components = request.components
+        n_comp = len(components)
+
+        # Build prediction function from coefficients
+        def predict(x_dict):
+            """Predict response from component proportions"""
+            y = 0.0
+
+            # Process each term in the model
+            for term, coef in request.coefficients.items():
+                if ':' in term:
+                    # Interaction term
+                    parts = term.split(':')
+                    value = coef
+                    for part in parts:
+                        value *= x_dict.get(part, 0)
+                    y += value
+                else:
+                    # Linear term
+                    y += coef * x_dict.get(term, 0)
+
+            return y
+
+        def objective(x):
+            """Objective function for optimization"""
+            x_dict = {comp: x[i] for i, comp in enumerate(components)}
+            pred = predict(x_dict)
+            return -pred if request.target == "maximize" else pred
+
+        # Constraints
+        constraints = []
+
+        # Equality constraint: components must sum to 1
+        A_eq = np.ones((1, n_comp))
+        constraints.append(LinearConstraint(A_eq, 1.0, 1.0))
+
+        # Box constraints (bounds for each component)
+        lower_bounds = []
+        upper_bounds = []
+        for comp in components:
+            lb = request.lower_bounds.get(comp, 0.0) if request.lower_bounds else 0.0
+            ub = request.upper_bounds.get(comp, 1.0) if request.upper_bounds else 1.0
+            lower_bounds.append(lb)
+            upper_bounds.append(ub)
+
+        bounds = list(zip(lower_bounds, upper_bounds))
+
+        # Initial guess: equal proportions
+        x0 = np.ones(n_comp) / n_comp
+
+        # Optimize
+        result = minimize(
+            objective,
+            x0,
+            method='SLSQP',
+            bounds=bounds,
+            constraints=constraints,
+            options={'ftol': 1e-9, 'maxiter': 1000}
+        )
+
+        if not result.success:
+            raise ValueError(f"Optimization failed: {result.message}")
+
+        # Build optimal point dict
+        optimal_point = {comp: round(float(result.x[i]), 6) for i, comp in enumerate(components)}
+
+        # Calculate predicted response
+        predicted_response = float(-result.fun if request.target == "maximize" else result.fun)
+
+        return {
+            "target": request.target,
+            "optimal_point": optimal_point,
+            "predicted_response": round(predicted_response, 4),
+            "method": "SLSQP with mixture constraint",
+            "success": True,
+            "verification": {
+                "components_sum": round(sum(optimal_point.values()), 6),
+                "meets_constraint": abs(sum(optimal_point.values()) - 1.0) < 1e-6
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ==================== Feature 8: Robust Parameter Design ====================
+
+class RobustDesignRequest(BaseModel):
+    n_control_factors: int = Field(..., description="Number of control factors")
+    n_noise_factors: int = Field(..., description="Number of noise factors")
+    control_design_type: str = Field("orthogonal_array", description="Control array type")
+    noise_design_type: str = Field("full_factorial", description="Noise array type")
+    control_factor_names: Optional[List[str]] = Field(None, description="Names for control factors")
+    noise_factor_names: Optional[List[str]] = Field(None, description="Names for noise factors")
+
+class RobustAnalysisRequest(BaseModel):
+    data: List[Dict[str, Any]] = Field(..., description="Experimental data with control, noise, and response")
+    control_factors: List[str] = Field(..., description="Control factor names")
+    noise_factors: List[str] = Field(..., description="Noise factor names")
+    response: str = Field(..., description="Response variable name")
+    quality_characteristic: str = Field("smaller-is-better", description="'smaller-is-better', 'larger-is-better', or 'nominal-is-best'")
+    target_value: Optional[float] = Field(None, description="Target value (for nominal-is-best)")
+
+
+def generate_orthogonal_array_L8():
+    """Generate L8 Orthogonal Array (7 factors, 2 levels)"""
+    return np.array([
+        [-1, -1, -1, -1, -1, -1, -1],
+        [-1, -1, -1,  1,  1,  1,  1],
+        [-1,  1,  1, -1, -1,  1,  1],
+        [-1,  1,  1,  1,  1, -1, -1],
+        [ 1, -1,  1, -1,  1, -1,  1],
+        [ 1, -1,  1,  1, -1,  1, -1],
+        [ 1,  1, -1, -1,  1,  1, -1],
+        [ 1,  1, -1,  1, -1, -1,  1]
+    ])
+
+
+def generate_orthogonal_array_L4():
+    """Generate L4 Orthogonal Array (3 factors, 2 levels)"""
+    return np.array([
+        [-1, -1, -1],
+        [-1,  1,  1],
+        [ 1, -1,  1],
+        [ 1,  1, -1]
+    ])
+
+
+@router.post("/robust-design/generate")
+async def generate_robust_design(request: RobustDesignRequest):
+    """
+    Generate robust parameter design (inner-outer array)
+    """
+    try:
+        n_control = request.n_control_factors
+        n_noise = request.n_noise_factors
+
+        # Generate control factor design (inner array)
+        if request.control_design_type == "orthogonal_array":
+            if n_control <= 3:
+                control_array = generate_orthogonal_array_L4()[:, :n_control]
+            elif n_control <= 7:
+                control_array = generate_orthogonal_array_L8()[:, :n_control]
+            else:
+                raise ValueError("Currently support up to 7 control factors")
+        else:
+            # 2^k factorial for control factors
+            from pyDOE3 import fullfact
+            control_array = fullfact([2] * n_control)
+            control_array = 2 * (control_array / (2-1)) - 1  # Convert to -1, +1
+
+        # Generate noise factor design (outer array)
+        if request.noise_design_type == "full_factorial":
+            from pyDOE3 import fullfact
+            noise_array = fullfact([2] * n_noise)
+            noise_array = 2 * (noise_array / (2-1)) - 1  # Convert to -1, +1
+        else:
+            # Orthogonal array for noise
+            if n_noise <= 3:
+                noise_array = generate_orthogonal_array_L4()[:, :n_noise]
+            elif n_noise <= 7:
+                noise_array = generate_orthogonal_array_L8()[:, :n_noise]
+            else:
+                raise ValueError("Currently support up to 7 noise factors")
+
+        # Create component names
+        if request.control_factor_names and len(request.control_factor_names) == n_control:
+            control_names = request.control_factor_names
+        else:
+            control_names = [f"C{i+1}" for i in range(n_control)]
+
+        if request.noise_factor_names and len(request.noise_factor_names) == n_noise:
+            noise_names = request.noise_factor_names
+        else:
+            noise_names = [f"N{i+1}" for i in range(n_noise)]
+
+        # Build combined design (outer product of inner and outer arrays)
+        combined_design = []
+        run_number = 1
+
+        for i, control_run in enumerate(control_array):
+            for j, noise_run in enumerate(noise_array):
+                run_data = {
+                    "run": run_number,
+                    "control_run": i + 1,
+                    "noise_run": j + 1
+                }
+
+                # Add control factors
+                for k, name in enumerate(control_names):
+                    run_data[name] = round(float(control_run[k]), 2)
+
+                # Add noise factors
+                for k, name in enumerate(noise_names):
+                    run_data[name] = round(float(noise_run[k]), 2)
+
+                combined_design.append(run_data)
+                run_number += 1
+
+        return {
+            "design_type": "Robust Parameter Design (Inner-Outer Array)",
+            "n_control_factors": n_control,
+            "n_noise_factors": n_noise,
+            "control_array_size": len(control_array),
+            "noise_array_size": len(noise_array),
+            "total_runs": len(combined_design),
+            "control_factors": control_names,
+            "noise_factors": noise_names,
+            "design_matrix": combined_design,
+            "properties": {
+                "control_design": request.control_design_type,
+                "noise_design": request.noise_design_type,
+                "description": f"Crossed design with {len(control_array)} control runs × {len(noise_array)} noise runs"
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/robust-design/analyze")
+async def analyze_robust_design(request: RobustAnalysisRequest):
+    """
+    Analyze robust parameter design using Signal-to-Noise ratios
+    """
+    try:
+        df = pd.DataFrame(request.data)
+        control_factors = request.control_factors
+        noise_factors = request.noise_factors
+        response = request.response
+        quality_char = request.quality_characteristic
+
+        # Group by control factor settings
+        control_groups = df.groupby(control_factors)[response]
+
+        # Calculate mean and variance for each control factor combination
+        means = control_groups.mean()
+        variances = control_groups.var()
+        std_devs = control_groups.std()
+
+        # Calculate Signal-to-Noise (SN) ratio based on quality characteristic
+        sn_ratios = []
+
+        for control_setting, group in df.groupby(control_factors):
+            responses = group[response].values
+
+            if quality_char == "smaller-is-better":
+                # SN = -10 * log10(mean(y^2))
+                sn = -10 * np.log10(np.mean(responses ** 2))
+            elif quality_char == "larger-is-better":
+                # SN = -10 * log10(mean(1/y^2))
+                sn = -10 * np.log10(np.mean(1 / (responses ** 2 + 1e-10)))
+            elif quality_char == "nominal-is-best":
+                # SN = 10 * log10(mean^2 / variance)
+                mean_val = np.mean(responses)
+                var_val = np.var(responses)
+                sn = 10 * np.log10((mean_val ** 2) / (var_val + 1e-10))
+            else:
+                raise ValueError(f"Unknown quality characteristic: {quality_char}")
+
+            sn_ratios.append({
+                "control_setting": control_setting if isinstance(control_setting, dict) else
+                                 dict(zip(control_factors, control_setting if hasattr(control_setting, '__iter__') else [control_setting])),
+                "mean_response": round(float(np.mean(responses)), 4),
+                "std_dev": round(float(np.std(responses)), 4),
+                "sn_ratio": round(float(sn), 4)
+            })
+
+        # Sort by SN ratio (descending - higher is better)
+        sn_ratios.sort(key=lambda x: x['sn_ratio'], reverse=True)
+
+        # Main effects for SN ratios
+        main_effects = {}
+        for factor in control_factors:
+            # Group by individual factor level
+            factor_groups = {}
+            for entry in sn_ratios:
+                level = entry['control_setting'][factor]
+                if level not in factor_groups:
+                    factor_groups[level] = []
+                factor_groups[level].append(entry['sn_ratio'])
+
+            # Calculate mean SN for each level
+            level_means = {level: round(float(np.mean(sns)), 4)
+                          for level, sns in factor_groups.items()}
+
+            main_effects[factor] = {
+                "level_means": level_means,
+                "effect_size": round(float(max(level_means.values()) - min(level_means.values())), 4)
+            }
+
+        # Optimal settings (highest SN ratio)
+        optimal = sn_ratios[0]
+
+        return {
+            "quality_characteristic": quality_char,
+            "n_control_combinations": len(sn_ratios),
+            "sn_ratios": sn_ratios,
+            "main_effects": main_effects,
+            "optimal_settings": {
+                "control_factors": optimal['control_setting'],
+                "predicted_mean": optimal['mean_response'],
+                "predicted_std_dev": optimal['std_dev'],
+                "sn_ratio": optimal['sn_ratio']
+            },
+            "interpretation": f"Optimal control factor settings maximize SN ratio ({optimal['sn_ratio']} dB), indicating robust performance across noise conditions."
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
