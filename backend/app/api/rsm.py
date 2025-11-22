@@ -2115,6 +2115,12 @@ class ModelDiagnosticsRequest(BaseModel):
     response: str = Field(..., description="Response variable name")
     coefficients: Dict[str, Any] = Field(..., description="Model coefficients from fitted model")
 
+class DesignRecommendationRequest(BaseModel):
+    n_factors: int = Field(..., description="Number of factors (2-6)")
+    budget: Optional[int] = Field(None, description="Maximum number of experimental runs")
+    goal: str = Field("optimization", description="Experiment goal: 'optimization', 'screening', or 'modeling'")
+    time_constraint: Optional[str] = Field(None, description="Time constraint: 'low', 'medium', 'high'")
+
 
 @router.post("/advanced-diagnostics")
 async def advanced_model_diagnostics(request: ModelDiagnosticsRequest):
@@ -2578,3 +2584,410 @@ def generate_pdf_report(request: ExportRequest) -> bytes:
     buffer.close()
 
     return pdf_bytes
+
+
+# ============================================================================
+# EXPERIMENT WIZARD (Phase 2 - RSM Improvements)
+# ============================================================================
+
+@router.post("/recommend-design")
+async def recommend_design(request: DesignRecommendationRequest):
+    """
+    Smart design recommendation engine for Experiment Wizard.
+    Helps beginners choose the right experimental design based on:
+    - Number of factors
+    - Budget constraints (max runs)
+    - Experimental goal
+    - Time constraints
+
+    Returns top 3 design recommendations with pros, cons, and rationale.
+    """
+    try:
+        n_factors = request.n_factors
+        budget = request.budget
+        goal = request.goal
+
+        # Validate input
+        if n_factors < 2 or n_factors > 6:
+            raise HTTPException(status_code=400, detail="Number of factors must be between 2 and 6")
+
+        recommendations = []
+
+        # ===== 2 FACTORS =====
+        if n_factors == 2:
+            # Face-Centered CCD (13 runs)
+            fc_ccd = {
+                "type": "Face-Centered CCD",
+                "design_code": "face-centered",
+                "runs": 13,
+                "pros": [
+                    "Efficient for 2 factors (only 13 runs)",
+                    "Orthogonal blocking",
+                    "All points fit within original cube (safe operating region)",
+                    "Good for constraints"
+                ],
+                "cons": [
+                    "Not rotatable (prediction variance varies with direction)",
+                    "Less efficient than rotatable for pure prediction"
+                ],
+                "best_for": "2-factor optimization with constraints",
+                "description": "Places axial points at ±1 on each axis (faces of cube)",
+                "score": 95,
+                "properties": {
+                    "rotatable": False,
+                    "orthogonal": True,
+                    "alpha": 1.0,
+                    "factorial_points": 4,
+                    "axial_points": 4,
+                    "center_points": 5
+                }
+            }
+
+            # Rotatable CCD (13 runs)
+            rot_ccd = {
+                "type": "Rotatable CCD",
+                "design_code": "rotatable",
+                "runs": 13,
+                "pros": [
+                    "Constant prediction variance at all points equidistant from center",
+                    "Excellent for exploring unknown regions",
+                    "Optimal for prediction"
+                ],
+                "cons": [
+                    "Axial points outside original cube (α = 1.414)",
+                    "May violate process constraints",
+                    "Requires wider operating region"
+                ],
+                "best_for": "2-factor exploration without strict constraints",
+                "description": "Optimized for equal prediction variance in all directions",
+                "score": 90,
+                "properties": {
+                    "rotatable": True,
+                    "orthogonal": False,
+                    "alpha": round(2**(2/4), 3),  # 1.414 for 2 factors
+                    "factorial_points": 4,
+                    "axial_points": 4,
+                    "center_points": 5
+                }
+            }
+
+            # Box-Behnken (13 runs)
+            bb = {
+                "type": "Box-Behnken",
+                "design_code": "box-behnken",
+                "runs": 13,
+                "pros": [
+                    "No corner points (safer for sensitive processes)",
+                    "Spherical design",
+                    "Efficient for 3 factors"
+                ],
+                "cons": [
+                    "Designed for 3+ factors (not optimal for 2)",
+                    "Not as efficient as CCD for 2 factors"
+                ],
+                "best_for": "Better suited for 3+ factors",
+                "description": "Midpoints of cube edges plus center points",
+                "score": 70,
+                "properties": {
+                    "rotatable": False,
+                    "orthogonal": True,
+                    "edge_points": 8,
+                    "center_points": 5
+                }
+            }
+
+            recommendations = [fc_ccd, rot_ccd, bb]
+
+        # ===== 3 FACTORS =====
+        elif n_factors == 3:
+            # Budget considerations for 3 factors
+            if budget and budget < 20:
+                # Box-Behnken for tight budget (15 runs)
+                bb = {
+                    "type": "Box-Behnken",
+                    "design_code": "box-behnken",
+                    "runs": 15,
+                    "pros": [
+                        "Very efficient for 3 factors (only 15 runs)",
+                        "No extreme corners (safer)",
+                        "Orthogonal design",
+                        "Fits tight budgets"
+                    ],
+                    "cons": [
+                        "Cannot estimate all three-way interactions",
+                        "Poor prediction at corners"
+                    ],
+                    "best_for": "3-factor screening with limited budget",
+                    "description": "Efficient 3-factor design using edge midpoints",
+                    "score": 95,
+                    "properties": {
+                        "rotatable": False,
+                        "orthogonal": True,
+                        "edge_points": 12,
+                        "center_points": 3
+                    }
+                }
+                recommendations.append(bb)
+
+            # Face-Centered CCD (20 runs)
+            fc_ccd = {
+                "type": "Face-Centered CCD",
+                "design_code": "face-centered",
+                "runs": 20,
+                "pros": [
+                    "Comprehensive coverage",
+                    "All points within cube",
+                    "Good for constraints"
+                ],
+                "cons": [
+                    "More runs than Box-Behnken (20 vs 15)",
+                    "Not rotatable"
+                ],
+                "best_for": "3-factor optimization with constraints",
+                "description": "Factorial + axial points at faces + center",
+                "score": 85,
+                "properties": {
+                    "rotatable": False,
+                    "orthogonal": True,
+                    "alpha": 1.0,
+                    "factorial_points": 8,
+                    "axial_points": 6,
+                    "center_points": 6
+                }
+            }
+
+            # Rotatable CCD (20 runs)
+            rot_ccd = {
+                "type": "Rotatable CCD",
+                "design_code": "rotatable",
+                "runs": 20,
+                "pros": [
+                    "Equal prediction variance (rotatable)",
+                    "Comprehensive coverage",
+                    "Optimal for prediction"
+                ],
+                "cons": [
+                    "Axial points outside cube (α = 1.682)",
+                    "May violate constraints",
+                    "More runs than Box-Behnken"
+                ],
+                "best_for": "3-factor exploration without strict constraints",
+                "description": "Optimized for rotatability",
+                "score": 80,
+                "properties": {
+                    "rotatable": True,
+                    "orthogonal": False,
+                    "alpha": round(2**(3/4), 3),  # 1.682 for 3 factors
+                    "factorial_points": 8,
+                    "axial_points": 6,
+                    "center_points": 6
+                }
+            }
+
+            if not any(r["design_code"] == "box-behnken" for r in recommendations):
+                recommendations.extend([fc_ccd, rot_ccd])
+            else:
+                recommendations.extend([fc_ccd, rot_ccd][:2])  # Limit to top 3
+
+        # ===== 4 FACTORS =====
+        elif n_factors == 4:
+            # Box-Behnken (27 runs) - Most efficient
+            bb = {
+                "type": "Box-Behnken",
+                "design_code": "box-behnken",
+                "runs": 27,
+                "pros": [
+                    "Most efficient for 4 factors",
+                    "No extreme corners",
+                    "Good coverage"
+                ],
+                "cons": [
+                    "Cannot estimate all higher-order interactions",
+                    "27 runs may still be expensive"
+                ],
+                "best_for": "4-factor screening and optimization",
+                "description": "Efficient 4-factor design",
+                "score": 90,
+                "properties": {
+                    "rotatable": False,
+                    "orthogonal": True,
+                    "edge_points": 24,
+                    "center_points": 3
+                }
+            }
+
+            # Face-Centered CCD (31 runs)
+            fc_ccd = {
+                "type": "Face-Centered CCD",
+                "design_code": "face-centered",
+                "runs": 31,
+                "pros": [
+                    "Comprehensive 4-factor coverage",
+                    "All points within cube"
+                ],
+                "cons": [
+                    "More runs than Box-Behnken (31 vs 27)",
+                    "Higher cost"
+                ],
+                "best_for": "Comprehensive 4-factor study",
+                "description": "Full second-order design",
+                "score": 80,
+                "properties": {
+                    "rotatable": False,
+                    "orthogonal": True,
+                    "alpha": 1.0,
+                    "factorial_points": 16,
+                    "axial_points": 8,
+                    "center_points": 7
+                }
+            }
+
+            # Fractional factorial first recommendation
+            screening = {
+                "type": "Fractional Factorial (Screening)",
+                "design_code": "screening-first",
+                "runs": 16,
+                "pros": [
+                    "Very efficient screening (only 16 runs)",
+                    "Identify important factors first",
+                    "Sequential approach"
+                ],
+                "cons": [
+                    "Cannot fit full RSM initially",
+                    "Requires follow-up experiment",
+                    "Two-stage process"
+                ],
+                "best_for": "When unsure which factors are important",
+                "description": "Screen first, then RSM on important factors",
+                "score": 75,
+                "properties": {
+                    "approach": "sequential",
+                    "initial_runs": 16,
+                    "followup_runs": "15-20"
+                }
+            }
+
+            recommendations = [bb, fc_ccd, screening]
+
+        # ===== 5-6 FACTORS =====
+        elif n_factors >= 5:
+            # Strongly recommend screening first
+            screening = {
+                "type": "Fractional Factorial Screening",
+                "design_code": "screening-first",
+                "runs": 32 if n_factors == 5 else 64,
+                "pros": [
+                    "Identify vital few factors",
+                    "Efficient for many factors",
+                    "Proven sequential approach"
+                ],
+                "cons": [
+                    "Requires two-stage experimentation",
+                    "Initial screen doesn't fit RSM"
+                ],
+                "best_for": f"{n_factors}-factor screening → RSM on important factors",
+                "description": "Screen first, then detailed RSM on 2-3 key factors",
+                "score": 95,
+                "properties": {
+                    "approach": "sequential",
+                    "initial_runs": 32 if n_factors == 5 else 64,
+                    "recommended_followup": "RSM on top 2-3 factors"
+                }
+            }
+
+            # Box-Behnken if they insist on RSM (expensive!)
+            bb_runs = {5: 46, 6: 54}
+            bb = {
+                "type": "Box-Behnken (Not Recommended)",
+                "design_code": "box-behnken",
+                "runs": bb_runs[n_factors],
+                "pros": [
+                    "Can fit full RSM immediately",
+                    "No extreme corners"
+                ],
+                "cons": [
+                    f"Very expensive ({bb_runs[n_factors]} runs)",
+                    "Many factors = complex model",
+                    "Interpretation difficulties",
+                    "May not be practical"
+                ],
+                "best_for": "Only if all factors known to be important",
+                "description": f"Full {n_factors}-factor RSM (expensive)",
+                "score": 50,
+                "properties": {
+                    "rotatable": False,
+                    "orthogonal": True,
+                    "warning": "Consider screening first"
+                }
+            }
+
+            # Definitive Screening Design (newer approach)
+            dsd_runs = 2 * n_factors + 1
+            dsd = {
+                "type": "Definitive Screening Design",
+                "design_code": "dsd",
+                "runs": dsd_runs,
+                "pros": [
+                    f"Very efficient ({dsd_runs} runs for {n_factors} factors)",
+                    "Can detect curvature",
+                    "Modern approach",
+                    "Good for factor reduction"
+                ],
+                "cons": [
+                    "Not a traditional RSM",
+                    "May require follow-up",
+                    "Less established than fractional factorial"
+                ],
+                "best_for": "Modern efficient screening with curvature detection",
+                "description": "Efficient screening that detects main effects and curvature",
+                "score": 85,
+                "properties": {
+                    "approach": "modern_screening",
+                    "runs": dsd_runs,
+                    "can_detect_curvature": True
+                }
+            }
+
+            recommendations = [screening, dsd, bb]
+
+        # Sort by score (highest first)
+        recommendations.sort(key=lambda x: x["score"], reverse=True)
+
+        # Apply budget filter if specified
+        if budget:
+            filtered = [r for r in recommendations if r["runs"] <= budget]
+            if not filtered:
+                # No designs fit budget - return warning with smallest design
+                min_runs = min(r["runs"] for r in recommendations)
+                return {
+                    "recommendations": recommendations[:1],
+                    "warning": f"Budget of {budget} runs is insufficient. Minimum required: {min_runs} runs.",
+                    "suggestion": f"Consider increasing budget or reducing number of factors.",
+                    "user_input": {
+                        "n_factors": n_factors,
+                        "budget": budget,
+                        "goal": goal
+                    }
+                }
+            recommendations = filtered
+
+        # Return top 3
+        return {
+            "recommendations": recommendations[:3],
+            "summary": {
+                "n_factors": n_factors,
+                "recommended_design": recommendations[0]["type"],
+                "runs_required": recommendations[0]["runs"],
+                "rationale": recommendations[0]["best_for"]
+            },
+            "user_input": {
+                "n_factors": n_factors,
+                "budget": budget,
+                "goal": goal
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Design recommendation failed: {str(e)}")

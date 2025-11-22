@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
-import { Mountain, Plus, Trash2, Target, TrendingUp } from 'lucide-react'
+import { Mountain, Plus, Trash2, Target, TrendingUp, Sparkles } from 'lucide-react'
 import ResultCard from '../components/ResultCard'
 import ResponseSurface3D from '../components/ResponseSurface3D'
 import ContourPlot from '../components/ContourPlot'
@@ -9,6 +9,7 @@ import ResidualAnalysis from '../components/ResidualAnalysis'
 import EnhancedANOVA from '../components/EnhancedANOVA'
 import PredictionProfiler from '../components/PredictionProfiler'
 import AdvancedDiagnostics from '../components/AdvancedDiagnostics'
+import ExperimentWizard from '../components/ExperimentWizard'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -48,6 +49,7 @@ const RSM = () => {
 
   // UI state
   const [loading, setLoading] = useState(false)
+  const [wizardOpen, setWizardOpen] = useState(false)
   const [error, setError] = useState(null)
   const [activeTab, setActiveTab] = useState('design')  // 'design', 'model', 'optimize', 'visualize'
 
@@ -69,6 +71,65 @@ const RSM = () => {
   useEffect(() => {
     console.log('surfaceData state changed:', surfaceData ? `${surfaceData.length} points` : 'null')
   }, [surfaceData])
+
+  // Handle wizard completion (Phase 2 Feature)
+  const handleWizardComplete = async (wizardData) => {
+    console.log('Wizard completed with data:', wizardData)
+
+    // Apply wizard recommendations to the design settings
+    if (wizardData.selectedDesign) {
+      setNumFactors(wizardData.nFactors)
+
+      // Map design code to our design type
+      if (wizardData.selectedDesign.design_code === 'box-behnken') {
+        setDesignType('box-behnken')
+      } else if (wizardData.selectedDesign.design_code === 'face-centered') {
+        setDesignType('ccd')
+        setCCDType('face-centered')
+      } else if (wizardData.selectedDesign.design_code === 'rotatable') {
+        setDesignType('ccd')
+        setCCDType('rotatable')
+      } else if (wizardData.selectedDesign.design_code === 'inscribed') {
+        setDesignType('ccd')
+        setCCDType('inscribed')
+      }
+
+      // Set factor names if provided
+      if (wizardData.factorNames && wizardData.factorNames.length > 0) {
+        const names = wizardData.factorNames.filter(n => n && n.trim())
+        if (names.length > 0) {
+          setFactorNames(names)
+        }
+      }
+
+      // Auto-generate the design after wizard completes
+      setTimeout(async () => {
+        try {
+          setLoading(true)
+          let response
+          if (wizardData.selectedDesign.design_code === 'box-behnken') {
+            response = await axios.post(`${API_URL}/api/rsm/box-behnken/generate`, {
+              n_factors: wizardData.nFactors
+            })
+          } else {
+            response = await axios.post(`${API_URL}/api/rsm/ccd/generate`, {
+              n_factors: wizardData.nFactors,
+              design_type: wizardData.selectedDesign.design_code,
+              n_center: numCenterPoints
+            })
+          }
+
+          setDesignData(response.data)
+          setTableData(initializeTableData(response.data.design))
+          setActiveTab('design') // Switch to design tab to see results
+        } catch (err) {
+          setError(err.response?.data?.detail || err.message || 'Design generation failed')
+        } finally {
+          setLoading(false)
+        }
+      }, 300) // Small delay for UX smoothness
+    }
+  }
 
   // Generate design
   const handleGenerateDesign = async () => {
@@ -756,13 +817,40 @@ const RSM = () => {
               />
             </div>
 
+            {/* Experiment Wizard Button (Phase 2 Feature) */}
+            <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 rounded-lg p-4 border border-purple-700/50">
+              <div className="flex items-center gap-2 mb-2">
+                <Sparkles className="w-5 h-5 text-purple-400" />
+                <span className="text-purple-300 font-semibold text-sm">NEW FEATURE</span>
+              </div>
+              <button
+                onClick={() => setWizardOpen(true)}
+                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all shadow-lg hover:shadow-purple-500/50"
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <Sparkles className="w-5 h-5" />
+                  <span>Launch Experiment Wizard</span>
+                </div>
+              </button>
+              <p className="text-gray-300 text-xs mt-2 text-center">
+                Step-by-step guidance for choosing the perfect design
+              </p>
+            </div>
+
+            {/* OR Divider */}
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-slate-600"></div>
+              <span className="text-gray-400 text-sm">OR</span>
+              <div className="flex-1 h-px bg-slate-600"></div>
+            </div>
+
             {/* Generate Design Button */}
             <button
               onClick={handleGenerateDesign}
               disabled={loading}
               className="w-full bg-orange-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-orange-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Generating...' : 'Generate Design'}
+              {loading ? 'Generating...' : 'Generate Design Manually'}
             </button>
 
             {/* Design Information */}
@@ -1914,6 +2002,13 @@ const RSM = () => {
           )}
         </div>
       )}
+
+      {/* Experiment Wizard Modal (Phase 2 Feature) */}
+      <ExperimentWizard
+        isOpen={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onComplete={handleWizardComplete}
+      />
     </div>
   )
 }
