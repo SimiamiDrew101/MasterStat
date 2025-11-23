@@ -899,7 +899,7 @@ const RSM = () => {
               ? 'bg-orange-600 text-white'
               : 'bg-slate-700/50 text-gray-300 hover:bg-slate-700'
           }`}
-          disabled={!modelResult}
+          disabled={!modelResult && !multiModelResults}
         >
           2. Model & Analysis
         </button>
@@ -919,12 +919,12 @@ const RSM = () => {
           className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
             activeTab === 'visualize'
               ? 'bg-orange-600 text-white'
-              : !modelResult
+              : (!modelResult && !multiModelResults)
               ? 'bg-slate-700/50 text-gray-500 cursor-not-allowed'
               : 'bg-slate-700/50 text-gray-300 hover:bg-slate-700'
           }`}
-          disabled={!modelResult}
-          title={!modelResult ? 'Fit a model first' : 'View response surface visualization'}
+          disabled={!modelResult && !multiModelResults}
+          title={(!modelResult && !multiModelResults) ? 'Fit a model first' : 'View response surface visualization'}
         >
           4. Visualize
         </button>
