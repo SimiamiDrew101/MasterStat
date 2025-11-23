@@ -11,6 +11,8 @@ import PredictionProfiler from '../components/PredictionProfiler'
 import AdvancedDiagnostics from '../components/AdvancedDiagnostics'
 import ExperimentWizard from '../components/ExperimentWizard'
 import CrossValidationResults from '../components/CrossValidationResults'
+import MultiResponseManager from '../components/MultiResponseManager'
+import MultiResponseContourOverlay from '../components/MultiResponseContourOverlay'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -41,6 +43,14 @@ const RSM = () => {
   const [cvLoading, setCvLoading] = useState(false)
   const [cvError, setCvError] = useState(null)
   const [kFolds, setKFolds] = useState(5)
+
+  // Multi-response state (Phase 2 Feature 3)
+  const [responseNames, setResponseNames] = useState(['Y'])  // Array of response names
+  const [multiResponseMode, setMultiResponseMode] = useState(false)  // Toggle for multi-response
+  const [multiModelResults, setMultiModelResults] = useState(null)  // Results from /fit-multi-model
+  const [multiSurfaceData, setMultiSurfaceData] = useState(null)  // Surface data for multiple responses
+  const [responseConfigs, setResponseConfigs] = useState({})  // Visualization config per response
+  const [normalizationMethod, setNormalizationMethod] = useState('zscore')  // 'none', 'zscore', 'minmax'
 
   // Advanced features state (Features 4-6)
   const [augmentationStrategy, setAugmentationStrategy] = useState('space-filling')
@@ -188,10 +198,11 @@ const RSM = () => {
 
       setDesignData(response.data)
 
-      // Convert to table format with empty response column
+      // Convert to table format with empty response column(s)
       const table = response.data.design_matrix.map(row => {
         const tableRow = factorNames.map(factor => row[factor] || 0)
-        tableRow.push('')  // Empty response
+        // Add empty columns for each response
+        responseNames.forEach(() => tableRow.push(''))
         return tableRow
       })
 
@@ -334,6 +345,123 @@ const RSM = () => {
     } finally {
       setCvLoading(false)
     }
+  }
+
+  // Multi-response model fitting (Phase 2 Feature 3)
+  const handleFitMultiModel = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      // Validate that we have data for all responses
+      const validRows = tableData.filter(row => {
+        // Check all response columns (last N columns where N = responseNames.length)
+        const numResponses = responseNames.length
+        const numFactors = factorNames.length
+        return responseNames.every((_, idx) => {
+          const responseValue = row[numFactors + idx]
+          return responseValue !== '' && responseValue !== null && responseValue !== undefined
+        })
+      })
+
+      if (validRows.length < 5) {
+        throw new Error(`Need at least 5 complete data points for multi-response RSM (found ${validRows.length})`)
+      }
+
+      // Convert to API format
+      const data = validRows.map(row => {
+        const point = {}
+        factorNames.forEach((factor, i) => {
+          point[factor] = parseFloat(row[i])
+        })
+        responseNames.forEach((respName, idx) => {
+          point[respName] = parseFloat(row[factorNames.length + idx])
+        })
+        return point
+      })
+
+      const response = await axios.post(`${API_URL}/api/rsm/fit-multi-model`, {
+        data: data,
+        factors: factorNames,
+        responses: responseNames,
+        alpha: alpha
+      })
+
+      setMultiModelResults(response.data)
+
+      // Initialize response configs for visualization
+      const configs = {}
+      const colorSchemes = ['Viridis', 'Plasma', 'Inferno', 'Cividis', 'Turbo']
+      responseNames.forEach((name, idx) => {
+        configs[name] = {
+          visible: true,
+          colorScale: colorSchemes[idx % colorSchemes.length],
+          opacity: 0.7
+        }
+      })
+      setResponseConfigs(configs)
+
+      setActiveTab('model')
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'Failed to fit multi-response models')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Generate multi-surface data (Phase 2 Feature 3)
+  const handleGenerateMultiSurface = async () => {
+    if (!multiModelResults || !multiModelResults.models) {
+      setError('Fit multi-response models first')
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+
+    try {
+      const response = await axios.post(`${API_URL}/api/rsm/generate-multi-surface`, {
+        models: multiModelResults.models,
+        factors: factorNames,
+        grid_resolution: 20,
+        normalize: normalizationMethod
+      })
+
+      setMultiSurfaceData(response.data)
+      setActiveTab('visualize')
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'Failed to generate multi-surface data')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Handle response names update from MultiResponseManager
+  const handleUpdateResponseNames = (newResponseNames) => {
+    setResponseNames(newResponseNames)
+
+    // Update table data to match new response count
+    if (tableData.length > 0) {
+      const numFactors = factorNames.length
+      const updatedTable = tableData.map(row => {
+        // Keep factor columns
+        const factorCols = row.slice(0, numFactors)
+
+        // Adjust response columns
+        const currentResponses = row.slice(numFactors)
+        const newResponses = newResponseNames.map((_, idx) => {
+          // Keep existing data if available, otherwise empty string
+          return currentResponses[idx] !== undefined ? currentResponses[idx] : ''
+        })
+
+        return [...factorCols, ...newResponses]
+      })
+
+      setTableData(updatedTable)
+    }
+
+    // Update multi-response mode
+    setMultiResponseMode(newResponseNames.length > 1)
   }
 
   // Generate surface data for visualization
@@ -983,6 +1111,11 @@ const RSM = () => {
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="text-gray-100 font-semibold text-lg">Experimental Data</h4>
                   <div className="flex items-center space-x-2">
+                    <MultiResponseManager
+                      responseNames={responseNames}
+                      onUpdate={handleUpdateResponseNames}
+                      disabled={!!modelResults || !!multiModelResults}
+                    />
                     <button
                       onClick={fillTestData}
                       disabled={!designData}
@@ -1017,9 +1150,16 @@ const RSM = () => {
                             {factor}
                           </th>
                         ))}
-                        <th className="px-3 py-2 text-center text-gray-100 font-semibold text-sm border-b-2 border-r border-slate-600 min-w-[100px] bg-orange-900/20">
-                          {responseName}
-                        </th>
+                        {responseNames.map((respName, idx) => {
+                          return (
+                            <th
+                              key={`resp-${idx}`}
+                              className="px-3 py-2 text-center text-gray-100 font-semibold text-sm border-b-2 border-r border-slate-600 min-w-[100px] bg-orange-900/20"
+                            >
+                              {respName}
+                            </th>
+                          )
+                        })}
                         <th className="px-3 py-2 text-center text-gray-100 font-semibold text-sm border-b-2 border-slate-600 w-16"></th>
                       </tr>
                     </thead>
@@ -1060,13 +1200,23 @@ const RSM = () => {
                   Enter response values for each run. Factor levels from the design cannot be modified.
                 </p>
 
-                <button
-                  onClick={handleFitModel}
-                  disabled={loading}
-                  className="w-full mt-4 bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loading ? 'Fitting Model...' : 'Fit Response Surface Model'}
-                </button>
+                {multiResponseMode ? (
+                  <button
+                    onClick={handleFitMultiModel}
+                    disabled={loading}
+                    className="w-full mt-4 bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {loading ? 'Fitting Models...' : `Fit ${responseNames.length} Response Surface Models`}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleFitModel}
+                    disabled={loading}
+                    className="w-full mt-4 bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? 'Fitting Model...' : 'Fit Response Surface Model'}
+                  </button>
+                )}
               </div>
             )}
 
@@ -2136,6 +2286,108 @@ const RSM = () => {
               })()}
               optimizationResult={optimizationResult}
               canonicalResult={canonicalResult}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Multi-Response Visualization (Phase 2 Feature 3) */}
+      {activeTab === 'visualize' && multiModelResults && numFactors === 2 && (
+        <div className="space-y-6">
+          {/* Multi-Response Models Summary */}
+          <div className="bg-gradient-to-r from-indigo-900/30 to-purple-900/30 backdrop-blur-lg rounded-2xl p-6 border border-indigo-700/50">
+            <h3 className="text-2xl font-bold text-gray-100 mb-4">Multi-Response Surface Models</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+              {Object.entries(multiModelResults.models).map(([respName, model]) => (
+                <div key={respName} className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+                  <h4 className="text-lg font-semibold text-gray-100 mb-2">{respName}</h4>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">R²:</span>
+                      <span className="text-gray-100 font-medium">{model.r_squared.toFixed(4)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Adj. R²:</span>
+                      <span className="text-gray-100 font-medium">{model.r_squared_adj.toFixed(4)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">RMSE:</span>
+                      <span className="text-gray-100 font-medium">{model.rmse.toFixed(4)}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Generate Multi-Surface Button */}
+            {!multiSurfaceData && (
+              <button
+                onClick={handleGenerateMultiSurface}
+                disabled={loading}
+                className="w-full bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Generating Surfaces...' : 'Generate Multi-Response Surface Overlay'}
+              </button>
+            )}
+
+            {/* Normalization Method Selector */}
+            {multiSurfaceData && (
+              <div className="mt-4 flex items-center gap-4">
+                <label className="text-gray-300 font-medium">Normalization:</label>
+                <select
+                  value={normalizationMethod}
+                  onChange={(e) => setNormalizationMethod(e.target.value)}
+                  className="px-4 py-2 bg-slate-700 border border-slate-600 rounded-lg text-gray-100 focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="none">None (Raw Values)</option>
+                  <option value="zscore">Z-Score (Mean=0, Std=1)</option>
+                  <option value="minmax">Min-Max [0,1]</option>
+                </select>
+                <button
+                  onClick={handleGenerateMultiSurface}
+                  disabled={loading}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                >
+                  Regenerate
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Multi-Response Contour Overlay */}
+          {multiSurfaceData && (
+            <MultiResponseContourOverlay
+              surfacesData={multiSurfaceData.surfaces}
+              responseConfigs={responseConfigs}
+              factor1={factorNames[0]}
+              factor2={factorNames[1]}
+              experimentalData={(() => {
+                // Convert tableData to experimental data format for each response
+                const result = {}
+                const numFactorCols = factorNames.length
+
+                const validRows = tableData.filter(row => {
+                  // Check that all response values are filled
+                  return responseNames.every((_, idx) => {
+                    const responseValue = row[numFactorCols + idx]
+                    return responseValue !== '' && responseValue !== null && responseValue !== undefined
+                  })
+                })
+
+                responseNames.forEach((respName, respIdx) => {
+                  result[respName] = validRows.map(row => {
+                    const point = {}
+                    factorNames.forEach((factor, i) => {
+                      point[factor] = parseFloat(row[i])
+                    })
+                    point[respName] = parseFloat(row[numFactorCols + respIdx])
+                    return point
+                  })
+                })
+
+                return result
+              })()}
+              viewMode="side-by-side"
             />
           )}
         </div>
