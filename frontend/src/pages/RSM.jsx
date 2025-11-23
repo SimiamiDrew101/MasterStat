@@ -2210,6 +2210,112 @@ const RSM = () => {
         </div>
       )}
 
+      {/* Multi-Response Model Results (Phase 2 Feature 3) */}
+      {activeTab === 'model' && multiModelResults && (
+        <div className="space-y-6">
+          {/* Multi-Response Models Summary */}
+          <div className="bg-gradient-to-r from-indigo-900/30 to-purple-900/30 backdrop-blur-lg rounded-2xl p-6 border border-indigo-700/50">
+            <h3 className="text-2xl font-bold text-gray-100 mb-4">Multi-Response Surface Models</h3>
+            <p className="text-gray-300 mb-6">
+              Fitted {Object.keys(multiModelResults.models).length} independent second-order polynomial models for multiple responses.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Object.entries(multiModelResults.models).map(([respName, model]) => (
+                <div key={respName} className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+                  <h4 className="text-lg font-semibold text-gray-100 mb-3">{respName}</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">R²:</span>
+                      <span className="text-gray-100 font-medium">{model.r_squared.toFixed(4)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Adj. R²:</span>
+                      <span className="text-gray-100 font-medium">{model.r_squared_adj.toFixed(4)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">RMSE:</span>
+                      <span className="text-gray-100 font-medium">{model.rmse.toFixed(4)}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Individual Model Details */}
+          {Object.entries(multiModelResults.models).map(([respName, model]) => (
+            <div key={respName} className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+              <h3 className="text-2xl font-bold text-gray-100 mb-4">Model for {respName}</h3>
+
+              {/* Model Statistics */}
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="bg-blue-900/20 rounded-lg p-4 border border-blue-700/30">
+                  <p className="text-blue-200 text-sm">R-Squared</p>
+                  <p className="text-2xl font-bold text-blue-100">{model.r_squared.toFixed(4)}</p>
+                </div>
+                <div className="bg-green-900/20 rounded-lg p-4 border border-green-700/30">
+                  <p className="text-green-200 text-sm">Adj R-Squared</p>
+                  <p className="text-2xl font-bold text-green-100">{model.r_squared_adj.toFixed(4)}</p>
+                </div>
+                <div className="bg-purple-900/20 rounded-lg p-4 border border-purple-700/30">
+                  <p className="text-purple-200 text-sm">RMSE</p>
+                  <p className="text-2xl font-bold text-purple-100">{model.rmse.toFixed(4)}</p>
+                </div>
+              </div>
+
+              {/* Coefficients Table */}
+              <h4 className="text-gray-100 font-semibold mb-3">Model Coefficients</h4>
+              <div className="overflow-x-auto bg-slate-700/30 rounded-lg">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-slate-700/70">
+                      <th className="px-4 py-2 text-left text-gray-100 font-semibold border-b border-slate-600">Term</th>
+                      <th className="px-4 py-2 text-right text-gray-100 font-semibold border-b border-slate-600">Estimate</th>
+                      <th className="px-4 py-2 text-right text-gray-100 font-semibold border-b border-slate-600">Std Error</th>
+                      <th className="px-4 py-2 text-right text-gray-100 font-semibold border-b border-slate-600">t-value</th>
+                      <th className="px-4 py-2 text-right text-gray-100 font-semibold border-b border-slate-600">p-value</th>
+                      <th className="px-4 py-2 text-center text-gray-100 font-semibold border-b border-slate-600">Sig.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(model.coefficients).map(([term, values], idx) => (
+                      <tr key={idx} className="border-b border-slate-700/30 hover:bg-slate-600/10">
+                        <td className="px-4 py-2 text-gray-100 font-mono text-sm">{term}</td>
+                        <td className="px-4 py-2 text-right text-gray-100">{values.estimate}</td>
+                        <td className="px-4 py-2 text-right text-gray-300">{values.std_error}</td>
+                        <td className="px-4 py-2 text-right text-gray-100">{values.t_value}</td>
+                        <td className="px-4 py-2 text-right text-gray-100">{values.p_value}</td>
+                        <td className="px-4 py-2 text-center">
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${
+                            values.p_value < alpha ? 'bg-green-900/50 text-green-200' : 'bg-slate-700 text-gray-400'
+                          }`}>
+                            {values.p_value < alpha ? '***' : 'ns'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+
+          {/* Info Box */}
+          <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-4">
+            <h4 className="text-blue-300 font-semibold mb-2">Multi-Response Analysis</h4>
+            <p className="text-blue-100 text-sm mb-2">
+              Each response has been fitted with an independent second-order polynomial model. Use the Visualize tab to:
+            </p>
+            <ul className="text-sm text-blue-100 space-y-1 ml-4">
+              <li>• Compare response surfaces side-by-side</li>
+              <li>• Overlay contour plots to identify trade-off regions</li>
+              <li>• Apply normalization to compare responses on different scales</li>
+            </ul>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'visualize' && modelResult && (
         <div className="space-y-6">
           {/* Prediction Profiler - Interactive Response Explorer */}
