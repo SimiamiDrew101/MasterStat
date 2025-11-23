@@ -1,6 +1,9 @@
 import { useState } from 'react'
-import { ChevronRight, ChevronLeft, CheckCircle, Sparkles } from 'lucide-react'
+import { ChevronRight, ChevronLeft, CheckCircle, Sparkles, Download, AlertCircle } from 'lucide-react'
+import axios from 'axios'
 import DesignRecommendationStep from '../components/DesignRecommendationStep'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const ExperimentWizardPage = () => {
   const [currentStep, setCurrentStep] = useState(1)
@@ -12,6 +15,9 @@ const ExperimentWizardPage = () => {
     timeConstraint: null,
     selectedDesign: null
   })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [generatedDesign, setGeneratedDesign] = useState(null)
 
   const steps = [
     { id: 1, title: 'Goal', icon: '🎯' },
@@ -37,10 +43,68 @@ const ExperimentWizardPage = () => {
     }
   }
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     console.log('Experiment design completed:', wizardData)
-    // Here you can add logic to save the design or navigate to another page
-    alert('Experiment design generated successfully! Check console for details.')
+    setLoading(true)
+    setError(null)
+
+    try {
+      const designCode = wizardData.selectedDesign?.design_code
+
+      // Check if this is a sequential approach (not directly generatable)
+      const isSequentialApproach = ['screening-first', 'dsd'].includes(designCode)
+
+      if (isSequentialApproach) {
+        alert(
+          `📋 Sequential Approach Selected: ${wizardData.selectedDesign.type}\n\n` +
+          `This is a two-stage approach:\n` +
+          `1. First, run a screening experiment (Factorial Designs page)\n` +
+          `2. Then, use RSM on the 2-3 most important factors\n\n` +
+          `For direct design generation, please select a CCD or Box-Behnken design.`
+        )
+        setLoading(false)
+        return
+      }
+
+      let response
+      const numCenterPoints = 4 // Default
+
+      if (designCode === 'box-behnken') {
+        response = await axios.post(`${API_URL}/api/rsm/box-behnken/generate`, {
+          n_factors: wizardData.nFactors,
+          n_center: numCenterPoints
+        })
+      } else if (['face-centered', 'rotatable', 'inscribed'].includes(designCode)) {
+        response = await axios.post(`${API_URL}/api/rsm/ccd/generate`, {
+          n_factors: wizardData.nFactors,
+          design_type: designCode,
+          n_center: numCenterPoints
+        })
+      } else {
+        // Default to face-centered CCD
+        response = await axios.post(`${API_URL}/api/rsm/ccd/generate`, {
+          n_factors: wizardData.nFactors,
+          design_type: 'face-centered',
+          n_center: numCenterPoints
+        })
+      }
+
+      // Store the generated design
+      setGeneratedDesign({
+        ...response.data,
+        factorNames: wizardData.factorNames.filter(n => n && n.trim()).length > 0
+          ? wizardData.factorNames.filter(n => n && n.trim())
+          : Array.from({ length: wizardData.nFactors }, (_, i) => `X${i + 1}`)
+      })
+
+      // Move to results view
+      setCurrentStep(6) // New step for showing results
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'Failed to generate design')
+      console.error('Design generation error:', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -138,28 +202,43 @@ const ExperimentWizardPage = () => {
           {currentStep === 5 && (
             <DesignSummary wizardData={wizardData} />
           )}
+          {currentStep === 6 && generatedDesign && (
+            <DesignResults design={generatedDesign} wizardData={wizardData} />
+          )}
+          {error && (
+            <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-red-200 font-semibold">Error generating design</p>
+                  <p className="text-red-300 text-sm mt-1">{error}</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Navigation Footer */}
-        <div className="bg-slate-800/50 backdrop-blur-lg rounded-xl px-8 py-6 border border-slate-700/50 flex items-center justify-between">
-          <button
-            onClick={prevStep}
-            disabled={currentStep === 1}
-            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
-              currentStep === 1
-                ? 'bg-slate-700/30 text-gray-500 cursor-not-allowed'
-                : 'bg-slate-700 text-gray-200 hover:bg-slate-600 hover:scale-105'
-            }`}
-          >
-            <ChevronLeft className="w-5 h-5" />
-            Back
-          </button>
+        {/* Navigation Footer - Steps 1-5 */}
+        {currentStep !== 6 && (
+          <div className="bg-slate-800/50 backdrop-blur-lg rounded-xl px-8 py-6 border border-slate-700/50 flex items-center justify-between">
+            <button
+              onClick={prevStep}
+              disabled={currentStep === 1 || loading}
+              className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
+                currentStep === 1 || loading
+                  ? 'bg-slate-700/30 text-gray-500 cursor-not-allowed'
+                  : 'bg-slate-700 text-gray-200 hover:bg-slate-600 hover:scale-105'
+              }`}
+            >
+              <ChevronLeft className="w-5 h-5" />
+              Back
+            </button>
 
-          <div className="text-gray-400 text-sm font-medium">
-            Step {currentStep} of {steps.length}
-          </div>
+            <div className="text-gray-400 text-sm font-medium">
+              Step {currentStep} of {steps.length}
+            </div>
 
-          {currentStep < steps.length ? (
+            {currentStep < steps.length ? (
             <button
               onClick={nextStep}
               disabled={
@@ -181,13 +260,68 @@ const ExperimentWizardPage = () => {
           ) : (
             <button
               onClick={handleComplete}
-              className="flex items-center gap-2 px-6 py-3 rounded-lg font-semibold bg-green-600 text-white hover:bg-green-700 hover:scale-105 transition-all"
+              disabled={loading}
+              className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
+                loading
+                  ? 'bg-slate-700/30 text-gray-500 cursor-not-allowed'
+                  : 'bg-green-600 text-white hover:bg-green-700 hover:scale-105'
+              }`}
             >
-              <CheckCircle className="w-5 h-5" />
-              Generate Design
+              {loading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-5 h-5" />
+                  Generate Design
+                </>
+              )}
             </button>
           )}
         </div>
+        )}
+
+        {/* Results Footer - Step 6 */}
+        {currentStep === 6 && generatedDesign && (
+          <div className="bg-slate-800/50 backdrop-blur-lg rounded-xl px-8 py-6 border border-slate-700/50 flex items-center justify-between">
+            <button
+              onClick={() => {
+                setCurrentStep(1)
+                setGeneratedDesign(null)
+                setError(null)
+                setWizardData({
+                  goal: '',
+                  nFactors: 2,
+                  factorNames: [],
+                  budget: null,
+                  timeConstraint: null,
+                  selectedDesign: null
+                })
+              }}
+              className="flex items-center gap-2 px-6 py-3 rounded-lg font-semibold bg-slate-700 text-gray-200 hover:bg-slate-600 hover:scale-105 transition-all"
+            >
+              Start New Design
+            </button>
+
+            <button
+              onClick={() => {
+                const csv = generateCSV(generatedDesign)
+                const blob = new Blob([csv], { type: 'text/csv' })
+                const url = window.URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = 'experiment-design.csv'
+                a.click()
+              }}
+              className="flex items-center gap-2 px-6 py-3 rounded-lg font-semibold bg-blue-600 text-white hover:bg-blue-700 hover:scale-105 transition-all"
+            >
+              <Download className="w-5 h-5" />
+              Download CSV
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -452,6 +586,117 @@ const DesignSummary = ({ wizardData }) => {
       </div>
     </div>
   )
+}
+
+// Design Results Component
+const DesignResults = ({ design, wizardData }) => {
+  const factorNames = design.factorNames || []
+  const designMatrix = design.design_matrix || []
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h3 className="text-3xl font-bold text-gray-100 mb-2">Your Experiment Design</h3>
+          <p className="text-gray-300">
+            Generated {designMatrix.length} experimental runs for {factorNames.length} factors
+          </p>
+        </div>
+        <div className="bg-green-900/30 border border-green-700/50 rounded-lg px-4 py-2">
+          <CheckCircle className="w-6 h-6 text-green-400 inline mr-2" />
+          <span className="text-green-200 font-semibold">Design Generated!</span>
+        </div>
+      </div>
+
+      {/* Design Info */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="bg-slate-800/50 rounded-lg p-4">
+          <p className="text-gray-400 text-sm mb-1">Design Type</p>
+          <p className="text-gray-100 font-semibold text-lg">{wizardData.selectedDesign?.type}</p>
+        </div>
+        <div className="bg-slate-800/50 rounded-lg p-4">
+          <p className="text-gray-400 text-sm mb-1">Total Runs</p>
+          <p className="text-gray-100 font-semibold text-lg">{designMatrix.length}</p>
+        </div>
+        <div className="bg-slate-800/50 rounded-lg p-4">
+          <p className="text-gray-400 text-sm mb-1">Factors</p>
+          <p className="text-gray-100 font-semibold text-lg">{factorNames.length}</p>
+        </div>
+      </div>
+
+      {/* Design Matrix Table */}
+      <div className="bg-slate-800/50 rounded-lg p-6 overflow-x-auto">
+        <h4 className="text-xl font-bold text-gray-100 mb-4">Experimental Design Matrix</h4>
+        <p className="text-gray-300 text-sm mb-4">
+          Run these experiments in the order shown below. Record your response values for each run.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-600">
+                <th className="text-left py-3 px-4 text-gray-300 font-semibold">Run</th>
+                {factorNames.map((name, idx) => (
+                  <th key={idx} className="text-left py-3 px-4 text-gray-300 font-semibold">
+                    {name}
+                  </th>
+                ))}
+                <th className="text-left py-3 px-4 text-gray-300 font-semibold">Response (Y)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {designMatrix.map((row, runIdx) => (
+                <tr key={runIdx} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                  <td className="py-3 px-4 text-gray-200 font-medium">{runIdx + 1}</td>
+                  {factorNames.map((name, factorIdx) => (
+                    <td key={factorIdx} className="py-3 px-4 text-gray-100">
+                      {typeof row[name] === 'number' ? row[name].toFixed(3) : row[name]}
+                    </td>
+                  ))}
+                  <td className="py-3 px-4 text-gray-400 italic">Record here</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Next Steps */}
+      <div className="mt-6 bg-blue-900/20 border border-blue-700/50 rounded-lg p-6">
+        <h4 className="text-lg font-bold text-blue-200 mb-3">Next Steps</h4>
+        <ol className="space-y-2 text-blue-100">
+          <li className="flex items-start gap-2">
+            <span className="bg-blue-700/50 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5 text-sm">1</span>
+            <span>Download the design matrix as CSV using the button below</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="bg-blue-700/50 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5 text-sm">2</span>
+            <span>Run your experiments in the order shown and record response values</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="bg-blue-700/50 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5 text-sm">3</span>
+            <span>Upload your data to the Response Surface page for analysis</span>
+          </li>
+        </ol>
+      </div>
+    </div>
+  )
+}
+
+// Helper function to generate CSV
+const generateCSV = (design) => {
+  const factorNames = design.factorNames || []
+  const designMatrix = design.design_matrix || []
+
+  // Header row
+  let csv = 'Run,' + factorNames.join(',') + ',Response\n'
+
+  // Data rows
+  designMatrix.forEach((row, idx) => {
+    const values = factorNames.map(name => row[name])
+    csv += `${idx + 1},${values.join(',')},\n`
+  })
+
+  return csv
 }
 
 export default ExperimentWizardPage
