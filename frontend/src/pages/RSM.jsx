@@ -1114,7 +1114,7 @@ const RSM = () => {
                     <MultiResponseManager
                       responseNames={responseNames}
                       onUpdate={handleUpdateResponseNames}
-                      disabled={!!modelResults || !!multiModelResults}
+                      disabled={!!modelResult || !!multiModelResults}
                     />
                     <button
                       onClick={fillTestData}
