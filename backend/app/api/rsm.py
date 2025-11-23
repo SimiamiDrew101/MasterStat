@@ -250,6 +250,356 @@ async def fit_rsm_model(request: RSMRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+class MultiRSMRequest(BaseModel):
+    data: List[Dict[str, float]] = Field(..., description="Experimental data with multiple responses")
+    factors: List[str] = Field(..., description="Factor variable names")
+    responses: List[str] = Field(..., description="Multiple response variable names")
+    alpha: float = Field(0.05, description="Significance level")
+
+@router.post("/fit-multi-model")
+async def fit_multi_rsm_model(request: MultiRSMRequest):
+    """
+    Fit Response Surface Models for multiple responses simultaneously.
+    Each response gets its own second-order polynomial model with identical factor structure.
+
+    This enables multi-response optimization and comparative analysis across responses.
+    """
+    try:
+        # Validate request
+        if len(request.responses) < 2:
+            raise HTTPException(
+                status_code=400,
+                detail="Multi-response fitting requires at least 2 responses. Use /fit-model for single response."
+            )
+
+        if len(request.responses) > 10:
+            raise HTTPException(
+                status_code=400,
+                detail="Maximum 10 responses allowed. For more responses, consider fitting models separately."
+            )
+
+        df = pd.DataFrame(request.data)
+
+        # Validate that all responses exist in data
+        missing_responses = [r for r in request.responses if r not in df.columns]
+        if missing_responses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Response variables not found in data: {', '.join(missing_responses)}"
+            )
+
+        # Validate that all factors exist in data
+        missing_factors = [f for f in request.factors if f not in df.columns]
+        if missing_factors:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Factor variables not found in data: {', '.join(missing_factors)}"
+            )
+
+        # Check for missing values in any response
+        for response in request.responses:
+            if df[response].isna().any():
+                na_count = df[response].isna().sum()
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Response '{response}' has {na_count} missing value(s). Please impute or remove missing data."
+                )
+
+        # Fit model for each response
+        models = {}
+        r_squared_values = []
+        adj_r_squared_values = []
+        significant_models = []
+
+        for response in request.responses:
+            # Create single-response request and reuse existing fit_rsm_model logic
+            single_request = RSMRequest(
+                data=request.data,
+                factors=request.factors,
+                response=response,
+                alpha=request.alpha
+            )
+
+            # Fit the model
+            model_result = await fit_rsm_model(single_request)
+            models[response] = model_result
+
+            # Collect summary statistics
+            if model_result["r_squared"] is not None:
+                r_squared_values.append(model_result["r_squared"])
+            if model_result["adj_r_squared"] is not None:
+                adj_r_squared_values.append(model_result["adj_r_squared"])
+
+            # Check if model is statistically significant
+            model_p_value = model_result["enhanced_anova"]["Model"]["p_value"]
+            if model_p_value is not None and model_p_value < request.alpha:
+                significant_models.append(response)
+
+        # Calculate summary statistics
+        summary = {
+            "n_responses": len(request.responses),
+            "n_factors": len(request.factors),
+            "n_observations": len(df),
+            "all_models_significant": len(significant_models) == len(request.responses),
+            "significant_models": significant_models,
+            "r_squared_summary": {
+                "mean": round(float(np.mean(r_squared_values)), 4) if r_squared_values else None,
+                "min": round(float(np.min(r_squared_values)), 4) if r_squared_values else None,
+                "max": round(float(np.max(r_squared_values)), 4) if r_squared_values else None,
+                "std": round(float(np.std(r_squared_values, ddof=1)), 4) if len(r_squared_values) > 1 else None
+            },
+            "adj_r_squared_summary": {
+                "mean": round(float(np.mean(adj_r_squared_values)), 4) if adj_r_squared_values else None,
+                "min": round(float(np.min(adj_r_squared_values)), 4) if adj_r_squared_values else None,
+                "max": round(float(np.max(adj_r_squared_values)), 4) if adj_r_squared_values else None,
+                "std": round(float(np.std(adj_r_squared_values, ddof=1)), 4) if len(adj_r_squared_values) > 1 else None
+            }
+        }
+
+        # Calculate response correlations (useful for identifying redundant responses)
+        response_data = df[request.responses]
+        correlation_matrix = response_data.corr().round(4).to_dict()
+
+        # Generate interpretation
+        interpretation = []
+
+        if summary["all_models_significant"]:
+            interpretation.append(f"All {len(request.responses)} response models are statistically significant (p < {request.alpha}).")
+        else:
+            non_sig = [r for r in request.responses if r not in significant_models]
+            interpretation.append(f"{len(significant_models)}/{len(request.responses)} models are significant. Non-significant: {', '.join(non_sig)}")
+
+        if summary["r_squared_summary"]["min"] is not None:
+            if summary["r_squared_summary"]["min"] >= 0.9:
+                interpretation.append("Excellent model fit across all responses (R² ≥ 0.9).")
+            elif summary["r_squared_summary"]["min"] >= 0.7:
+                interpretation.append("Good model fit across all responses (R² ≥ 0.7).")
+            elif summary["r_squared_summary"]["min"] < 0.5:
+                interpretation.append("Some models have poor fit (R² < 0.5). Consider model diagnostics or additional terms.")
+
+        # Check for highly correlated responses (potential redundancy)
+        high_correlations = []
+        for i, r1 in enumerate(request.responses):
+            for j, r2 in enumerate(request.responses):
+                if i < j:  # Only check upper triangle
+                    corr = correlation_matrix[r1][r2]
+                    if abs(corr) > 0.9:
+                        high_correlations.append((r1, r2, corr))
+
+        if high_correlations:
+            for r1, r2, corr in high_correlations:
+                interpretation.append(f"Responses '{r1}' and '{r2}' are highly correlated (r={corr:.2f}). Consider if both are needed.")
+
+        # Generate recommendations
+        recommendations = []
+
+        if summary["r_squared_summary"]["std"] and summary["r_squared_summary"]["std"] > 0.2:
+            recommendations.append("Large variation in R² values suggests some responses are harder to model. Review diagnostics for low-R² responses.")
+
+        if not summary["all_models_significant"]:
+            recommendations.append("Fit higher-order terms or check for outliers in non-significant responses.")
+
+        if len(high_correlations) > 0:
+            recommendations.append("Highly correlated responses can be combined using desirability functions for multi-objective optimization.")
+
+        if summary["r_squared_summary"]["mean"] and summary["r_squared_summary"]["mean"] > 0.8:
+            recommendations.append("Models are well-fitted. Proceed with multi-response visualization and optimization.")
+
+        return {
+            "models": models,
+            "summary": summary,
+            "correlation_matrix": correlation_matrix,
+            "interpretation": interpretation,
+            "recommendations": recommendations,
+            "factors": request.factors,
+            "responses": request.responses
+        }
+
+    except HTTPException:
+        raise  # Re-raise validation errors
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Multi-model fitting failed: {str(e)}")
+
+class MultiSurfaceRequest(BaseModel):
+    models: Dict[str, Dict[str, Any]] = Field(..., description="Model coefficients for each response")
+    factors: List[str] = Field(..., description="Factor variable names (must be exactly 2)")
+    grid_resolution: int = Field(20, description="Number of grid points per factor (e.g. 20 = 20x20 = 400 points)")
+    x_range: List[float] = Field(None, description="[min, max] for first factor. Auto-computed if not provided.")
+    y_range: List[float] = Field(None, description="[min, max] for second factor. Auto-computed if not provided.")
+    normalize: str = Field("none", description="Normalization method: 'none', 'zscore', 'minmax', or 'desirability'")
+
+@router.post("/generate-multi-surface")
+async def generate_multi_surface_data(request: MultiSurfaceRequest):
+    """
+    Generate contour surface data for multiple responses simultaneously.
+    Returns grid data ready for Plotly contour plots with optional normalization.
+
+    Normalization methods:
+    - 'none': Raw predicted values
+    - 'zscore': Z-score normalization (mean=0, std=1)
+    - 'minmax': Min-max scaling to [0, 1]
+    - 'desirability': Goal-based desirability (requires goals - not implemented yet)
+    """
+    try:
+        # Validate exactly 2 factors (contour plots are 2D)
+        if len(request.factors) != 2:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Contour plots require exactly 2 factors. Received {len(request.factors)}. For 3+ factors, use slice plots or response surface viewer."
+            )
+
+        # Validate grid resolution
+        if request.grid_resolution < 10:
+            raise HTTPException(status_code=400, detail="Grid resolution must be at least 10.")
+        if request.grid_resolution > 100:
+            raise HTTPException(status_code=400, detail="Grid resolution must not exceed 100 (to prevent performance issues).")
+
+        # Validate models
+        if not request.models:
+            raise HTTPException(status_code=400, detail="At least one model required.")
+
+        # Set default ranges if not provided
+        x_range = request.x_range if request.x_range else [-2, 2]
+        y_range = request.y_range if request.y_range else [-2, 2]
+
+        # Generate grid
+        x_vals = np.linspace(x_range[0], x_range[1], request.grid_resolution)
+        y_vals = np.linspace(y_range[0], y_range[1], request.grid_resolution)
+
+        # Helper function to predict response value from coefficients
+        def predict_value(coeffs, x, y, factor_names):
+            """Predict response value for a second-order model"""
+            x_name, y_name = factor_names
+
+            # Get coefficient values (handle different formats)
+            def get_coeff(name):
+                if name in coeffs:
+                    coeff_val = coeffs[name]
+                    # If it's a dict with 'estimate', extract estimate
+                    if isinstance(coeff_val, dict) and 'estimate' in coeff_val:
+                        return coeff_val['estimate'] if coeff_val['estimate'] is not None else 0.0
+                    # Otherwise treat as numeric
+                    return float(coeff_val) if coeff_val is not None else 0.0
+                return 0.0
+
+            # Second-order polynomial: Intercept + b1*x + b2*y + b11*x^2 + b22*y^2 + b12*x*y
+            intercept = get_coeff('Intercept')
+            b1 = get_coeff(x_name)
+            b2 = get_coeff(y_name)
+            b11 = get_coeff(f'I({x_name} ** 2)')
+            b22 = get_coeff(f'I({y_name} ** 2)')
+            b12 = get_coeff(f'{x_name}:{y_name}')
+
+            value = intercept + b1*x + b2*y + b11*(x**2) + b22*(y**2) + b12*x*y
+            return value
+
+        # Generate surface data for each response
+        surfaces = {}
+        raw_values = {}  # Store raw values for normalization
+
+        for response_name, model_data in request.models.items():
+            # Extract coefficients
+            if 'coefficients' in model_data:
+                coeffs = model_data['coefficients']
+            else:
+                coeffs = model_data  # Assume model_data is coefficients dict
+
+            surface_points = []
+            z_values = []
+
+            for y in y_vals:
+                for x in x_vals:
+                    z = predict_value(coeffs, x, y, request.factors)
+                    surface_points.append({
+                        "x": round(float(x), 4),
+                        "y": round(float(y), 4),
+                        "z": round(float(z), 4),
+                        "z_raw": round(float(z), 4)
+                    })
+                    z_values.append(z)
+
+            surfaces[response_name] = surface_points
+            raw_values[response_name] = z_values
+
+        # Apply normalization if requested
+        normalization_params = {}
+
+        if request.normalize == "zscore":
+            for response_name, points in surfaces.items():
+                z_vals = raw_values[response_name]
+                mean = np.mean(z_vals)
+                std = np.std(z_vals, ddof=1)
+
+                if std == 0:
+                    std = 1  # Prevent division by zero
+
+                # Normalize
+                for i, point in enumerate(points):
+                    point["z_normalized"] = round(float((point["z_raw"] - mean) / std), 4)
+                    point["z"] = point["z_normalized"]
+
+                normalization_params[response_name] = {
+                    "method": "zscore",
+                    "mean": round(float(mean), 4),
+                    "std": round(float(std), 4),
+                    "min": round(float(np.min(z_vals)), 4),
+                    "max": round(float(np.max(z_vals)), 4)
+                }
+
+        elif request.normalize == "minmax":
+            for response_name, points in surfaces.items():
+                z_vals = raw_values[response_name]
+                z_min = np.min(z_vals)
+                z_max = np.max(z_vals)
+                z_range = z_max - z_min
+
+                if z_range == 0:
+                    z_range = 1  # Prevent division by zero
+
+                # Normalize
+                for i, point in enumerate(points):
+                    point["z_normalized"] = round(float((point["z_raw"] - z_min) / z_range), 4)
+                    point["z"] = point["z_normalized"]
+
+                normalization_params[response_name] = {
+                    "method": "minmax",
+                    "min": round(float(z_min), 4),
+                    "max": round(float(z_max), 4),
+                    "range": round(float(z_range), 4),
+                    "mean": round(float(np.mean(z_vals)), 4),
+                    "std": round(float(np.std(z_vals, ddof=1)), 4)
+                }
+
+        else:  # "none" or unrecognized
+            for response_name, points in surfaces.items():
+                z_vals = raw_values[response_name]
+                normalization_params[response_name] = {
+                    "method": "none",
+                    "min": round(float(np.min(z_vals)), 4),
+                    "max": round(float(np.max(z_vals)), 4),
+                    "mean": round(float(np.mean(z_vals)), 4),
+                    "std": round(float(np.std(z_vals, ddof=1)), 4)
+                }
+
+        return {
+            "surfaces": surfaces,
+            "normalization_params": normalization_params,
+            "grid_info": {
+                "resolution": request.grid_resolution,
+                "x_range": x_range,
+                "y_range": y_range,
+                "total_points_per_surface": len(x_vals) * len(y_vals),
+                "factors": request.factors
+            },
+            "n_responses": len(surfaces),
+            "responses": list(surfaces.keys())
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Surface generation failed: {str(e)}")
+
 @router.post("/ccd/generate")
 async def generate_ccd(request: CCDRequest):
     """
