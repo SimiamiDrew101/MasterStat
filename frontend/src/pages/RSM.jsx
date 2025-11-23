@@ -2231,7 +2231,7 @@ const RSM = () => {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-400">Adj. R²:</span>
-                      <span className="text-gray-100 font-medium">{model.r_squared_adj.toFixed(4)}</span>
+                      <span className="text-gray-100 font-medium">{model.adj_r_squared.toFixed(4)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-400">RMSE:</span>
@@ -2256,7 +2256,7 @@ const RSM = () => {
                 </div>
                 <div className="bg-green-900/20 rounded-lg p-4 border border-green-700/30">
                   <p className="text-green-200 text-sm">Adj R-Squared</p>
-                  <p className="text-2xl font-bold text-green-100">{model.r_squared_adj.toFixed(4)}</p>
+                  <p className="text-2xl font-bold text-green-100">{model.adj_r_squared.toFixed(4)}</p>
                 </div>
                 <div className="bg-purple-900/20 rounded-lg p-4 border border-purple-700/30">
                   <p className="text-purple-200 text-sm">RMSE</p>
@@ -2414,7 +2414,7 @@ const RSM = () => {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-400">Adj. R²:</span>
-                      <span className="text-gray-100 font-medium">{model.r_squared_adj.toFixed(4)}</span>
+                      <span className="text-gray-100 font-medium">{model.adj_r_squared.toFixed(4)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-400">RMSE:</span>
