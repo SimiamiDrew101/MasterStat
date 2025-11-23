@@ -1,8 +1,15 @@
 import { Link } from 'react-router-dom'
-import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target } from 'lucide-react'
+import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles } from 'lucide-react'
 
 const Home = () => {
   const features = [
+    {
+      icon: <Sparkles className="w-12 h-12" />,
+      title: 'Experiment Wizard',
+      description: 'Step-by-step guidance to design the perfect experiment',
+      path: '/experiment-wizard',
+      color: 'from-purple-400 to-purple-600'
+    },
     {
       icon: <Target className="w-12 h-12" />,
       title: 'Experiment Planning',

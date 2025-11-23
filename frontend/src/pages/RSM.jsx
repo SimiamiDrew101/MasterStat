@@ -9,7 +9,6 @@ import ResidualAnalysis from '../components/ResidualAnalysis'
 import EnhancedANOVA from '../components/EnhancedANOVA'
 import PredictionProfiler from '../components/PredictionProfiler'
 import AdvancedDiagnostics from '../components/AdvancedDiagnostics'
-import ExperimentWizard from '../components/ExperimentWizard'
 import CrossValidationResults from '../components/CrossValidationResults'
 import MultiResponseManager from '../components/MultiResponseManager'
 import MultiResponseContourOverlay from '../components/MultiResponseContourOverlay'
@@ -64,7 +63,6 @@ const RSM = () => {
 
   // UI state
   const [loading, setLoading] = useState(false)
-  const [wizardOpen, setWizardOpen] = useState(false)
   const [error, setError] = useState(null)
   const [activeTab, setActiveTab] = useState('design')  // 'design', 'model', 'optimize', 'visualize'
 
@@ -86,95 +84,6 @@ const RSM = () => {
   useEffect(() => {
     console.log('surfaceData state changed:', surfaceData ? `${surfaceData.length} points` : 'null')
   }, [surfaceData])
-
-  // Handle wizard completion (Phase 2 Feature)
-  const handleWizardComplete = async (wizardData) => {
-    console.log('Wizard completed with data:', wizardData)
-
-    // Apply wizard recommendations to the design settings
-    if (wizardData.selectedDesign) {
-      setNumFactors(wizardData.nFactors)
-
-      const designCode = wizardData.selectedDesign.design_code
-
-      // Check if this is a sequential approach (not directly generatable)
-      const isSequentialApproach = ['screening-first', 'dsd'].includes(designCode)
-
-      // Map design code to our design type
-      if (designCode === 'box-behnken') {
-        setDesignType('box-behnken')
-      } else if (designCode === 'face-centered') {
-        setDesignType('ccd')
-        setCCDType('face-centered')
-      } else if (designCode === 'rotatable') {
-        setDesignType('ccd')
-        setCCDType('rotatable')
-      } else if (designCode === 'inscribed') {
-        setDesignType('ccd')
-        setCCDType('inscribed')
-      } else if (isSequentialApproach) {
-        // For sequential approaches, default to face-centered CCD
-        setDesignType('ccd')
-        setCCDType('face-centered')
-      }
-
-      // Set factor names if provided
-      if (wizardData.factorNames && wizardData.factorNames.length > 0) {
-        const names = wizardData.factorNames.filter(n => n && n.trim())
-        if (names.length > 0) {
-          setFactorNames(names)
-        }
-      }
-
-      // Handle sequential approaches differently
-      if (isSequentialApproach) {
-        // Show informational message instead of auto-generating
-        setError(null)
-        setActiveTab('design')
-
-        // Create a helpful info message
-        setTimeout(() => {
-          alert(
-            `📋 Sequential Approach Selected: ${wizardData.selectedDesign.type}\n\n` +
-            `This is a two-stage approach:\n` +
-            `1. First, run a screening experiment (Factorial Designs page)\n` +
-            `2. Then, use RSM on the 2-3 most important factors\n\n` +
-            `For now, the wizard has set up a Face-Centered CCD design.\n` +
-            `You can adjust the settings and generate when ready.`
-          )
-        }, 500)
-        return
-      }
-
-      // Auto-generate the design after wizard completes (for supported designs)
-      setTimeout(async () => {
-        try {
-          setLoading(true)
-          let response
-          if (designCode === 'box-behnken') {
-            response = await axios.post(`${API_URL}/api/rsm/box-behnken/generate`, {
-              n_factors: wizardData.nFactors
-            })
-          } else {
-            // CCD variants (face-centered, rotatable, inscribed)
-            response = await axios.post(`${API_URL}/api/rsm/ccd/generate`, {
-              n_factors: wizardData.nFactors,
-              design_type: designCode,
-              n_center: numCenterPoints
-            })
-          }
-
-          setDesignData(response.data)
-          setTableData(initializeTableData(response.data.design))
-          setActiveTab('design') // Switch to design tab to see results
-        } catch (err) {
-          setError(err.response?.data?.detail || err.message || 'Design generation failed')
-        } finally {
-          setLoading(false)
-        }
-      }, 300) // Small delay for UX smoothness
-    }
-  }
 
   // Generate design
   const handleGenerateDesign = async () => {
@@ -1020,33 +929,6 @@ const RSM = () => {
                 onChange={(e) => setResponseName(e.target.value)}
                 className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-orange-500"
               />
-            </div>
-
-            {/* Experiment Wizard Button (Phase 2 Feature) */}
-            <div className="bg-gradient-to-r from-purple-900/30 to-blue-900/30 rounded-lg p-4 border border-purple-700/50">
-              <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="w-5 h-5 text-purple-400" />
-                <span className="text-purple-300 font-semibold text-sm">NEW FEATURE</span>
-              </div>
-              <button
-                onClick={() => setWizardOpen(true)}
-                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all shadow-lg hover:shadow-purple-500/50"
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <Sparkles className="w-5 h-5" />
-                  <span>Launch Experiment Wizard</span>
-                </div>
-              </button>
-              <p className="text-gray-300 text-xs mt-2 text-center">
-                Step-by-step guidance for choosing the perfect design
-              </p>
-            </div>
-
-            {/* OR Divider */}
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px bg-slate-600"></div>
-              <span className="text-gray-400 text-sm">OR</span>
-              <div className="flex-1 h-px bg-slate-600"></div>
             </div>
 
             {/* Generate Design Button */}
@@ -2498,13 +2380,6 @@ const RSM = () => {
           )}
         </div>
       )}
-
-      {/* Experiment Wizard Modal (Phase 2 Feature) */}
-      <ExperimentWizard
-        isOpen={wizardOpen}
-        onClose={() => setWizardOpen(false)}
-        onComplete={handleWizardComplete}
-      />
     </div>
   )
 }

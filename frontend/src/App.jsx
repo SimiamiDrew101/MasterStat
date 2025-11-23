@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom'
 import Home from './pages/Home'
+import ExperimentWizardPage from './pages/ExperimentWizardPage'
 import HypothesisTesting from './pages/HypothesisTesting'
 import ANOVA from './pages/ANOVA'
 import FactorialDesigns from './pages/FactorialDesigns'
@@ -18,6 +19,7 @@ function App() {
 
   const menuItems = [
     { path: '/', label: 'Home', icon: '🏠' },
+    { path: '/experiment-wizard', label: 'Experiment Wizard', icon: '✨' },
     { path: '/planning', label: 'Experiment Planning', icon: '🎯' },
     { path: '/hypothesis', label: 'Hypothesis Testing', icon: '📊' },
     { path: '/anova', label: 'ANOVA', icon: '📈' },
@@ -78,6 +80,7 @@ function App() {
             <div className="max-w-6xl mx-auto">
               <Routes>
                 <Route path="/" element={<Home />} />
+                <Route path="/experiment-wizard" element={<ExperimentWizardPage />} />
                 <Route path="/planning" element={<ExperimentPlanning />} />
                 <Route path="/hypothesis" element={<HypothesisTesting />} />
                 <Route path="/anova" element={<ANOVA />} />
