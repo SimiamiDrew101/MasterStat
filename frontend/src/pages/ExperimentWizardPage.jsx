@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronRight, ChevronLeft, CheckCircle, Sparkles, Download, AlertCircle } from 'lucide-react'
+import { ChevronRight, ChevronLeft, CheckCircle, Sparkles, Download, AlertCircle, Shuffle, RotateCcw } from 'lucide-react'
 import axios from 'axios'
 import DesignRecommendationStep from '../components/DesignRecommendationStep'
 
@@ -11,6 +11,12 @@ const ExperimentWizardPage = () => {
     goal: '',
     nFactors: 2,
     factorNames: [],
+    factorLevels: [], // Array of { min, max, units } for each factor
+    powerAnalysis: {
+      effectSize: 'medium',
+      desiredPower: 0.80,
+      minimumRuns: null
+    },
     budget: null,
     timeConstraint: null,
     selectedDesign: null
@@ -22,9 +28,10 @@ const ExperimentWizardPage = () => {
   const steps = [
     { id: 1, title: 'Goal', icon: '🎯' },
     { id: 2, title: 'Factors', icon: '🔬' },
-    { id: 3, title: 'Constraints', icon: '📊' },
-    { id: 4, title: 'Design', icon: '✨' },
-    { id: 5, title: 'Review', icon: '✅' }
+    { id: 3, title: 'Power', icon: '⚡' },
+    { id: 4, title: 'Constraints', icon: '📊' },
+    { id: 5, title: 'Design', icon: '✨' },
+    { id: 6, title: 'Review', icon: '✅' }
   ]
 
   const updateWizardData = (field, value) => {
@@ -41,6 +48,16 @@ const ExperimentWizardPage = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1)
     }
+  }
+
+  // Helper function to transform coded values to actual values
+  const transformCodedToActual = (codedValue, min, max) => {
+    if (!min || !max || min === '' || max === '') return codedValue
+    const minNum = parseFloat(min)
+    const maxNum = parseFloat(max)
+    const center = (minNum + maxNum) / 2
+    const range = (maxNum - minNum) / 2
+    return center + codedValue * range
   }
 
   const handleComplete = async () => {
@@ -89,16 +106,61 @@ const ExperimentWizardPage = () => {
         })
       }
 
+      // Prepare factor names
+      const factorNames = wizardData.factorNames.filter(n => n && n.trim()).length > 0
+        ? wizardData.factorNames.filter(n => n && n.trim())
+        : Array.from({ length: wizardData.nFactors }, (_, i) => `X${i + 1}`)
+
+      // Transform coded values to actual values if factor levels are specified
+      let designMatrix = response.data.design_matrix
+      const hasFactorLevels = wizardData.factorLevels && wizardData.factorLevels.some(level =>
+        level && level.min !== '' && level.max !== ''
+      )
+
+      if (hasFactorLevels) {
+        // Get the original column names from the backend (X1, X2, etc.)
+        const backendColumns = designMatrix.length > 0 ? Object.keys(designMatrix[0]) : []
+
+        designMatrix = designMatrix.map(row => {
+          const transformedRow = {}
+          backendColumns.forEach((backendCol, idx) => {
+            const level = wizardData.factorLevels[idx]
+            const targetName = factorNames[idx] || backendCol
+
+            if (level && level.min !== '' && level.max !== '') {
+              const codedValue = row[backendCol]
+              transformedRow[targetName] = transformCodedToActual(codedValue, level.min, level.max)
+            } else {
+              // No transformation, just rename column
+              transformedRow[targetName] = row[backendCol]
+            }
+          })
+          return transformedRow
+        })
+      } else {
+        // No transformation needed, but rename columns to use custom factor names
+        const backendColumns = designMatrix.length > 0 ? Object.keys(designMatrix[0]) : []
+        designMatrix = designMatrix.map(row => {
+          const renamedRow = {}
+          backendColumns.forEach((backendCol, idx) => {
+            const targetName = factorNames[idx] || backendCol
+            renamedRow[targetName] = row[backendCol]
+          })
+          return renamedRow
+        })
+      }
+
       // Store the generated design
       setGeneratedDesign({
         ...response.data,
-        factorNames: wizardData.factorNames.filter(n => n && n.trim()).length > 0
-          ? wizardData.factorNames.filter(n => n && n.trim())
-          : Array.from({ length: wizardData.nFactors }, (_, i) => `X${i + 1}`)
+        design_matrix: designMatrix,
+        factorNames: factorNames,
+        factorLevels: wizardData.factorLevels,
+        useActualValues: hasFactorLevels
       })
 
       // Move to results view
-      setCurrentStep(6) // New step for showing results
+      setCurrentStep(7) // New step for showing results
     } catch (err) {
       setError(err.response?.data?.detail || err.message || 'Failed to generate design')
       console.error('Design generation error:', err)
@@ -178,11 +240,20 @@ const ExperimentWizardPage = () => {
             <FactorConfiguration
               nFactors={wizardData.nFactors}
               factorNames={wizardData.factorNames}
+              factorLevels={wizardData.factorLevels}
               onFactorCountChange={(n) => updateWizardData('nFactors', n)}
               onFactorNamesChange={(names) => updateWizardData('factorNames', names)}
+              onFactorLevelsChange={(levels) => updateWizardData('factorLevels', levels)}
             />
           )}
           {currentStep === 3 && (
+            <PowerAnalysis
+              nFactors={wizardData.nFactors}
+              powerAnalysis={wizardData.powerAnalysis}
+              onPowerAnalysisChange={(pa) => updateWizardData('powerAnalysis', pa)}
+            />
+          )}
+          {currentStep === 4 && (
             <ConstraintBuilder
               budget={wizardData.budget}
               timeConstraint={wizardData.timeConstraint}
@@ -190,19 +261,20 @@ const ExperimentWizardPage = () => {
               onTimeConstraintChange={(time) => updateWizardData('timeConstraint', time)}
             />
           )}
-          {currentStep === 4 && (
+          {currentStep === 5 && (
             <DesignRecommendationStep
               nFactors={wizardData.nFactors}
               budget={wizardData.budget}
               goal={wizardData.goal}
+              minimumRuns={wizardData.powerAnalysis.minimumRuns}
               selectedDesign={wizardData.selectedDesign}
               onSelectDesign={(design) => updateWizardData('selectedDesign', design)}
             />
           )}
-          {currentStep === 5 && (
+          {currentStep === 6 && (
             <DesignSummary wizardData={wizardData} />
           )}
-          {currentStep === 6 && generatedDesign && (
+          {currentStep === 7 && generatedDesign && (
             <DesignResults design={generatedDesign} wizardData={wizardData} />
           )}
           {error && (
@@ -218,8 +290,8 @@ const ExperimentWizardPage = () => {
           )}
         </div>
 
-        {/* Navigation Footer - Steps 1-5 */}
-        {currentStep !== 6 && (
+        {/* Navigation Footer - Steps 1-6 */}
+        {currentStep !== 7 && (
           <div className="bg-slate-800/50 backdrop-blur-lg rounded-xl px-8 py-6 border border-slate-700/50 flex items-center justify-between">
             <button
               onClick={prevStep}
@@ -244,12 +316,12 @@ const ExperimentWizardPage = () => {
                 disabled={
                   (currentStep === 1 && !wizardData.goal) ||
                   (currentStep === 2 && wizardData.nFactors < 2) ||
-                  (currentStep === 4 && !wizardData.selectedDesign)
+                  (currentStep === 5 && !wizardData.selectedDesign)
                 }
                 className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
                   (currentStep === 1 && !wizardData.goal) ||
                   (currentStep === 2 && wizardData.nFactors < 2) ||
-                  (currentStep === 4 && !wizardData.selectedDesign)
+                  (currentStep === 5 && !wizardData.selectedDesign)
                     ? 'bg-slate-700/30 text-gray-500 cursor-not-allowed'
                     : 'bg-blue-600 text-white hover:bg-blue-700 hover:scale-105'
                 }`}
@@ -285,9 +357,9 @@ const ExperimentWizardPage = () => {
           </div>
         )}
 
-        {/* Results Footer - Step 6 */}
-        {currentStep === 6 && generatedDesign && (
-          <div className="bg-slate-800/50 backdrop-blur-lg rounded-xl px-8 py-6 border border-slate-700/50 flex items-center justify-between">
+        {/* Results Footer - Step 7 */}
+        {currentStep === 7 && generatedDesign && (
+          <div className="bg-slate-800/50 backdrop-blur-lg rounded-xl px-8 py-6 border border-slate-700/50 flex items-center justify-center">
             <button
               onClick={() => {
                 setCurrentStep(1)
@@ -297,6 +369,12 @@ const ExperimentWizardPage = () => {
                   goal: '',
                   nFactors: 2,
                   factorNames: [],
+                  factorLevels: [],
+                  powerAnalysis: {
+                    effectSize: 'medium',
+                    desiredPower: 0.80,
+                    minimumRuns: null
+                  },
                   budget: null,
                   timeConstraint: null,
                   selectedDesign: null
@@ -305,22 +383,6 @@ const ExperimentWizardPage = () => {
               className="flex items-center gap-2 px-6 py-3 rounded-lg font-semibold bg-slate-700 text-gray-200 hover:bg-slate-600 hover:scale-105 transition-all"
             >
               Start New Design
-            </button>
-
-            <button
-              onClick={() => {
-                const csv = generateCSV(generatedDesign)
-                const blob = new Blob([csv], { type: 'text/csv' })
-                const url = window.URL.createObjectURL(blob)
-                const a = document.createElement('a')
-                a.href = url
-                a.download = 'experiment-design.csv'
-                a.click()
-              }}
-              className="flex items-center gap-2 px-6 py-3 rounded-lg font-semibold bg-blue-600 text-white hover:bg-blue-700 hover:scale-105 transition-all"
-            >
-              <Download className="w-5 h-5" />
-              Download CSV
             </button>
           </div>
         )}
@@ -385,11 +447,20 @@ const GoalSelector = ({ value, onChange }) => {
 }
 
 // Step 2: Factor Configuration
-const FactorConfiguration = ({ nFactors, factorNames, onFactorCountChange, onFactorNamesChange }) => {
+const FactorConfiguration = ({ nFactors, factorNames, factorLevels, onFactorCountChange, onFactorNamesChange, onFactorLevelsChange }) => {
   const handleFactorNameChange = (index, name) => {
     const newNames = [...factorNames]
     newNames[index] = name
     onFactorNamesChange(newNames)
+  }
+
+  const handleFactorLevelChange = (index, field, value) => {
+    const newLevels = [...factorLevels]
+    if (!newLevels[index]) {
+      newLevels[index] = { min: '', max: '', units: '' }
+    }
+    newLevels[index] = { ...newLevels[index], [field]: value }
+    onFactorLevelsChange(newLevels)
   }
 
   return (
@@ -426,29 +497,275 @@ const FactorConfiguration = ({ nFactors, factorNames, onFactorCountChange, onFac
         )}
       </div>
 
-      {/* Factor Names (Optional) */}
+      {/* Factor Details */}
       <div>
         <label className="block text-gray-200 font-semibold mb-3">
-          Factor Names <span className="text-gray-400 text-sm font-normal">(Optional)</span>
+          Factor Details <span className="text-gray-400 text-sm font-normal">(Specify ranges for real-world values)</span>
         </label>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="space-y-4">
           {Array.from({ length: nFactors }).map((_, i) => (
-            <input
-              key={i}
-              type="text"
-              placeholder={`Factor ${i + 1} (e.g., Temperature, Pressure)`}
-              value={factorNames[i] || ''}
-              onChange={(e) => handleFactorNameChange(i, e.target.value)}
-              className="px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-lg text-gray-100 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-            />
+            <div key={i} className="bg-slate-800/50 rounded-lg p-4 border border-slate-600">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
+                  {i + 1}
+                </span>
+                <input
+                  type="text"
+                  placeholder={`Factor ${i + 1} (e.g., Temperature, Pressure)`}
+                  value={factorNames[i] || ''}
+                  onChange={(e) => handleFactorNameChange(i, e.target.value)}
+                  className="flex-1 px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-gray-100 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-gray-400 text-xs mb-1">Low Level (-1)</label>
+                  <input
+                    type="number"
+                    placeholder="Min value"
+                    value={factorLevels[i]?.min || ''}
+                    onChange={(e) => handleFactorLevelChange(i, 'min', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-gray-100 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-400 text-xs mb-1">High Level (+1)</label>
+                  <input
+                    type="number"
+                    placeholder="Max value"
+                    value={factorLevels[i]?.max || ''}
+                    onChange={(e) => handleFactorLevelChange(i, 'max', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-gray-100 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-400 text-xs mb-1">Units (Optional)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g., °C, PSI"
+                    value={factorLevels[i]?.units || ''}
+                    onChange={(e) => handleFactorLevelChange(i, 'units', e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-gray-100 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+              </div>
+            </div>
           ))}
+        </div>
+
+        <div className="mt-4 bg-blue-900/20 border border-blue-700/50 rounded-lg p-4">
+          <p className="text-blue-200 text-sm">
+            <strong>Tip:</strong> Specifying factor levels allows the wizard to generate designs with real-world values.
+            Leave blank to use standard coded values (-1, 0, +1).
+          </p>
         </div>
       </div>
     </div>
   )
 }
 
-// Step 3: Constraint Builder
+// Step 3: Power Analysis
+const PowerAnalysis = ({ nFactors, powerAnalysis, onPowerAnalysisChange }) => {
+  const effectSizes = [
+    {
+      id: 'small',
+      label: 'Small',
+      cohen_f: 0.10,
+      description: 'Detecting subtle differences (hard to see without careful measurement)',
+      example: '2-5% improvement in yield'
+    },
+    {
+      id: 'medium',
+      label: 'Medium',
+      cohen_f: 0.25,
+      description: 'Detecting moderate differences (noticeable with measurement)',
+      example: '10-15% improvement in yield'
+    },
+    {
+      id: 'large',
+      label: 'Large',
+      cohen_f: 0.40,
+      description: 'Detecting substantial differences (obvious even without statistics)',
+      example: '25%+ improvement in yield'
+    }
+  ]
+
+  const powerLevels = [
+    { value: 0.80, label: '80%', description: 'Standard (1 in 5 chance of missing real effect)' },
+    { value: 0.90, label: '90%', description: 'Conservative (1 in 10 chance of missing)' },
+    { value: 0.95, label: '95%', description: 'Very Conservative (1 in 20 chance of missing)' }
+  ]
+
+  // Calculate minimum runs based on power analysis
+  // Practical approximation for Response Surface Methodology designs
+  const calculateMinimumRuns = (effectSize, power, nFactors) => {
+    // Effect size determines the multiplier for baseline design
+    // small effects need more replication than large effects
+    const effectMultiplier = {
+      small: { base: 2.5, powerAdj: { 0.80: 1.0, 0.90: 1.3, 0.95: 1.6 } },
+      medium: { base: 1.5, powerAdj: { 0.80: 1.0, 0.90: 1.2, 0.95: 1.4 } },
+      large: { base: 1.0, powerAdj: { 0.80: 1.0, 0.90: 1.1, 0.95: 1.2 } }
+    }
+
+    const multiplier = effectMultiplier[effectSize]
+    const powerAdj = multiplier.powerAdj[power]
+
+    // Base runs for standard RSM designs (CCD or Box-Behnken)
+    // These are the minimum unreplicated designs
+    let baseRuns
+    if (nFactors === 2) {
+      baseRuns = 13 // 2^2 factorial (4) + 4 axial + 5 center points
+    } else if (nFactors === 3) {
+      baseRuns = 20 // 2^3 factorial (8) + 6 axial + 6 center points (CCD)
+    } else if (nFactors === 4) {
+      baseRuns = 31 // 2^4 factorial (16) + 8 axial + 7 center points
+    } else if (nFactors === 5) {
+      baseRuns = 52 // 2^5 fractional + 10 axial + ~10 center
+    } else {
+      baseRuns = 90 // For 6 factors, typically use fractional factorial + RSM
+    }
+
+    // Apply effect size and power adjustments
+    const recommendedRuns = Math.ceil(baseRuns * multiplier.base * powerAdj)
+
+    return recommendedRuns
+  }
+
+  const handleEffectSizeChange = (effectSize) => {
+    const minimumRuns = calculateMinimumRuns(effectSize, powerAnalysis.desiredPower, nFactors)
+    onPowerAnalysisChange({
+      ...powerAnalysis,
+      effectSize,
+      minimumRuns
+    })
+  }
+
+  const handlePowerChange = (power) => {
+    const minimumRuns = calculateMinimumRuns(powerAnalysis.effectSize, power, nFactors)
+    onPowerAnalysisChange({
+      ...powerAnalysis,
+      desiredPower: power,
+      minimumRuns
+    })
+  }
+
+  // Calculate on mount if not already calculated
+  if (powerAnalysis.minimumRuns === null) {
+    const minimumRuns = calculateMinimumRuns(powerAnalysis.effectSize, powerAnalysis.desiredPower, nFactors)
+    onPowerAnalysisChange({
+      ...powerAnalysis,
+      minimumRuns
+    })
+  }
+
+  return (
+    <div>
+      <h3 className="text-2xl font-bold text-gray-100 mb-2">Power Analysis</h3>
+      <p className="text-gray-300 text-sm mb-6">
+        Ensure your experiment has enough runs to detect meaningful effects
+      </p>
+
+      {/* Educational Box */}
+      <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-4 mb-6">
+        <h4 className="text-blue-200 font-semibold mb-2">What is Statistical Power?</h4>
+        <p className="text-blue-100 text-sm mb-2">
+          Statistical power is the probability that your experiment will detect a real effect when it exists.
+          Higher power means you're less likely to miss important discoveries!
+        </p>
+        <p className="text-blue-100 text-sm">
+          <strong>Rule of thumb:</strong> 80% power means if a real effect exists, you have an 80% chance of detecting it.
+        </p>
+      </div>
+
+      {/* Effect Size Selection */}
+      <div className="mb-6">
+        <label className="block text-gray-200 font-semibold mb-3">
+          What effect size do you want to detect?
+        </label>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {effectSizes.map((effect) => (
+            <button
+              key={effect.id}
+              onClick={() => handleEffectSizeChange(effect.id)}
+              className={`p-4 rounded-xl border-2 transition-all duration-200 text-left ${
+                powerAnalysis.effectSize === effect.id
+                  ? 'border-blue-500 bg-blue-900/30 scale-105 shadow-lg shadow-blue-500/20'
+                  : 'border-slate-600 bg-slate-800/30 hover:border-slate-500 hover:bg-slate-800/50'
+              }`}
+            >
+              <h4 className="text-lg font-bold text-gray-100 mb-2">{effect.label}</h4>
+              <p className="text-gray-300 text-sm mb-2">{effect.description}</p>
+              <p className="text-gray-400 text-xs italic">e.g., {effect.example}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Power Level Selection */}
+      <div className="mb-6">
+        <label className="block text-gray-200 font-semibold mb-3">
+          Desired Statistical Power
+        </label>
+        <div className="grid grid-cols-3 gap-3">
+          {powerLevels.map((level) => (
+            <button
+              key={level.value}
+              onClick={() => handlePowerChange(level.value)}
+              className={`p-4 rounded-lg transition-all ${
+                powerAnalysis.desiredPower === level.value
+                  ? 'bg-blue-600 text-white scale-105 shadow-lg'
+                  : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+              }`}
+            >
+              <div className="text-2xl font-bold mb-1">{level.label}</div>
+              <div className="text-xs">{level.description}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Results Display */}
+      {powerAnalysis.minimumRuns && (
+        <div className="bg-gradient-to-r from-green-900/30 to-blue-900/30 border border-green-700/50 rounded-lg p-6">
+          <div className="flex items-start gap-4">
+            <div className="bg-green-600 rounded-full p-3">
+              <CheckCircle className="w-8 h-8 text-white" />
+            </div>
+            <div className="flex-1">
+              <h4 className="text-xl font-bold text-gray-100 mb-2">Recommended Minimum Runs</h4>
+              <div className="flex items-baseline gap-2 mb-3">
+                <span className="text-5xl font-bold text-green-300">{powerAnalysis.minimumRuns}</span>
+                <span className="text-gray-300">experimental runs</span>
+              </div>
+              <p className="text-gray-300 text-sm mb-2">
+                Based on detecting <strong>{powerAnalysis.effectSize}</strong> effects with{' '}
+                <strong>{(powerAnalysis.desiredPower * 100).toFixed(0)}%</strong> power in a{' '}
+                <strong>{nFactors}-factor</strong> experiment.
+              </p>
+              <div className="bg-slate-800/50 rounded-lg p-3 mt-3">
+                <p className="text-yellow-200 text-sm">
+                  <strong>⚠️ Note:</strong> This is a minimum recommendation. More runs will increase your power and precision.
+                  The wizard will help you select an appropriate design that meets or exceeds this requirement.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Skip Option */}
+      <div className="mt-6 bg-slate-800/30 border border-slate-600 rounded-lg p-4">
+        <p className="text-gray-300 text-sm">
+          <strong>Can I skip this?</strong> Yes, power analysis is optional but recommended. It helps ensure your experiment
+          isn't underpowered (wasting resources) or overpowered (using unnecessary runs). Click "Next" to continue.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// Step 4: Constraint Builder
 const ConstraintBuilder = ({ budget, timeConstraint, onBudgetChange, onTimeConstraintChange }) => {
   return (
     <div>
@@ -593,7 +910,60 @@ const DesignSummary = ({ wizardData }) => {
 // Design Results Component
 const DesignResults = ({ design, wizardData }) => {
   const factorNames = design.factorNames || []
-  const designMatrix = design.design_matrix || []
+  const originalMatrix = design.design_matrix || []
+  const factorLevels = design.factorLevels || []
+  const useActualValues = design.useActualValues || false
+
+  const [designMatrix, setDesignMatrix] = useState(originalMatrix)
+  const [isRandomized, setIsRandomized] = useState(false)
+
+  // Fisher-Yates shuffle algorithm
+  const shuffleArray = (array) => {
+    const shuffled = [...array]
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    }
+    return shuffled
+  }
+
+  const handleRandomize = () => {
+    setDesignMatrix(shuffleArray(originalMatrix))
+    setIsRandomized(true)
+  }
+
+  const handleRestore = () => {
+    setDesignMatrix(originalMatrix)
+    setIsRandomized(false)
+  }
+
+  const handleDownloadCSV = () => {
+    const factorLevels = design.factorLevels || []
+
+    // Header row with units if available
+    const headers = factorNames.map((name, idx) => {
+      const level = factorLevels[idx]
+      const units = level && level.units ? ` (${level.units})` : ''
+      return `${name}${units}`
+    })
+    let csv = 'Run,' + headers.join(',') + ',Response\n'
+
+    // Data rows using current (possibly randomized) matrix
+    designMatrix.forEach((row, idx) => {
+      const values = factorNames.map(name => {
+        const value = row[name]
+        return typeof value === 'number' ? value.toFixed(3) : value
+      })
+      csv += `${idx + 1},${values.join(',')},\n`
+    })
+
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = isRandomized ? 'experiment-design-randomized.csv' : 'experiment-design.csv'
+    a.click()
+  }
 
   return (
     <div>
@@ -611,7 +981,7 @@ const DesignResults = ({ design, wizardData }) => {
       </div>
 
       {/* Design Info */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-slate-800/50 rounded-lg p-4">
           <p className="text-gray-400 text-sm mb-1">Design Type</p>
           <p className="text-gray-100 font-semibold text-lg">{wizardData.selectedDesign?.type}</p>
@@ -624,24 +994,93 @@ const DesignResults = ({ design, wizardData }) => {
           <p className="text-gray-400 text-sm mb-1">Factors</p>
           <p className="text-gray-100 font-semibold text-lg">{factorNames.length}</p>
         </div>
+        <div className="bg-slate-800/50 rounded-lg p-4">
+          <p className="text-gray-400 text-sm mb-1">Value Type</p>
+          <p className="text-gray-100 font-semibold text-lg">
+            {useActualValues ? 'Actual Values' : 'Coded (-1, 0, +1)'}
+          </p>
+        </div>
       </div>
+
+      {/* Factor Ranges (if using actual values) */}
+      {useActualValues && factorLevels.some(l => l && l.min && l.max) && (
+        <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-4 mb-6">
+          <h4 className="text-blue-200 font-semibold mb-3">Factor Ranges</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {factorNames.map((name, idx) => {
+              const level = factorLevels[idx]
+              if (!level || !level.min || !level.max) return null
+              return (
+                <div key={idx} className="flex items-center justify-between bg-slate-800/50 rounded px-3 py-2">
+                  <span className="text-gray-300 font-medium">{name}:</span>
+                  <span className="text-blue-200">
+                    {level.min} to {level.max} {level.units || ''}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Design Matrix Table */}
       <div className="bg-slate-800/50 rounded-lg p-6 overflow-x-auto">
-        <h4 className="text-xl font-bold text-gray-100 mb-4">Experimental Design Matrix</h4>
-        <p className="text-gray-300 text-sm mb-4">
-          Run these experiments in the order shown below. Record your response values for each run.
-        </p>
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex-1">
+            <h4 className="text-xl font-bold text-gray-100 mb-2">Experimental Design Matrix</h4>
+            <p className="text-gray-300 text-sm">
+              Run these experiments in the order shown below. Record your response values for each run.
+            </p>
+            {isRandomized && (
+              <div className="mt-2 flex items-center gap-2 text-green-300 text-sm">
+                <CheckCircle className="w-4 h-4" />
+                <span className="font-semibold">Run order has been randomized</span>
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2 ml-4">
+            <button
+              onClick={handleDownloadCSV}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all hover:scale-105 shadow-lg"
+              title="Download design matrix as CSV"
+            >
+              <Download className="w-5 h-5" />
+              Download CSV
+            </button>
+            <button
+              onClick={handleRandomize}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-all hover:scale-105 shadow-lg"
+              title="Randomize the order of experimental runs to prevent systematic bias"
+            >
+              <Shuffle className="w-5 h-5" />
+              Randomize
+            </button>
+            {isRandomized && (
+              <button
+                onClick={handleRestore}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg font-semibold transition-all hover:scale-105"
+                title="Restore original run order"
+              >
+                <RotateCcw className="w-5 h-5" />
+                Restore
+              </button>
+            )}
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-600">
                 <th className="text-left py-3 px-4 text-gray-300 font-semibold">Run</th>
-                {factorNames.map((name, idx) => (
-                  <th key={idx} className="text-left py-3 px-4 text-gray-300 font-semibold">
-                    {name}
-                  </th>
-                ))}
+                {factorNames.map((name, idx) => {
+                  const level = factorLevels[idx]
+                  const units = level && level.units ? ` (${level.units})` : ''
+                  return (
+                    <th key={idx} className="text-left py-3 px-4 text-gray-300 font-semibold">
+                      {name}{units}
+                    </th>
+                  )
+                })}
                 <th className="text-left py-3 px-4 text-gray-300 font-semibold">Response (Y)</th>
               </tr>
             </thead>
@@ -662,21 +1101,41 @@ const DesignResults = ({ design, wizardData }) => {
         </div>
       </div>
 
+      {/* Randomization Importance */}
+      {!isRandomized && (
+        <div className="mt-6 bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-yellow-300 font-semibold mb-1">Randomization Recommended</p>
+              <p className="text-yellow-200 text-sm">
+                For valid experimental results, randomize the run order to prevent systematic bias from uncontrolled variables
+                (time trends, equipment drift, environmental changes). Click "Randomize Order" above before running your experiments.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Next Steps */}
       <div className="mt-6 bg-blue-900/20 border border-blue-700/50 rounded-lg p-6">
         <h4 className="text-lg font-bold text-blue-200 mb-3">Next Steps</h4>
         <ol className="space-y-2 text-blue-100">
           <li className="flex items-start gap-2">
             <span className="bg-blue-700/50 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5 text-sm">1</span>
-            <span>Download the design matrix as CSV using the button below</span>
+            <span><strong>Randomize the run order</strong> using the "Randomize" button above (critical for valid results)</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="bg-blue-700/50 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5 text-sm">2</span>
-            <span>Run your experiments in the order shown and record response values</span>
+            <span>Download the {isRandomized ? 'randomized' : ''} design matrix as CSV using the "Download CSV" button above</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="bg-blue-700/50 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5 text-sm">3</span>
-            <span>Upload your data to the Response Surface page for analysis</span>
+            <span>Run your experiments in the {isRandomized ? 'randomized' : 'specified'} order and record response values</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="bg-blue-700/50 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5 text-sm">4</span>
+            <span>Upload your completed data to the Response Surface page for analysis</span>
           </li>
         </ol>
       </div>
@@ -688,13 +1147,22 @@ const DesignResults = ({ design, wizardData }) => {
 const generateCSV = (design) => {
   const factorNames = design.factorNames || []
   const designMatrix = design.design_matrix || []
+  const factorLevels = design.factorLevels || []
 
-  // Header row
-  let csv = 'Run,' + factorNames.join(',') + ',Response\n'
+  // Header row with units if available
+  const headers = factorNames.map((name, idx) => {
+    const level = factorLevels[idx]
+    const units = level && level.units ? ` (${level.units})` : ''
+    return `${name}${units}`
+  })
+  let csv = 'Run,' + headers.join(',') + ',Response\n'
 
   // Data rows
   designMatrix.forEach((row, idx) => {
-    const values = factorNames.map(name => row[name])
+    const values = factorNames.map(name => {
+      const value = row[name]
+      return typeof value === 'number' ? value.toFixed(3) : value
+    })
     csv += `${idx + 1},${values.join(',')},\n`
   })
 

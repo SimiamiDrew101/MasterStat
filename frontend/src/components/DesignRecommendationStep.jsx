@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react'
-import { Check, X, AlertTriangle, TrendingUp, Info, ChevronDown, ChevronUp, Star, Zap, Shield, DollarSign, Clock, Target } from 'lucide-react'
+import { Check, X, AlertTriangle, TrendingUp, Info, ChevronDown, ChevronUp, Star, Zap, Shield, DollarSign, Clock, Target, GitCompare, BarChart3 } from 'lucide-react'
 
-const DesignRecommendationStep = ({ nFactors, budget, goal, selectedDesign, onSelectDesign }) => {
+const DesignRecommendationStep = ({ nFactors, budget, goal, minimumRuns, selectedDesign, onSelectDesign }) => {
   const [recommendations, setRecommendations] = useState([])
   const [allDesigns, setAllDesigns] = useState([])
   const [warning, setWarning] = useState(null)
+  const [powerWarning, setPowerWarning] = useState(null)
+  const [comparisonMode, setComparisonMode] = useState(false)
+  const [selectedForComparison, setSelectedForComparison] = useState([])
 
   useEffect(() => {
     generateRecommendations()
-  }, [nFactors, budget, goal])
+  }, [nFactors, budget, goal, minimumRuns])
 
   const generateRecommendations = () => {
     const designs = getAllDesigns(nFactors, budget, goal)
@@ -22,12 +25,31 @@ const DesignRecommendationStep = ({ nFactors, budget, goal, selectedDesign, onSe
     const sorted = filtered.sort((a, b) => b.score - a.score)
     setRecommendations(sorted.slice(0, 4)) // Top 4 recommendations
 
-    // Check for warnings
+    // Check for budget warnings
     if (budget && filtered.length === 0) {
       setWarning(`Budget of ${budget} runs is insufficient for ${nFactors} factors. Minimum ${designs[0]?.runs} runs recommended.`)
     } else if (budget && filtered.length < designs.length) {
       const excluded = designs.filter(d => d.runs > budget)
       setWarning(`Budget constraint excludes ${excluded.length} design option(s). Consider increasing budget for more options.`)
+    } else {
+      setWarning(null)
+    }
+
+    // Check for power analysis warnings
+    if (minimumRuns) {
+      if (budget && budget < minimumRuns) {
+        setPowerWarning(
+          `⚠️ Your budget (${budget} runs) is below the recommended minimum (${minimumRuns} runs) from power analysis. ` +
+          `This may result in an underpowered experiment that cannot reliably detect ${goal === 'screening' ? 'important factors' : 'meaningful effects'}.`
+        )
+      } else if (!budget && sorted.length > 0 && sorted[0].runs < minimumRuns) {
+        setPowerWarning(
+          `💡 The top recommended design has ${sorted[0].runs} runs, but power analysis suggests ${minimumRuns} runs ` +
+          `for adequate statistical power. Consider designs with more runs or accept lower statistical power.`
+        )
+      } else {
+        setPowerWarning(null)
+      }
     }
 
     // Auto-select top recommendation
@@ -36,14 +58,71 @@ const DesignRecommendationStep = ({ nFactors, budget, goal, selectedDesign, onSe
     }
   }
 
+  const toggleComparison = (design) => {
+    if (selectedForComparison.find(d => d.design_code === design.design_code)) {
+      setSelectedForComparison(selectedForComparison.filter(d => d.design_code !== design.design_code))
+    } else {
+      if (selectedForComparison.length < 4) { // Max 4 designs for comparison
+        setSelectedForComparison([...selectedForComparison, design])
+      }
+    }
+  }
+
+  const startComparison = () => {
+    if (selectedForComparison.length === 0) {
+      // Auto-select top 3 recommendations
+      setSelectedForComparison(recommendations.slice(0, Math.min(3, recommendations.length)))
+    }
+    setComparisonMode(true)
+  }
+
+  const exitComparison = () => {
+    setComparisonMode(false)
+  }
+
+  if (comparisonMode) {
+    return (
+      <DesignComparison
+        designs={selectedForComparison.length > 0 ? selectedForComparison : recommendations.slice(0, 3)}
+        onExit={exitComparison}
+        onSelectDesign={onSelectDesign}
+        selectedDesign={selectedDesign}
+      />
+    )
+  }
+
   return (
     <div>
-      <h3 className="text-2xl font-bold text-gray-100 mb-2">Recommended Experimental Designs</h3>
-      <p className="text-gray-300 text-sm mb-6">
-        Based on {nFactors} factors, {goal} goal{budget ? `, and ${budget}-run budget` : ''}, here are expert recommendations:
-      </p>
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-2xl font-bold text-gray-100 mb-1">Recommended Experimental Designs</h3>
+          <p className="text-gray-300 text-sm">
+            Based on {nFactors} factors, {goal} goal{budget ? `, and ${budget}-run budget` : ''}, here are expert recommendations:
+          </p>
+        </div>
+        <button
+          onClick={startComparison}
+          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg font-semibold transition-all hover:scale-105 shadow-lg"
+        >
+          <GitCompare className="w-5 h-5" />
+          Compare Designs
+        </button>
+      </div>
 
-      {/* Warning */}
+      {/* Power Analysis Warning */}
+      {powerWarning && (
+        <div className="mb-6 bg-orange-900/20 border border-orange-700/50 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <Zap className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-orange-300 font-semibold mb-1">Statistical Power Alert</p>
+              <p className="text-orange-200 text-sm">{powerWarning}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Budget Warning */}
       {warning && (
         <div className="mb-6 bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4">
           <div className="flex items-start gap-3">
@@ -882,6 +961,260 @@ const formatValue = (value) => {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
   if (typeof value === 'number') return value.toFixed(2)
   return value.toString()
+}
+
+// Design Comparison Component
+const DesignComparison = ({ designs, onExit, onSelectDesign, selectedDesign }) => {
+  const metrics = [
+    { key: 'runs', label: 'Experimental Runs', lower_better: true },
+    { key: 'score', label: 'Overall Score', lower_better: false },
+    { key: 'cost_rating', label: 'Cost Rating', format: 'text' },
+    { key: 'efficiency_rating', label: 'Efficiency Rating', format: 'text' },
+    { key: 'robustness_rating', label: 'Robustness Rating', format: 'text' }
+  ]
+
+  const getNumericValue = (value, key) => {
+    if (key === 'cost_rating') {
+      return value === 'Low' ? 33 : value === 'Medium' ? 66 : 100
+    }
+    if (key === 'efficiency_rating' || key === 'robustness_rating') {
+      return value === 'Excellent' ? 100 : value === 'Good' ? 75 : value === 'Fair' ? 50 : 25
+    }
+    return value
+  }
+
+  const getColorForMetric = (value, key) => {
+    if (key === 'cost_rating') {
+      return value === 'Low' ? 'bg-green-500' : value === 'Medium' ? 'bg-yellow-500' : 'bg-red-500'
+    }
+    if (key === 'efficiency_rating' || key === 'robustness_rating') {
+      return value === 'Excellent' ? 'bg-green-500' : value === 'Good' ? 'bg-blue-500' : 'bg-yellow-500'
+    }
+    return 'bg-blue-500'
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h3 className="text-2xl font-bold text-gray-100 mb-1 flex items-center gap-2">
+            <BarChart3 className="w-7 h-7 text-blue-400" />
+            Design Comparison
+          </h3>
+          <p className="text-gray-300 text-sm">
+            Comparing {designs.length} experimental designs side-by-side
+          </p>
+        </div>
+        <button
+          onClick={onExit}
+          className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-gray-200 rounded-lg font-semibold transition-all"
+        >
+          <X className="w-5 h-5" />
+          Exit Comparison
+        </button>
+      </div>
+
+      {/* Comparison Table */}
+      <div className="bg-slate-800/50 border border-slate-700 rounded-xl overflow-hidden mb-6">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-slate-600 bg-slate-900/50">
+                <th className="text-left py-4 px-4 text-gray-300 font-semibold w-48">Metric</th>
+                {designs.map((design, idx) => (
+                  <th key={idx} className="text-center py-4 px-4 text-gray-100 font-semibold min-w-[200px]">
+                    <div className="space-y-1">
+                      <div className="text-sm font-normal text-gray-400">Design {idx + 1}</div>
+                      <div className="text-base">{design.type}</div>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {/* Basic Info */}
+              <tr className="border-b border-slate-700/50 bg-slate-800/30">
+                <td className="py-3 px-4 text-gray-300 font-medium">Design Type</td>
+                {designs.map((design, idx) => (
+                  <td key={idx} className="py-3 px-4 text-center text-gray-100 text-sm">
+                    {design.type}
+                  </td>
+                ))}
+              </tr>
+
+              {/* Metrics with visual bars */}
+              {metrics.map((metric) => (
+                <tr key={metric.key} className="border-b border-slate-700/50 hover:bg-slate-700/20">
+                  <td className="py-3 px-4 text-gray-300 font-medium">{metric.label}</td>
+                  {designs.map((design, idx) => {
+                    const value = design[metric.key]
+                    const numericValue = getNumericValue(value, metric.key)
+                    const maxValue = Math.max(...designs.map(d => getNumericValue(d[metric.key], metric.key)))
+                    const percentage = (numericValue / maxValue) * 100
+
+                    return (
+                      <td key={idx} className="py-3 px-4">
+                        <div className="space-y-1">
+                          <div className="text-center text-gray-100 font-semibold text-sm">
+                            {value}
+                          </div>
+                          {metric.format !== 'text' && (
+                            <div className="w-full bg-slate-700 rounded-full h-2">
+                              <div
+                                className={`${getColorForMetric(value, metric.key)} rounded-full h-2 transition-all`}
+                                style={{ width: `${percentage}%` }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+
+              {/* Properties */}
+              <tr className="border-b border-slate-700/50 bg-slate-800/30">
+                <td className="py-3 px-4 text-gray-300 font-medium">Key Properties</td>
+                {designs.map((design, idx) => (
+                  <td key={idx} className="py-3 px-4">
+                    <div className="flex flex-wrap gap-1 justify-center">
+                      {design.properties.orthogonal && (
+                        <span className="px-2 py-1 bg-green-900/30 border border-green-700/50 rounded text-green-300 text-xs">
+                          ✓ Orthogonal
+                        </span>
+                      )}
+                      {design.properties.rotatable && (
+                        <span className="px-2 py-1 bg-blue-900/30 border border-blue-700/50 rounded text-blue-300 text-xs">
+                          ✓ Rotatable
+                        </span>
+                      )}
+                      {design.properties.three_level && (
+                        <span className="px-2 py-1 bg-purple-900/30 border border-purple-700/50 rounded text-purple-300 text-xs">
+                          3-Level
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                ))}
+              </tr>
+
+              {/* Pros/Cons Count */}
+              <tr className="border-b border-slate-700/50">
+                <td className="py-3 px-4 text-gray-300 font-medium">Advantages</td>
+                {designs.map((design, idx) => (
+                  <td key={idx} className="py-3 px-4 text-center">
+                    <span className="text-green-400 font-semibold">{design.pros.length} pros</span>
+                  </td>
+                ))}
+              </tr>
+              <tr className="border-b border-slate-700/50">
+                <td className="py-3 px-4 text-gray-300 font-medium">Disadvantages</td>
+                {designs.map((design, idx) => (
+                  <td key={idx} className="py-3 px-4 text-center">
+                    <span className="text-red-400 font-semibold">{design.cons.length} cons</span>
+                  </td>
+                ))}
+              </tr>
+
+              {/* Action Row */}
+              <tr className="bg-slate-900/50">
+                <td className="py-4 px-4 text-gray-300 font-medium">Select Design</td>
+                {designs.map((design, idx) => (
+                  <td key={idx} className="py-4 px-4 text-center">
+                    <button
+                      onClick={() => {
+                        onSelectDesign(design)
+                        onExit()
+                      }}
+                      className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                        selectedDesign?.design_code === design.design_code
+                          ? 'bg-green-600 text-white'
+                          : 'bg-blue-600 hover:bg-blue-700 text-white'
+                      }`}
+                    >
+                      {selectedDesign?.design_code === design.design_code ? (
+                        <>
+                          <Check className="w-4 h-4 inline mr-1" />
+                          Selected
+                        </>
+                      ) : (
+                        'Select This'
+                      )}
+                    </button>
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Trade-off Analysis */}
+      <div className="bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-700/50 rounded-xl p-6 mb-6">
+        <h4 className="text-lg font-bold text-blue-200 mb-4 flex items-center gap-2">
+          <TrendingUp className="w-5 h-5" />
+          Trade-off Analysis
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-slate-800/50 rounded-lg p-4">
+            <h5 className="font-semibold text-gray-200 mb-2 flex items-center gap-2">
+              <DollarSign className="w-4 h-4 text-yellow-400" />
+              Cost vs. Power
+            </h5>
+            <p className="text-sm text-gray-300">
+              Designs with fewer runs are cheaper but may have less statistical power.
+              Consider your budget constraints and required precision.
+            </p>
+          </div>
+          <div className="bg-slate-800/50 rounded-lg p-4">
+            <h5 className="font-semibold text-gray-200 mb-2 flex items-center gap-2">
+              <Clock className="w-4 h-4 text-blue-400" />
+              Efficiency vs. Complexity
+            </h5>
+            <p className="text-sm text-gray-300">
+              Simpler designs are easier to execute but may not capture all interactions.
+              Complex designs provide more information but require careful planning.
+            </p>
+          </div>
+          <div className="bg-slate-800/50 rounded-lg p-4">
+            <h5 className="font-semibold text-gray-200 mb-2 flex items-center gap-2">
+              <Shield className="w-4 h-4 text-green-400" />
+              Robustness vs. Precision
+            </h5>
+            <p className="text-sm text-gray-300">
+              Robust designs protect against model misspecification but may require more runs.
+              Precise designs give exact estimates under the right model assumptions.
+            </p>
+          </div>
+          <div className="bg-slate-800/50 rounded-lg p-4">
+            <h5 className="font-semibold text-gray-200 mb-2 flex items-center gap-2">
+              <Target className="w-4 h-4 text-purple-400" />
+              Coverage vs. Resources
+            </h5>
+            <p className="text-sm text-gray-300">
+              Full factorial explores all combinations but becomes expensive with many factors.
+              Fractional designs reduce cost while maintaining critical information.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Recommendation */}
+      <div className="bg-green-900/20 border border-green-700/50 rounded-lg p-5">
+        <h4 className="font-bold text-green-200 mb-2 flex items-center gap-2">
+          <Star className="w-5 h-5" />
+          Expert Recommendation
+        </h4>
+        <p className="text-green-100 text-sm">
+          Based on your comparison, <strong>{designs[0].type}</strong> appears to be the strongest choice with a score of {designs[0].score}/100.
+          However, consider your specific constraints (budget, time, equipment) when making the final decision.
+          All displayed designs are statistically valid for your {designs[0].runs}-factor experiment.
+        </p>
+      </div>
+    </div>
+  )
 }
 
 export default DesignRecommendationStep
