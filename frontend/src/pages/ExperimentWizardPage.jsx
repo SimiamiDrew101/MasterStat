@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ChevronRight, ChevronLeft, CheckCircle, Sparkles, Download, AlertCircle, Shuffle, RotateCcw } from 'lucide-react'
 import axios from 'axios'
 import DesignRecommendationStep from '../components/DesignRecommendationStep'
@@ -651,13 +651,15 @@ const PowerAnalysis = ({ nFactors, powerAnalysis, onPowerAnalysisChange }) => {
   }
 
   // Calculate on mount if not already calculated
-  if (powerAnalysis.minimumRuns === null) {
-    const minimumRuns = calculateMinimumRuns(powerAnalysis.effectSize, powerAnalysis.desiredPower, nFactors)
-    onPowerAnalysisChange({
-      ...powerAnalysis,
-      minimumRuns
-    })
-  }
+  useEffect(() => {
+    if (powerAnalysis.minimumRuns === null) {
+      const minimumRuns = calculateMinimumRuns(powerAnalysis.effectSize, powerAnalysis.desiredPower, nFactors)
+      onPowerAnalysisChange({
+        ...powerAnalysis,
+        minimumRuns
+      })
+    }
+  }, []) // Run only on mount
 
   return (
     <div>
