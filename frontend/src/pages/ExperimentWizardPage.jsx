@@ -238,49 +238,51 @@ const ExperimentWizardPage = () => {
               Step {currentStep} of {steps.length}
             </div>
 
-            {currentStep < steps.length ? (
-            <button
-              onClick={nextStep}
-              disabled={
-                (currentStep === 1 && !wizardData.goal) ||
-                (currentStep === 2 && wizardData.nFactors < 2) ||
-                (currentStep === 4 && !wizardData.selectedDesign)
-              }
-              className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
-                (currentStep === 1 && !wizardData.goal) ||
-                (currentStep === 2 && wizardData.nFactors < 2) ||
-                (currentStep === 4 && !wizardData.selectedDesign)
-                  ? 'bg-slate-700/30 text-gray-500 cursor-not-allowed'
-                  : 'bg-blue-600 text-white hover:bg-blue-700 hover:scale-105'
-              }`}
-            >
-              Next
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          ) : (
-            <button
-              onClick={handleComplete}
-              disabled={loading}
-              className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
-                loading
-                  ? 'bg-slate-700/30 text-gray-500 cursor-not-allowed'
-                  : 'bg-green-600 text-white hover:bg-green-700 hover:scale-105'
-              }`}
-            >
-              {loading ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-5 h-5" />
-                  Generate Design
-                </>
-              )}
-            </button>
-          )}
-        </div>
+            {currentStep < steps.length && (
+              <button
+                onClick={nextStep}
+                disabled={
+                  (currentStep === 1 && !wizardData.goal) ||
+                  (currentStep === 2 && wizardData.nFactors < 2) ||
+                  (currentStep === 4 && !wizardData.selectedDesign)
+                }
+                className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
+                  (currentStep === 1 && !wizardData.goal) ||
+                  (currentStep === 2 && wizardData.nFactors < 2) ||
+                  (currentStep === 4 && !wizardData.selectedDesign)
+                    ? 'bg-slate-700/30 text-gray-500 cursor-not-allowed'
+                    : 'bg-blue-600 text-white hover:bg-blue-700 hover:scale-105'
+                }`}
+              >
+                Next
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            )}
+
+            {currentStep === steps.length && (
+              <button
+                onClick={handleComplete}
+                disabled={loading}
+                className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
+                  loading
+                    ? 'bg-slate-700/30 text-gray-500 cursor-not-allowed'
+                    : 'bg-green-600 text-white hover:bg-green-700 hover:scale-105'
+                }`}
+              >
+                {loading ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-5 h-5" />
+                    Generate Design
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         )}
 
         {/* Results Footer - Step 6 */}
