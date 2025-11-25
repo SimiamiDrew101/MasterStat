@@ -1,7 +1,14 @@
 import { useState, useEffect } from 'react'
-import { ChevronRight, ChevronLeft, CheckCircle, Sparkles, Download, AlertCircle, Shuffle, RotateCcw } from 'lucide-react'
+import { ChevronRight, ChevronLeft, CheckCircle, Sparkles, Download, AlertCircle, Shuffle, RotateCcw, FileText, FileSpreadsheet, FileCode, ChevronDown } from 'lucide-react'
 import axios from 'axios'
 import DesignRecommendationStep from '../components/DesignRecommendationStep'
+import {
+  downloadPDF,
+  downloadExcel,
+  downloadJMP,
+  downloadMinitab,
+  downloadCSV
+} from '../utils/designExport'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -918,6 +925,7 @@ const DesignResults = ({ design, wizardData }) => {
 
   const [designMatrix, setDesignMatrix] = useState(originalMatrix)
   const [isRandomized, setIsRandomized] = useState(false)
+  const [exportMenuOpen, setExportMenuOpen] = useState(false)
 
   // Fisher-Yates shuffle algorithm
   const shuffleArray = (array) => {
@@ -939,33 +947,50 @@ const DesignResults = ({ design, wizardData }) => {
     setIsRandomized(false)
   }
 
-  const handleDownloadCSV = () => {
-    const factorLevels = design.factorLevels || []
+  // Create current design object with potentially randomized matrix
+  const getCurrentDesign = () => ({
+    ...design,
+    design_matrix: designMatrix, // Use current (possibly randomized) matrix
+    isRandomized
+  })
 
-    // Header row with units if available
-    const headers = factorNames.map((name, idx) => {
-      const level = factorLevels[idx]
-      const units = level && level.units ? ` (${level.units})` : ''
-      return `${name}${units}`
-    })
-    let csv = 'Run,' + headers.join(',') + ',Response\n'
-
-    // Data rows using current (possibly randomized) matrix
-    designMatrix.forEach((row, idx) => {
-      const values = factorNames.map(name => {
-        const value = row[name]
-        return typeof value === 'number' ? value.toFixed(3) : value
-      })
-      csv += `${idx + 1},${values.join(',')},\n`
-    })
-
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = isRandomized ? 'experiment-design-randomized.csv' : 'experiment-design.csv'
-    a.click()
-  }
+  const exportOptions = [
+    {
+      label: 'PDF Report (Recommended)',
+      description: 'Complete report with instructions',
+      icon: <FileText className="w-5 h-5" />,
+      color: 'text-red-400',
+      handler: () => downloadPDF(getCurrentDesign(), wizardData)
+    },
+    {
+      label: 'Excel Workbook',
+      description: 'Multi-sheet with summary & instructions',
+      icon: <FileSpreadsheet className="w-5 h-5" />,
+      color: 'text-green-400',
+      handler: () => downloadExcel(getCurrentDesign(), wizardData)
+    },
+    {
+      label: 'CSV (Enhanced)',
+      description: 'With metadata and notes column',
+      icon: <Download className="w-5 h-5" />,
+      color: 'text-blue-400',
+      handler: () => downloadCSV(getCurrentDesign(), wizardData, true)
+    },
+    {
+      label: 'JMP Format',
+      description: 'Compatible with JMP software',
+      icon: <FileCode className="w-5 h-5" />,
+      color: 'text-purple-400',
+      handler: () => downloadJMP(getCurrentDesign(), wizardData)
+    },
+    {
+      label: 'Minitab Format',
+      description: 'Compatible with Minitab software',
+      icon: <FileCode className="w-5 h-5" />,
+      color: 'text-orange-400',
+      handler: () => downloadMinitab(getCurrentDesign(), wizardData)
+    }
+  ]
 
   return (
     <div>
@@ -1041,14 +1066,69 @@ const DesignResults = ({ design, wizardData }) => {
             )}
           </div>
           <div className="flex gap-2 ml-4">
-            <button
-              onClick={handleDownloadCSV}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all hover:scale-105 shadow-lg"
-              title="Download design matrix as CSV"
-            >
-              <Download className="w-5 h-5" />
-              Download CSV
-            </button>
+            {/* Export Dropdown Menu */}
+            <div className="relative">
+              <button
+                onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg font-semibold transition-all hover:scale-105 shadow-lg"
+                title="Export design in various formats"
+              >
+                <Download className="w-5 h-5" />
+                Export Design
+                <ChevronDown className={`w-4 h-4 transition-transform ${exportMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {exportMenuOpen && (
+                <>
+                  {/* Backdrop to close dropdown */}
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setExportMenuOpen(false)}
+                  />
+                  {/* Dropdown Menu */}
+                  <div className="absolute right-0 mt-2 w-80 bg-slate-800 border border-slate-700 rounded-lg shadow-2xl z-20 overflow-hidden">
+                    <div className="bg-gradient-to-r from-blue-900/50 to-indigo-900/50 px-4 py-3 border-b border-slate-700">
+                      <h3 className="text-white font-semibold text-sm">Export Options</h3>
+                      <p className="text-gray-300 text-xs mt-0.5">
+                        {isRandomized ? '✓ Randomized order included' : 'Design order (not randomized)'}
+                      </p>
+                    </div>
+                    <div className="max-h-96 overflow-y-auto">
+                      {exportOptions.map((option, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => {
+                            option.handler()
+                            setExportMenuOpen(false)
+                          }}
+                          className="w-full px-4 py-3 text-left hover:bg-slate-700/50 transition-colors border-b border-slate-700/50 last:border-0"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`${option.color} flex-shrink-0 mt-0.5`}>
+                              {option.icon}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-gray-100 font-semibold text-sm">
+                                {option.label}
+                              </div>
+                              <div className="text-gray-400 text-xs mt-0.5">
+                                {option.description}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="bg-slate-900/50 px-4 py-2 border-t border-slate-700">
+                      <p className="text-xs text-gray-400 italic">
+                        💡 Tip: PDF Report recommended for complete documentation
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
             <button
               onClick={handleRandomize}
               className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-all hover:scale-105 shadow-lg"
