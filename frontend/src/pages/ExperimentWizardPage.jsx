@@ -5,6 +5,7 @@ import DesignRecommendationStep from '../components/DesignRecommendationStep'
 import DesignPreview from '../components/DesignPreview'
 import SmartValidation from '../components/SmartValidation'
 import SequentialExperimentGuide from '../components/SequentialExperimentGuide'
+import InteractiveTooltip, { InlineTooltip } from '../components/InteractiveTooltip'
 import {
   downloadPDF,
   downloadExcel,
@@ -408,6 +409,7 @@ const GoalSelector = ({ value, onChange }) => {
     {
       id: 'optimization',
       title: 'Optimization',
+      tooltipTerm: 'optimization',
       icon: '🎯',
       description: 'Find the best factor settings to maximize or minimize your response',
       examples: 'Maximize yield, minimize cost, optimize quality'
@@ -415,6 +417,7 @@ const GoalSelector = ({ value, onChange }) => {
     {
       id: 'screening',
       title: 'Screening',
+      tooltipTerm: 'screening',
       icon: '🔍',
       description: 'Identify which factors have the biggest impact on your response',
       examples: 'Which of 5+ factors matter most?'
@@ -422,6 +425,7 @@ const GoalSelector = ({ value, onChange }) => {
     {
       id: 'modeling',
       title: 'Response Surface Modeling',
+      tooltipTerm: 'rsm',
       icon: '📈',
       description: 'Understand how factors interact and affect your response',
       examples: 'Map the response surface, study curvature'
@@ -447,7 +451,10 @@ const GoalSelector = ({ value, onChange }) => {
             }`}
           >
             <div className="text-4xl mb-3">{goal.icon}</div>
-            <h4 className="text-xl font-bold text-gray-100 mb-2">{goal.title}</h4>
+            <h4 className="text-xl font-bold text-gray-100 mb-2 flex items-center gap-2">
+              {goal.title}
+              <InteractiveTooltip term={goal.tooltipTerm} mode="both" />
+            </h4>
             <p className="text-gray-300 text-sm mb-3">{goal.description}</p>
             <p className="text-gray-400 text-xs italic">{goal.examples}</p>
           </button>
@@ -674,17 +681,22 @@ const PowerAnalysis = ({ nFactors, powerAnalysis, onPowerAnalysisChange }) => {
 
   return (
     <div>
-      <h3 className="text-2xl font-bold text-gray-100 mb-2">Power Analysis</h3>
+      <h3 className="text-2xl font-bold text-gray-100 mb-2 flex items-center gap-2">
+        Power Analysis
+        <InteractiveTooltip term="statistical-power" mode="both" />
+      </h3>
       <p className="text-gray-300 text-sm mb-6">
         Ensure your experiment has enough runs to detect meaningful effects
       </p>
 
       {/* Educational Box */}
       <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-4 mb-6">
-        <h4 className="text-blue-200 font-semibold mb-2">What is Statistical Power?</h4>
+        <h4 className="text-blue-200 font-semibold mb-2 flex items-center gap-2">
+          What is <InlineTooltip term="statistical-power">Statistical Power</InlineTooltip>?
+        </h4>
         <p className="text-blue-100 text-sm mb-2">
           Statistical power is the probability that your experiment will detect a real effect when it exists.
-          Higher power means you're less likely to miss important discoveries!
+          Higher power means you're less likely to miss important discoveries (<InlineTooltip term="type-ii-error">Type II errors</InlineTooltip>)!
         </p>
         <p className="text-blue-100 text-sm">
           <strong>Rule of thumb:</strong> 80% power means if a real effect exists, you have an 80% chance of detecting it.
@@ -693,8 +705,8 @@ const PowerAnalysis = ({ nFactors, powerAnalysis, onPowerAnalysisChange }) => {
 
       {/* Effect Size Selection */}
       <div className="mb-6">
-        <label className="block text-gray-200 font-semibold mb-3">
-          What effect size do you want to detect?
+        <label className="block text-gray-200 font-semibold mb-3 flex items-center gap-2">
+          What <InlineTooltip term="effect-size">effect size</InlineTooltip> do you want to detect?
         </label>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {effectSizes.map((effect) => (

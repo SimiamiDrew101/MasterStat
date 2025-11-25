@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Check, X, AlertTriangle, TrendingUp, Info, ChevronDown, ChevronUp, Star, Zap, Shield, DollarSign, Clock, Target, GitCompare, BarChart3 } from 'lucide-react'
+import InteractiveTooltip, { InlineTooltip } from './InteractiveTooltip'
 
 const DesignRecommendationStep = ({ nFactors, budget, goal, minimumRuns, selectedDesign, onSelectDesign }) => {
   const [recommendations, setRecommendations] = useState([])
@@ -8,6 +9,19 @@ const DesignRecommendationStep = ({ nFactors, budget, goal, minimumRuns, selecte
   const [powerWarning, setPowerWarning] = useState(null)
   const [comparisonMode, setComparisonMode] = useState(false)
   const [selectedForComparison, setSelectedForComparison] = useState([])
+
+  // Map design codes to glossary terms for tooltips
+  const getGlossaryTerm = (designCode) => {
+    const termMap = {
+      'ccd-face': 'ccd',
+      'ccd-rotatable': 'ccd',
+      'box-behnken': 'box-behnken',
+      'full-factorial': 'full-factorial',
+      'fractional-factorial': 'fractional-factorial',
+      'plackett-burman': 'plackett-burman'
+    }
+    return termMap[designCode] || null
+  }
 
   useEffect(() => {
     generateRecommendations()
@@ -145,6 +159,7 @@ const DesignRecommendationStep = ({ nFactors, budget, goal, minimumRuns, selecte
             isRecommended={index === 0}
             isSelected={selectedDesign?.design_code === design.design_code}
             onSelect={() => onSelectDesign(design)}
+            glossaryTerm={getGlossaryTerm(design.design_code)}
           />
         ))}
       </div>
@@ -216,7 +231,7 @@ const AllDesignsSection = ({ allDesigns, recommendations, selectedDesign, onSele
   )
 }
 
-const DesignCard = ({ design, rank, isRecommended, isSelected, onSelect }) => {
+const DesignCard = ({ design, rank, isRecommended, isSelected, onSelect, glossaryTerm }) => {
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -252,7 +267,10 @@ const DesignCard = ({ design, rank, isRecommended, isSelected, onSelect }) => {
                 </span>
               )}
 
-              <h4 className="text-xl font-bold text-gray-100">{design.type}</h4>
+              <h4 className="text-xl font-bold text-gray-100 flex items-center gap-2">
+                {design.type}
+                {glossaryTerm && <InteractiveTooltip term={glossaryTerm} mode="both" />}
+              </h4>
 
               <div
                 className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
