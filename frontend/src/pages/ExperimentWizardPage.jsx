@@ -3,6 +3,7 @@ import { ChevronRight, ChevronLeft, CheckCircle, Sparkles, Download, AlertCircle
 import axios from 'axios'
 import DesignRecommendationStep from '../components/DesignRecommendationStep'
 import DesignPreview from '../components/DesignPreview'
+import SmartValidation from '../components/SmartValidation'
 import {
   downloadPDF,
   downloadExcel,
@@ -10,6 +11,7 @@ import {
   downloadMinitab,
   downloadCSV
 } from '../utils/designExport'
+import { validateWizardData } from '../utils/smartValidation'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -914,6 +916,11 @@ const DesignSummary = ({ wizardData }) => {
           <DesignPreview wizardData={wizardData} />
         </div>
       )}
+
+      {/* Smart Validation */}
+      <div className="mt-6">
+        <SmartValidation validations={validateWizardData(wizardData)} />
+      </div>
 
       <div className="mt-6 bg-green-900/20 border border-green-700/50 rounded-lg p-4">
         <p className="text-green-200 text-sm">
