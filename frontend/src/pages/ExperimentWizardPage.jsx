@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { ChevronRight, ChevronLeft, CheckCircle, Sparkles, Download, AlertCircle, Shuffle, RotateCcw, FileText, FileSpreadsheet, FileCode, ChevronDown } from 'lucide-react'
 import axios from 'axios'
 import DesignRecommendationStep from '../components/DesignRecommendationStep'
+import DesignPreview from '../components/DesignPreview'
 import {
   downloadPDF,
   downloadExcel,
@@ -906,6 +907,13 @@ const DesignSummary = ({ wizardData }) => {
           </div>
         )}
       </div>
+
+      {/* Design Preview Visualization */}
+      {selectedDesign && (
+        <div className="mt-6">
+          <DesignPreview wizardData={wizardData} />
+        </div>
+      )}
 
       <div className="mt-6 bg-green-900/20 border border-green-700/50 rounded-lg p-4">
         <p className="text-green-200 text-sm">
