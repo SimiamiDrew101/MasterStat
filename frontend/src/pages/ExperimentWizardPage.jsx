@@ -6,6 +6,7 @@ import DesignPreview from '../components/DesignPreview'
 import SmartValidation from '../components/SmartValidation'
 import SequentialExperimentGuide from '../components/SequentialExperimentGuide'
 import InteractiveTooltip, { InlineTooltip } from '../components/InteractiveTooltip'
+import FactorInteractionSelector from '../components/FactorInteractionSelector'
 import {
   downloadPDF,
   downloadExcel,
@@ -24,6 +25,7 @@ const ExperimentWizardPage = () => {
     nFactors: 2,
     factorNames: [],
     factorLevels: [], // Array of { min, max, units } for each factor
+    selectedInteractions: [], // Array of { factor1, factor2 } for suspected interactions
     powerAnalysis: {
       effectSize: 'medium',
       desiredPower: 0.80,
@@ -253,9 +255,12 @@ const ExperimentWizardPage = () => {
               nFactors={wizardData.nFactors}
               factorNames={wizardData.factorNames}
               factorLevels={wizardData.factorLevels}
+              selectedInteractions={wizardData.selectedInteractions}
+              goal={wizardData.goal}
               onFactorCountChange={(n) => updateWizardData('nFactors', n)}
               onFactorNamesChange={(names) => updateWizardData('factorNames', names)}
               onFactorLevelsChange={(levels) => updateWizardData('factorLevels', levels)}
+              onInteractionsChange={(interactions) => updateWizardData('selectedInteractions', interactions)}
             />
           )}
           {currentStep === 3 && (
@@ -279,6 +284,7 @@ const ExperimentWizardPage = () => {
               budget={wizardData.budget}
               goal={wizardData.goal}
               minimumRuns={wizardData.powerAnalysis.minimumRuns}
+              selectedInteractions={wizardData.selectedInteractions}
               selectedDesign={wizardData.selectedDesign}
               onSelectDesign={(design) => updateWizardData('selectedDesign', design)}
             />
@@ -382,6 +388,7 @@ const ExperimentWizardPage = () => {
                   nFactors: 2,
                   factorNames: [],
                   factorLevels: [],
+                  selectedInteractions: [],
                   powerAnalysis: {
                     effectSize: 'medium',
                     desiredPower: 0.80,
@@ -465,7 +472,7 @@ const GoalSelector = ({ value, onChange }) => {
 }
 
 // Step 2: Factor Configuration
-const FactorConfiguration = ({ nFactors, factorNames, factorLevels, onFactorCountChange, onFactorNamesChange, onFactorLevelsChange }) => {
+const FactorConfiguration = ({ nFactors, factorNames, factorLevels, selectedInteractions, goal, onFactorCountChange, onFactorNamesChange, onFactorLevelsChange, onInteractionsChange }) => {
   const handleFactorNameChange = (index, name) => {
     const newNames = [...factorNames]
     newNames[index] = name
@@ -579,6 +586,19 @@ const FactorConfiguration = ({ nFactors, factorNames, factorLevels, onFactorCoun
           </p>
         </div>
       </div>
+
+      {/* Factor Interaction Selector */}
+      {nFactors >= 2 && (
+        <div className="mt-8 pt-8 border-t border-slate-600">
+          <FactorInteractionSelector
+            nFactors={nFactors}
+            factorNames={factorNames}
+            goal={goal}
+            selectedInteractions={selectedInteractions}
+            onInteractionsChange={onInteractionsChange}
+          />
+        </div>
+      )}
     </div>
   )
 }

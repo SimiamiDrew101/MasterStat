@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Check, X, AlertTriangle, TrendingUp, Info, ChevronDown, ChevronUp, Star, Zap, Shield, DollarSign, Clock, Target, GitCompare, BarChart3 } from 'lucide-react'
+import { Check, X, AlertTriangle, TrendingUp, Info, ChevronDown, ChevronUp, Star, Zap, Shield, DollarSign, Clock, Target, GitCompare, BarChart3, Network } from 'lucide-react'
 import InteractiveTooltip, { InlineTooltip } from './InteractiveTooltip'
+import { calculateInteractionCoverage, getInteractionCapability } from '../utils/interactionAnalysis'
 
-const DesignRecommendationStep = ({ nFactors, budget, goal, minimumRuns, selectedDesign, onSelectDesign }) => {
+const DesignRecommendationStep = ({ nFactors, budget, goal, minimumRuns, selectedInteractions = [], selectedDesign, onSelectDesign }) => {
   const [recommendations, setRecommendations] = useState([])
   const [allDesigns, setAllDesigns] = useState([])
   const [warning, setWarning] = useState(null)
@@ -25,16 +26,38 @@ const DesignRecommendationStep = ({ nFactors, budget, goal, minimumRuns, selecte
 
   useEffect(() => {
     generateRecommendations()
-  }, [nFactors, budget, goal, minimumRuns])
+  }, [nFactors, budget, goal, minimumRuns, selectedInteractions])
 
   const generateRecommendations = () => {
     const designs = getAllDesigns(nFactors, budget, goal)
-    setAllDesigns(designs)
 
-    // Sort by score and filter based on budget
+    // Apply interaction coverage scoring if interactions are specified
+    const scoredDesigns = designs.map(design => {
+      const interactionCoverage = calculateInteractionCoverage(design.design_code, nFactors, selectedInteractions)
+      const interactionCapability = getInteractionCapability(design.design_code, nFactors)
+
+      // If interactions are specified, adjust score based on coverage
+      let adjustedScore = design.score
+      if (selectedInteractions && selectedInteractions.length > 0) {
+        // Weight: 70% original score + 30% interaction coverage
+        adjustedScore = design.score * 0.7 + interactionCoverage * 100 * 0.3
+      }
+
+      return {
+        ...design,
+        baseScore: design.score,
+        interactionCoverage: interactionCoverage,
+        interactionCapability: interactionCapability,
+        score: Math.round(adjustedScore)
+      }
+    })
+
+    setAllDesigns(scoredDesigns)
+
+    // Sort by adjusted score and filter based on budget
     const filtered = budget
-      ? designs.filter(d => d.runs <= budget)
-      : designs
+      ? scoredDesigns.filter(d => d.runs <= budget)
+      : scoredDesigns
 
     const sorted = filtered.sort((a, b) => b.score - a.score)
     setRecommendations(sorted.slice(0, 4)) // Top 4 recommendations
@@ -131,6 +154,22 @@ const DesignRecommendationStep = ({ nFactors, budget, goal, minimumRuns, selecte
             <div>
               <p className="text-orange-300 font-semibold mb-1">Statistical Power Alert</p>
               <p className="text-orange-200 text-sm">{powerWarning}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interaction Coverage Info */}
+      {selectedInteractions && selectedInteractions.length > 0 && (
+        <div className="mb-6 bg-purple-900/20 border border-purple-700/50 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <Network className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-purple-300 font-semibold mb-1">Interaction Coverage Prioritized</p>
+              <p className="text-purple-200 text-sm">
+                Design scores have been adjusted to prioritize designs that can estimate your {selectedInteractions.length} selected interaction{selectedInteractions.length !== 1 ? 's' : ''}.
+                Designs with higher interaction coverage will rank higher.
+              </p>
             </div>
           </div>
         </div>
@@ -362,6 +401,25 @@ const DesignCard = ({ design, rank, isRecommended, isSelected, onSelect, glossar
           {design.properties.three_level && (
             <span className="px-2 py-1 bg-teal-900/30 border border-teal-700/50 rounded text-teal-200 text-xs">
               3-Level
+            </span>
+          )}
+          {design.interactionCapability && (
+            <span
+              className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 ${
+                design.interactionCapability.color === 'green'
+                  ? 'bg-green-900/30 border border-green-700/50 text-green-200'
+                  : design.interactionCapability.color === 'blue'
+                  ? 'bg-blue-900/30 border border-blue-700/50 text-blue-200'
+                  : design.interactionCapability.color === 'yellow'
+                  ? 'bg-yellow-900/30 border border-yellow-700/50 text-yellow-200'
+                  : 'bg-red-900/30 border border-red-700/50 text-red-200'
+              }`}
+              title={design.interactionCapability.description}
+            >
+              <Network className="w-3 h-3" />
+              {design.interactionCapability.clear === design.interactionCapability.total ? '✓ All Interactions' :
+               design.interactionCapability.clear > 0 ? `${design.interactionCapability.clear}/${design.interactionCapability.total} Interactions` :
+               design.interactionCapability.confounded > 0 ? 'Some Interactions' : 'No Interactions'}
             </span>
           )}
         </div>
