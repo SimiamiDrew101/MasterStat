@@ -4,6 +4,7 @@ import axios from 'axios'
 import DesignRecommendationStep from '../components/DesignRecommendationStep'
 import DesignPreview from '../components/DesignPreview'
 import SmartValidation from '../components/SmartValidation'
+import SequentialExperimentGuide from '../components/SequentialExperimentGuide'
 import {
   downloadPDF,
   downloadExcel,
@@ -920,6 +921,11 @@ const DesignSummary = ({ wizardData }) => {
       {/* Smart Validation */}
       <div className="mt-6">
         <SmartValidation validations={validateWizardData(wizardData)} />
+      </div>
+
+      {/* Sequential Experimentation Guide */}
+      <div className="mt-6">
+        <SequentialExperimentGuide wizardData={wizardData} />
       </div>
 
       <div className="mt-6 bg-green-900/20 border border-green-700/50 rounded-lg p-4">
