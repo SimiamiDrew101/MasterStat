@@ -30,8 +30,16 @@ const InteractiveTooltip = ({
   // Handle drag functionality
   const handleMouseDown = (e) => {
     if (e.target.closest('.tooltip-drag-handle')) {
-      setIsDragging(true)
+      e.preventDefault()
       const rect = tooltipRef.current.getBoundingClientRect()
+
+      // Convert from centered position to absolute positioning
+      setTooltipPosition({
+        left: `${rect.left}px`,
+        top: `${rect.top}px`
+      })
+
+      setIsDragging(true)
       setDragOffset({
         x: e.clientX - rect.left,
         y: e.clientY - rect.top
@@ -42,17 +50,26 @@ const InteractiveTooltip = ({
   const handleMouseMove = (e) => {
     if (isDragging && tooltipRef.current) {
       e.preventDefault()
+
       const newLeft = e.clientX - dragOffset.x
       const newTop = e.clientY - dragOffset.y
 
-      // Keep within viewport
+      // Get tooltip dimensions
       const rect = tooltipRef.current.getBoundingClientRect()
+
+      // Calculate maximum positions (keep tooltip fully visible)
+      const minLeft = 0
+      const minTop = 0
       const maxLeft = window.innerWidth - rect.width
       const maxTop = window.innerHeight - rect.height
 
+      // Constrain position to viewport
+      const constrainedLeft = Math.max(minLeft, Math.min(newLeft, maxLeft))
+      const constrainedTop = Math.max(minTop, Math.min(newTop, maxTop))
+
       setTooltipPosition({
-        left: `${Math.max(0, Math.min(newLeft, maxLeft))}px`,
-        top: `${Math.max(0, Math.min(newTop, maxTop))}px`
+        left: `${constrainedLeft}px`,
+        top: `${constrainedTop}px`
       })
     }
   }
@@ -169,7 +186,7 @@ const InteractiveTooltip = ({
           style={{
             top: tooltipPosition.top,
             left: tooltipPosition.left,
-            transform: position === 'center' ? 'translate(-50%, -50%)' : 'none',
+            transform: position === 'center' && !isDragging && tooltipPosition.top === '50%' ? 'translate(-50%, -50%)' : 'none',
             cursor: isDragging ? 'grabbing' : 'default',
             userSelect: isDragging ? 'none' : 'auto'
           }}
