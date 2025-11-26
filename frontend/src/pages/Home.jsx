@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, Flask, Shield } from 'lucide-react'
+import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck } from 'lucide-react'
 
 const Home = () => {
   const features = [
@@ -67,14 +67,14 @@ const Home = () => {
       color: 'from-purple-400 to-purple-600'
     },
     {
-      icon: <Flask className="w-12 h-12" />,
+      icon: <TestTubes className="w-12 h-12" />,
       title: 'Mixture Design',
       description: 'Simplex designs for mixture experiments and formulation optimization',
       path: '/mixture',
       color: 'from-teal-400 to-teal-600'
     },
     {
-      icon: <Shield className="w-12 h-12" />,
+      icon: <ShieldCheck className="w-12 h-12" />,
       title: 'Robust Design',
       description: 'Taguchi methods, noise factors, and parameter design',
       path: '/robust',
