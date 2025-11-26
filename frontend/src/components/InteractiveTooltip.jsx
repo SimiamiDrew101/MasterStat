@@ -15,140 +15,69 @@ const InteractiveTooltip = ({
   children,
   icon = 'info',
   mode = 'hover', // 'hover', 'click', or 'both'
-  position = 'top' // 'top', 'bottom', 'left', 'right'
+  position = 'center' // 'center' = modal style (reliable), 'auto' = near trigger (complex)
 }) => {
   const [isOpen, setIsOpen] = useState(false)
-  const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0, opacity: 0 })
-  const [isPositioned, setIsPositioned] = useState(false)
+  const [tooltipPosition, setTooltipPosition] = useState({ top: '50%', left: '50%' })
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const triggerRef = useRef(null)
   const tooltipRef = useRef(null)
   const hoverTimeoutRef = useRef(null)
 
   const glossaryEntry = getGlossaryTerm(term)
 
-  useEffect(() => {
-    if (isOpen && triggerRef.current && tooltipRef.current) {
-      // Double requestAnimationFrame to ensure content is fully rendered
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (!triggerRef.current || !tooltipRef.current) return
-
-          const calculatePosition = () => {
-            const triggerRect = triggerRef.current.getBoundingClientRect()
-            const tooltipRect = tooltipRef.current.getBoundingClientRect()
-            const viewportWidth = window.innerWidth
-            const viewportHeight = window.innerHeight
-
-            const gap = 12 // Gap between trigger and tooltip
-            const padding = 20 // Padding from viewport edges
-
-            let top = 0
-            let left = 0
-            let finalPosition = position
-
-            // Try primary position
-            switch (position) {
-              case 'top':
-                top = triggerRect.top - tooltipRect.height - gap
-                left = triggerRect.left + (triggerRect.width / 2) - (tooltipRect.width / 2)
-
-                // Fallback to bottom if not enough space above
-                if (top < padding) {
-                  finalPosition = 'bottom'
-                  top = triggerRect.bottom + gap
-                }
-                break
-
-              case 'bottom':
-                top = triggerRect.bottom + gap
-                left = triggerRect.left + (triggerRect.width / 2) - (tooltipRect.width / 2)
-
-                // Fallback to top if not enough space below
-                if (top + tooltipRect.height > viewportHeight - padding) {
-                  finalPosition = 'top'
-                  top = triggerRect.top - tooltipRect.height - gap
-                }
-                break
-
-              case 'left':
-                top = triggerRect.top + (triggerRect.height / 2) - (tooltipRect.height / 2)
-                left = triggerRect.left - tooltipRect.width - gap
-
-                // Fallback to right if not enough space on left
-                if (left < padding) {
-                  finalPosition = 'right'
-                  left = triggerRect.right + gap
-                }
-                break
-
-              case 'right':
-                top = triggerRect.top + (triggerRect.height / 2) - (tooltipRect.height / 2)
-                left = triggerRect.right + gap
-
-                // Fallback to left if not enough space on right
-                if (left + tooltipRect.width > viewportWidth - padding) {
-                  finalPosition = 'left'
-                  left = triggerRect.left - tooltipRect.width - gap
-                }
-                break
-
-              default:
-                top = triggerRect.bottom + gap
-                left = triggerRect.left + (triggerRect.width / 2) - (tooltipRect.width / 2)
-            }
-
-            // Final horizontal constraint
-            if (left < padding) {
-              left = padding
-            } else if (left + tooltipRect.width > viewportWidth - padding) {
-              left = viewportWidth - tooltipRect.width - padding
-            }
-
-            // Final vertical constraint
-            if (top < padding) {
-              top = padding
-            } else if (top + tooltipRect.height > viewportHeight - padding) {
-              top = viewportHeight - tooltipRect.height - padding
-            }
-
-            // Ensure we don't go negative or exceed viewport
-            top = Math.max(padding, Math.min(top, viewportHeight - tooltipRect.height - padding))
-            left = Math.max(padding, Math.min(left, viewportWidth - tooltipRect.width - padding))
-
-            return { top, left, opacity: 1 }
-          }
-
-          const pos = calculatePosition()
-          setTooltipPosition(pos)
-          setIsPositioned(true)
-        })
+  // Handle drag functionality
+  const handleMouseDown = (e) => {
+    if (e.target.closest('.tooltip-drag-handle')) {
+      setIsDragging(true)
+      const rect = tooltipRef.current.getBoundingClientRect()
+      setDragOffset({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
       })
-    } else {
-      setIsPositioned(false)
-      setTooltipPosition({ top: 0, left: 0, opacity: 0 })
     }
-  }, [isOpen, position])
+  }
 
-  // Reposition on scroll or resize
+  const handleMouseMove = (e) => {
+    if (isDragging && tooltipRef.current) {
+      e.preventDefault()
+      const newLeft = e.clientX - dragOffset.x
+      const newTop = e.clientY - dragOffset.y
+
+      // Keep within viewport
+      const rect = tooltipRef.current.getBoundingClientRect()
+      const maxLeft = window.innerWidth - rect.width
+      const maxTop = window.innerHeight - rect.height
+
+      setTooltipPosition({
+        left: `${Math.max(0, Math.min(newLeft, maxLeft))}px`,
+        top: `${Math.max(0, Math.min(newTop, maxTop))}px`
+      })
+    }
+  }
+
+  const handleMouseUp = () => {
+    setIsDragging(false)
+  }
+
   useEffect(() => {
-    if (!isOpen) return
-
-    const handleRepositioning = () => {
-      setIsPositioned(false)
-      // Trigger recalculation
-      if (triggerRef.current && tooltipRef.current) {
-        setIsOpen(true)
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove)
+      window.addEventListener('mouseup', handleMouseUp)
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove)
+        window.removeEventListener('mouseup', handleMouseUp)
       }
     }
+  }, [isDragging, dragOffset])
 
-    window.addEventListener('scroll', handleRepositioning, true)
-    window.addEventListener('resize', handleRepositioning)
-
-    return () => {
-      window.removeEventListener('scroll', handleRepositioning, true)
-      window.removeEventListener('resize', handleRepositioning)
+  // Reset position when opening
+  useEffect(() => {
+    if (isOpen && position === 'center') {
+      setTooltipPosition({ top: '50%', left: '50%' })
     }
-  }, [isOpen])
+  }, [isOpen, position])
 
   // Close on escape key
   useEffect(() => {
@@ -197,47 +126,9 @@ const InteractiveTooltip = ({
     }
   }
 
-  const handleMouseEnter = () => {
-    if (mode === 'hover' || mode === 'both') {
-      // Clear any pending close timeout
-      if (hoverTimeoutRef.current) {
-        clearTimeout(hoverTimeoutRef.current)
-        hoverTimeoutRef.current = null
-      }
-      setIsOpen(true)
-    }
-  }
-
-  const handleMouseLeave = () => {
-    if (mode === 'hover') {
-      // Delay closing to allow moving mouse to tooltip
-      hoverTimeoutRef.current = setTimeout(() => {
-        setIsOpen(false)
-      }, 100)
-    }
-  }
-
-  const handleTooltipMouseEnter = () => {
-    if (mode === 'hover' || mode === 'both') {
-      // Clear close timeout when hovering over tooltip
-      if (hoverTimeoutRef.current) {
-        clearTimeout(hoverTimeoutRef.current)
-        hoverTimeoutRef.current = null
-      }
-    }
-  }
-
-  const handleTooltipMouseLeave = () => {
-    if (mode === 'hover') {
-      setIsOpen(false)
-    }
-  }
-
   const handleClick = (e) => {
     e.stopPropagation()
-    if (mode === 'click' || mode === 'both') {
-      setIsOpen(!isOpen)
-    }
+    setIsOpen(!isOpen)
   }
 
   // Cleanup timeout on unmount
@@ -253,9 +144,7 @@ const InteractiveTooltip = ({
     <>
       <span
         ref={triggerRef}
-        className="inline-flex items-center gap-1 cursor-help"
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
+        className="inline-flex items-center gap-1 cursor-pointer"
         onClick={handleClick}
       >
         {children}
@@ -264,39 +153,53 @@ const InteractiveTooltip = ({
         </span>
       </span>
 
+      {/* Backdrop */}
+      {isOpen && position === 'center' && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 animate-fadeIn"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+
       {/* Tooltip Portal */}
       {isOpen && (
         <div
           ref={tooltipRef}
-          className="fixed z-50 bg-slate-800 border-2 border-blue-500/50 rounded-lg shadow-2xl max-w-md"
+          className="fixed z-50 bg-slate-800 border-2 border-blue-500/50 rounded-lg shadow-2xl max-w-md animate-fadeIn"
           style={{
-            top: isPositioned ? `${tooltipPosition.top}px` : '-9999px',
-            left: isPositioned ? `${tooltipPosition.left}px` : '-9999px',
-            opacity: isPositioned ? tooltipPosition.opacity : 0,
-            transition: isPositioned ? 'opacity 0.2s ease-in-out' : 'none',
-            pointerEvents: isPositioned ? 'auto' : 'none',
-            visibility: isPositioned ? 'visible' : 'hidden'
+            top: tooltipPosition.top,
+            left: tooltipPosition.left,
+            transform: position === 'center' ? 'translate(-50%, -50%)' : 'none',
+            cursor: isDragging ? 'grabbing' : 'default',
+            userSelect: isDragging ? 'none' : 'auto'
           }}
-          onMouseEnter={handleTooltipMouseEnter}
-          onMouseLeave={handleTooltipMouseLeave}
+          onMouseDown={handleMouseDown}
         >
           {/* Header */}
-          <div className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 px-4 py-3 rounded-t-lg border-b border-blue-700/30 flex items-start justify-between">
+          <div className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 px-4 py-3 rounded-t-lg border-b border-blue-700/30 flex items-start justify-between tooltip-drag-handle cursor-move group">
             <div className="flex items-start gap-2 flex-1">
               <BookOpen className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
-              <div>
-                <h4 className="font-bold text-gray-100 text-base">{glossaryEntry.term}</h4>
+              <div className="flex-1">
+                <h4 className="font-bold text-gray-100 text-base flex items-center gap-2">
+                  {glossaryEntry.term}
+                  {position === 'center' && (
+                    <span className="text-xs text-gray-400 font-normal opacity-0 group-hover:opacity-100 transition-opacity">
+                      (Drag to move)
+                    </span>
+                  )}
+                </h4>
                 <p className="text-blue-200 text-xs mt-0.5 italic">{glossaryEntry.shortDefinition}</p>
               </div>
             </div>
-            {mode === 'click' || mode === 'both' ? (
-              <button
-                onClick={() => setIsOpen(false)}
-                className="text-gray-400 hover:text-gray-200 transition-colors ml-2"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            ) : null}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                setIsOpen(false)
+              }}
+              className="text-gray-400 hover:text-gray-200 transition-colors ml-2 flex-shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
 
           {/* Content */}
@@ -362,10 +265,10 @@ const InteractiveTooltip = ({
           </div>
 
           {/* Footer hint */}
-          {(mode === 'hover' || mode === 'both') && (
+          {position === 'center' && (
             <div className="px-4 py-2 bg-slate-900/50 rounded-b-lg border-t border-slate-700/30">
               <p className="text-gray-500 text-xs text-center">
-                {mode === 'both' ? 'Click to pin • ' : ''}Hover to view • Press ESC to close
+                💡 Drag header to reposition • Press ESC or click backdrop to close
               </p>
             </div>
           )}
@@ -378,10 +281,10 @@ const InteractiveTooltip = ({
 /**
  * Inline Tooltip - Simpler version for inline text with dotted underline
  */
-export const InlineTooltip = ({ term, children, className = '', position = 'top' }) => {
+export const InlineTooltip = ({ term, children, className = '', position = 'center' }) => {
   return (
-    <InteractiveTooltip term={term} mode="hover" position={position}>
-      <span className={`border-b border-dotted border-blue-400 cursor-help ${className}`}>
+    <InteractiveTooltip term={term} mode="click" position={position}>
+      <span className={`border-b border-dotted border-blue-400 cursor-pointer ${className}`}>
         {children}
       </span>
     </InteractiveTooltip>
@@ -399,7 +302,7 @@ export const TooltipIcon = ({ term, icon = 'info', size = 'sm' }) => {
   }
 
   return (
-    <InteractiveTooltip term={term} icon={icon} mode="both" position="top">
+    <InteractiveTooltip term={term} icon={icon} mode="click" position="center">
       <span className={`inline-block ${sizeClasses[size]}`} />
     </InteractiveTooltip>
   )
