@@ -20,6 +20,7 @@ const InteractiveTooltip = ({
   const [isOpen, setIsOpen] = useState(false)
   const [tooltipPosition, setTooltipPosition] = useState({ top: '50%', left: '50%' })
   const [isDragging, setIsDragging] = useState(false)
+  const [hasBeenDragged, setHasBeenDragged] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const triggerRef = useRef(null)
   const tooltipRef = useRef(null)
@@ -31,19 +32,34 @@ const InteractiveTooltip = ({
   const handleMouseDown = (e) => {
     if (e.target.closest('.tooltip-drag-handle')) {
       e.preventDefault()
-      const rect = tooltipRef.current.getBoundingClientRect()
 
-      // Convert from centered position to absolute positioning
-      setTooltipPosition({
-        left: `${rect.left}px`,
-        top: `${rect.top}px`
-      })
+      if (!hasBeenDragged) {
+        // First drag - convert from centered to absolute
+        const rect = tooltipRef.current.getBoundingClientRect()
+        setTooltipPosition({
+          left: `${rect.left}px`,
+          top: `${rect.top}px`
+        })
+        setHasBeenDragged(true)
 
-      setIsDragging(true)
-      setDragOffset({
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top
-      })
+        // Small delay to let position update, then start drag
+        setTimeout(() => {
+          const newRect = tooltipRef.current.getBoundingClientRect()
+          setIsDragging(true)
+          setDragOffset({
+            x: e.clientX - newRect.left,
+            y: e.clientY - newRect.top
+          })
+        }, 0)
+      } else {
+        // Already using absolute positioning
+        const rect = tooltipRef.current.getBoundingClientRect()
+        setIsDragging(true)
+        setDragOffset({
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top
+        })
+      }
     }
   }
 
@@ -89,10 +105,14 @@ const InteractiveTooltip = ({
     }
   }, [isDragging, dragOffset])
 
-  // Reset position when opening
+  // Reset position and drag state when opening/closing
   useEffect(() => {
     if (isOpen && position === 'center') {
       setTooltipPosition({ top: '50%', left: '50%' })
+      setHasBeenDragged(false)
+    } else if (!isOpen) {
+      setHasBeenDragged(false)
+      setIsDragging(false)
     }
   }, [isOpen, position])
 
@@ -186,7 +206,7 @@ const InteractiveTooltip = ({
           style={{
             top: tooltipPosition.top,
             left: tooltipPosition.left,
-            transform: position === 'center' && !isDragging && tooltipPosition.top === '50%' ? 'translate(-50%, -50%)' : 'none',
+            transform: position === 'center' && !hasBeenDragged ? 'translate(-50%, -50%)' : 'none',
             cursor: isDragging ? 'grabbing' : 'default',
             userSelect: isDragging ? 'none' : 'auto'
           }}
