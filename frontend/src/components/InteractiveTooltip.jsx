@@ -28,83 +28,100 @@ const InteractiveTooltip = ({
 
   useEffect(() => {
     if (isOpen && triggerRef.current && tooltipRef.current) {
-      // Use requestAnimationFrame to ensure DOM is ready
+      // Double requestAnimationFrame to ensure content is fully rendered
       requestAnimationFrame(() => {
-        if (!triggerRef.current || !tooltipRef.current) return
+        requestAnimationFrame(() => {
+          if (!triggerRef.current || !tooltipRef.current) return
 
-        const triggerRect = triggerRef.current.getBoundingClientRect()
-        const tooltipRect = tooltipRef.current.getBoundingClientRect()
-        const viewportWidth = window.innerWidth
-        const viewportHeight = window.innerHeight
-        const scrollY = window.scrollY
-        const scrollX = window.scrollX
+          const calculatePosition = () => {
+            const triggerRect = triggerRef.current.getBoundingClientRect()
+            const tooltipRect = tooltipRef.current.getBoundingClientRect()
+            const viewportWidth = window.innerWidth
+            const viewportHeight = window.innerHeight
 
-        let top = 0
-        let left = 0
-        const gap = 12 // Gap between trigger and tooltip
-        const padding = 16 // Padding from viewport edges
+            const gap = 12 // Gap between trigger and tooltip
+            const padding = 20 // Padding from viewport edges
 
-        // Calculate position based on preference and available space
-        switch (position) {
-          case 'top':
-            top = triggerRect.top - tooltipRect.height - gap
-            left = triggerRect.left + (triggerRect.width / 2) - (tooltipRect.width / 2)
+            let top = 0
+            let left = 0
+            let finalPosition = position
 
-            // Fallback to bottom if not enough space above
-            if (top < padding) {
-              top = triggerRect.bottom + gap
+            // Try primary position
+            switch (position) {
+              case 'top':
+                top = triggerRect.top - tooltipRect.height - gap
+                left = triggerRect.left + (triggerRect.width / 2) - (tooltipRect.width / 2)
+
+                // Fallback to bottom if not enough space above
+                if (top < padding) {
+                  finalPosition = 'bottom'
+                  top = triggerRect.bottom + gap
+                }
+                break
+
+              case 'bottom':
+                top = triggerRect.bottom + gap
+                left = triggerRect.left + (triggerRect.width / 2) - (tooltipRect.width / 2)
+
+                // Fallback to top if not enough space below
+                if (top + tooltipRect.height > viewportHeight - padding) {
+                  finalPosition = 'top'
+                  top = triggerRect.top - tooltipRect.height - gap
+                }
+                break
+
+              case 'left':
+                top = triggerRect.top + (triggerRect.height / 2) - (tooltipRect.height / 2)
+                left = triggerRect.left - tooltipRect.width - gap
+
+                // Fallback to right if not enough space on left
+                if (left < padding) {
+                  finalPosition = 'right'
+                  left = triggerRect.right + gap
+                }
+                break
+
+              case 'right':
+                top = triggerRect.top + (triggerRect.height / 2) - (tooltipRect.height / 2)
+                left = triggerRect.right + gap
+
+                // Fallback to left if not enough space on right
+                if (left + tooltipRect.width > viewportWidth - padding) {
+                  finalPosition = 'left'
+                  left = triggerRect.left - tooltipRect.width - gap
+                }
+                break
+
+              default:
+                top = triggerRect.bottom + gap
+                left = triggerRect.left + (triggerRect.width / 2) - (tooltipRect.width / 2)
             }
-            break
 
-          case 'bottom':
-            top = triggerRect.bottom + gap
-            left = triggerRect.left + (triggerRect.width / 2) - (tooltipRect.width / 2)
-
-            // Fallback to top if not enough space below
-            if (top + tooltipRect.height > viewportHeight - padding) {
-              top = triggerRect.top - tooltipRect.height - gap
-            }
-            break
-
-          case 'left':
-            top = triggerRect.top + (triggerRect.height / 2) - (tooltipRect.height / 2)
-            left = triggerRect.left - tooltipRect.width - gap
-
-            // Fallback to right if not enough space on left
+            // Final horizontal constraint
             if (left < padding) {
-              left = triggerRect.right + gap
+              left = padding
+            } else if (left + tooltipRect.width > viewportWidth - padding) {
+              left = viewportWidth - tooltipRect.width - padding
             }
-            break
 
-          case 'right':
-            top = triggerRect.top + (triggerRect.height / 2) - (tooltipRect.height / 2)
-            left = triggerRect.right + gap
-
-            // Fallback to left if not enough space on right
-            if (left + tooltipRect.width > viewportWidth - padding) {
-              left = triggerRect.left - tooltipRect.width - gap
+            // Final vertical constraint
+            if (top < padding) {
+              top = padding
+            } else if (top + tooltipRect.height > viewportHeight - padding) {
+              top = viewportHeight - tooltipRect.height - padding
             }
-            break
 
-          default:
-            top = triggerRect.bottom + gap
-            left = triggerRect.left
-        }
+            // Ensure we don't go negative or exceed viewport
+            top = Math.max(padding, Math.min(top, viewportHeight - tooltipRect.height - padding))
+            left = Math.max(padding, Math.min(left, viewportWidth - tooltipRect.width - padding))
 
-        // Constrain to viewport with padding
-        top = Math.max(padding, Math.min(top, viewportHeight - tooltipRect.height - padding))
-        left = Math.max(padding, Math.min(left, viewportWidth - tooltipRect.width - padding))
+            return { top, left, opacity: 1 }
+          }
 
-        // Ensure tooltip stays within viewport even after constraining
-        if (left + tooltipRect.width > viewportWidth - padding) {
-          left = viewportWidth - tooltipRect.width - padding
-        }
-        if (top + tooltipRect.height > viewportHeight - padding) {
-          top = viewportHeight - tooltipRect.height - padding
-        }
-
-        setTooltipPosition({ top, left, opacity: 1 })
-        setIsPositioned(true)
+          const pos = calculatePosition()
+          setTooltipPosition(pos)
+          setIsPositioned(true)
+        })
       })
     } else {
       setIsPositioned(false)
@@ -251,12 +268,14 @@ const InteractiveTooltip = ({
       {isOpen && (
         <div
           ref={tooltipRef}
-          className="fixed z-50 bg-slate-800 border-2 border-blue-500/50 rounded-lg shadow-2xl max-w-md transition-opacity duration-200"
+          className="fixed z-50 bg-slate-800 border-2 border-blue-500/50 rounded-lg shadow-2xl max-w-md"
           style={{
-            top: `${tooltipPosition.top}px`,
-            left: `${tooltipPosition.left}px`,
-            opacity: tooltipPosition.opacity,
-            pointerEvents: isPositioned ? 'auto' : 'none'
+            top: isPositioned ? `${tooltipPosition.top}px` : '-9999px',
+            left: isPositioned ? `${tooltipPosition.left}px` : '-9999px',
+            opacity: isPositioned ? tooltipPosition.opacity : 0,
+            transition: isPositioned ? 'opacity 0.2s ease-in-out' : 'none',
+            pointerEvents: isPositioned ? 'auto' : 'none',
+            visibility: isPositioned ? 'visible' : 'hidden'
           }}
           onMouseEnter={handleTooltipMouseEnter}
           onMouseLeave={handleTooltipMouseLeave}
@@ -359,9 +378,9 @@ const InteractiveTooltip = ({
 /**
  * Inline Tooltip - Simpler version for inline text with dotted underline
  */
-export const InlineTooltip = ({ term, children, className = '' }) => {
+export const InlineTooltip = ({ term, children, className = '', position = 'top' }) => {
   return (
-    <InteractiveTooltip term={term} mode="hover" position="top">
+    <InteractiveTooltip term={term} mode="hover" position={position}>
       <span className={`border-b border-dotted border-blue-400 cursor-help ${className}`}>
         {children}
       </span>

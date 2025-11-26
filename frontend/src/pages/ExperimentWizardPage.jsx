@@ -460,7 +460,7 @@ const GoalSelector = ({ value, onChange }) => {
             <div className="text-4xl mb-3">{goal.icon}</div>
             <h4 className="text-xl font-bold text-gray-100 mb-2 flex items-center gap-2">
               {goal.title}
-              <InteractiveTooltip term={goal.tooltipTerm} mode="both" />
+              <InteractiveTooltip term={goal.tooltipTerm} mode="both" position="bottom" />
             </h4>
             <p className="text-gray-300 text-sm mb-3">{goal.description}</p>
             <p className="text-gray-400 text-xs italic">{goal.examples}</p>
@@ -703,7 +703,7 @@ const PowerAnalysis = ({ nFactors, powerAnalysis, onPowerAnalysisChange }) => {
     <div>
       <h3 className="text-2xl font-bold text-gray-100 mb-2 flex items-center gap-2">
         Power Analysis
-        <InteractiveTooltip term="statistical-power" mode="both" />
+        <InteractiveTooltip term="statistical-power" mode="both" position="bottom" />
       </h3>
       <p className="text-gray-300 text-sm mb-6">
         Ensure your experiment has enough runs to detect meaningful effects
