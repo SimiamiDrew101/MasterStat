@@ -198,7 +198,7 @@ const ExperimentWizardPage = () => {
         </div>
 
         {/* Progress Steps */}
-        <div className="bg-slate-800/50 backdrop-blur-lg rounded-xl px-8 py-6 mb-8 border border-slate-700/50">
+        <div className="relative z-10 bg-slate-800/50 backdrop-blur-lg rounded-xl px-8 py-6 mb-8 border border-slate-700/50">
           <div className="flex items-center justify-between">
             {steps.map((step, index) => (
               <div key={step.id} className="flex items-center flex-1">
@@ -243,7 +243,7 @@ const ExperimentWizardPage = () => {
         </div>
 
         {/* Content Area */}
-        <div className="bg-slate-800/50 backdrop-blur-lg rounded-xl p-8 mb-8 border border-slate-700/50 min-h-[500px]">
+        <div className="relative z-10 bg-slate-800/50 backdrop-blur-lg rounded-xl p-8 mb-8 border border-slate-700/50 min-h-[500px]">
           {currentStep === 1 && (
             <GoalSelector
               value={wizardData.goal}
@@ -310,7 +310,7 @@ const ExperimentWizardPage = () => {
 
         {/* Navigation Footer - Steps 1-6 */}
         {currentStep !== 7 && (
-          <div className="bg-slate-800/50 backdrop-blur-lg rounded-xl px-8 py-6 border border-slate-700/50 flex items-center justify-between">
+          <div className="relative z-10 bg-slate-800/50 backdrop-blur-lg rounded-xl px-8 py-6 border border-slate-700/50 flex items-center justify-between">
             <button
               onClick={prevStep}
               disabled={currentStep === 1 || loading}
