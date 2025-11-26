@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles } from 'lucide-react'
+import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, Flask, Shield } from 'lucide-react'
 
 const Home = () => {
   const features = [
@@ -65,35 +65,25 @@ const Home = () => {
       description: 'Bayesian inference, sequential designs, optimal uncertainty',
       path: '/bayesian-doe',
       color: 'from-purple-400 to-purple-600'
+    },
+    {
+      icon: <Flask className="w-12 h-12" />,
+      title: 'Mixture Design',
+      description: 'Simplex designs for mixture experiments and formulation optimization',
+      path: '/mixture',
+      color: 'from-teal-400 to-teal-600'
+    },
+    {
+      icon: <Shield className="w-12 h-12" />,
+      title: 'Robust Design',
+      description: 'Taguchi methods, noise factors, and parameter design',
+      path: '/robust',
+      color: 'from-amber-400 to-amber-600'
     }
   ]
 
   return (
     <div className="space-y-8">
-      {/* Hero Section */}
-      <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-8 border border-slate-700/50">
-        <h1 className="text-4xl md:text-5xl font-bold text-gray-100 mb-4">
-          Welcome to MasterStat
-        </h1>
-        <p className="text-xl text-gray-300 mb-6">
-          Your comprehensive statistical analysis toolkit for experimental design and ANOVA
-        </p>
-        <div className="flex flex-wrap gap-4 text-sm text-gray-300">
-          <div className="bg-slate-700/50 px-4 py-2 rounded-full">
-            ✓ 20+ Statistical Methods
-          </div>
-          <div className="bg-slate-700/50 px-4 py-2 rounded-full">
-            ✓ Power Analysis & Planning
-          </div>
-          <div className="bg-slate-700/50 px-4 py-2 rounded-full">
-            ✓ Real-time Calculations
-          </div>
-          <div className="bg-slate-700/50 px-4 py-2 rounded-full">
-            ✓ Beautiful Visualizations
-          </div>
-        </div>
-      </div>
-
       {/* Features Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {features.map((feature, index) => (
@@ -109,29 +99,6 @@ const Home = () => {
             <p className="text-gray-300">{feature.description}</p>
           </Link>
         ))}
-      </div>
-
-      {/* Quick Start */}
-      <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-8 border border-slate-700/50">
-        <h2 className="text-2xl font-bold text-gray-100 mb-4">Quick Start Guide</h2>
-        <ol className="space-y-3 text-gray-300">
-          <li className="flex items-start space-x-3">
-            <span className="bg-slate-700/50 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
-            <span>Select a statistical method from the sidebar or cards above</span>
-          </li>
-          <li className="flex items-start space-x-3">
-            <span className="bg-slate-700/50 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
-            <span>Enter your data manually using the input forms</span>
-          </li>
-          <li className="flex items-start space-x-3">
-            <span className="bg-slate-700/50 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
-            <span>Configure analysis parameters (significance level, test type, etc.)</span>
-          </li>
-          <li className="flex items-start space-x-3">
-            <span className="bg-slate-700/50 rounded-full w-6 h-6 flex items-center justify-center flex-shrink-0 mt-0.5">4</span>
-            <span>View comprehensive results with visualizations and interpretations</span>
-          </li>
-        </ol>
       </div>
 
       {/* Footer */}
