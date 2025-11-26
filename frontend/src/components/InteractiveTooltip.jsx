@@ -193,7 +193,7 @@ const InteractiveTooltip = ({
       {/* Backdrop */}
       {isOpen && position === 'center' && (
         <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 animate-fadeIn"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9998] animate-fadeIn"
           onClick={() => setIsOpen(false)}
         />
       )}
@@ -202,7 +202,7 @@ const InteractiveTooltip = ({
       {isOpen && (
         <div
           ref={tooltipRef}
-          className="fixed z-50 bg-slate-800 border-2 border-blue-500/50 rounded-lg shadow-2xl max-w-md animate-fadeIn"
+          className="fixed z-[9999] bg-slate-800 border-2 border-blue-500/50 rounded-lg shadow-2xl max-w-md animate-fadeIn"
           style={{
             top: tooltipPosition.top,
             left: tooltipPosition.left,
