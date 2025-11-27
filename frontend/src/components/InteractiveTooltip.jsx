@@ -228,15 +228,24 @@ const InteractiveTooltip = ({
                 <p className="text-blue-200 text-xs mt-0.5 italic">{glossaryEntry.shortDefinition}</p>
               </div>
             </div>
-            <button
+            <div
+              role="button"
+              tabIndex={0}
               onClick={(e) => {
                 e.stopPropagation()
                 setIsOpen(false)
               }}
-              className="text-gray-400 hover:text-gray-200 transition-colors ml-2 flex-shrink-0"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setIsOpen(false)
+                }
+              }}
+              className="text-gray-400 hover:text-gray-200 transition-colors ml-2 flex-shrink-0 cursor-pointer"
             >
               <X className="w-4 h-4" />
-            </button>
+            </div>
           </div>
 
           {/* Content */}
