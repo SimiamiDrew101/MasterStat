@@ -1,3 +1,25 @@
+# Planning and Analysis Documents (exclude from repo)
+*_IMPROVEMENTS*.md
+*_PLAN*.md
+*_ROADMAP*.md
+*_PROGRESS*.md
+*_VERIFICATION*.md
+*_ANALYSIS_*.md
+*_PROPOSAL*.md
+PHASE*.md
+overlay.md
+subject_list.md
+roadmap.md
+
+# Test files and artifacts (exclude from repo)
+test_*.py
+test_*.json
+test_*.html
+test_*.pdf
+*.png
+*.jpg
+*.jpeg
+
 # Python
 __pycache__/
 *.py[cod]
@@ -23,12 +45,15 @@ frontend/dist/
 frontend/build/
 
 # Environment
+.env
 .env.local
 .env.*.local
+.env.production
 
 # IDE
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~
@@ -43,3 +68,10 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Testing
+coverage/
