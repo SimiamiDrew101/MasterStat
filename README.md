@@ -139,10 +139,88 @@ npm run preview
 # The optimized files will be in the dist/ directory
 ```
 
-### Docker Support (Coming Soon)
+### Docker Deployment
+
+MasterStat includes full Docker support with optimized configurations for Apple Silicon (M1/M2/M3).
+
+#### Prerequisites
+- Docker Desktop for Mac ([Download](https://www.docker.com/products/docker-desktop))
+- Docker Compose (included with Docker Desktop)
+
+#### Quick Start with Docker
 
 ```bash
-# Run with Docker
+# 1. Clone the repository
+git clone https://github.com/SimiamiDrew101/MasterStat.git
+cd MasterStat
+
+# 2. Build and start containers
+docker-compose up --build
+
+# 3. Access the application
+# Frontend: http://localhost:5173
+# Backend API: http://localhost:8000
+# API Docs: http://localhost:8000/docs
+```
+
+#### Docker Services
+
+The `docker-compose.yml` configures two services:
+
+- **Backend** (Python/FastAPI)
+  - Port: 8000
+  - Platform: linux/arm64 (M1/M2/M3 optimized)
+  - Hot-reload enabled for development
+
+- **Frontend** (React/Vite)
+  - Port: 5173
+  - Platform: linux/arm64 (M1/M2/M3 optimized)
+  - Hot-reload enabled for development
+
+#### Docker Commands
+
+```bash
+# Start services
+docker-compose up
+
+# Start in background
+docker-compose up -d
+
+# Stop services
+docker-compose down
+
+# Rebuild containers
+docker-compose up --build
+
+# View logs
+docker-compose logs -f
+
+# Stop and remove volumes
+docker-compose down -v
+```
+
+#### Development Mode
+
+Both containers support hot-reloading:
+- **Backend**: Changes in `backend/app/` automatically reload FastAPI
+- **Frontend**: Changes in `frontend/src/` trigger instant Vite updates
+
+#### Troubleshooting Docker
+
+**Port conflicts:**
+```bash
+# Check what's using ports 8000 or 5173
+lsof -ti:8000
+lsof -ti:5173
+
+# Stop containers and remove
+docker-compose down
+```
+
+**Clean rebuild:**
+```bash
+docker-compose down -v
+docker-compose build --no-cache
 docker-compose up
 ```
 
