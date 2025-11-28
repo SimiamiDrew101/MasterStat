@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck } from 'lucide-react'
+import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee } from 'lucide-react'
 
 const Home = () => {
   const features = [
@@ -99,6 +99,39 @@ const Home = () => {
             <p className="text-gray-300">{feature.description}</p>
           </Link>
         ))}
+      </div>
+
+      {/* Support Section */}
+      <div className="bg-gradient-to-br from-pink-900/30 to-purple-900/30 backdrop-blur-lg rounded-xl p-8 border border-pink-700/30 text-center">
+        <div className="flex items-center justify-center mb-4">
+          <Heart className="w-8 h-8 text-pink-400 fill-pink-400 animate-pulse" />
+        </div>
+        <h3 className="text-2xl font-bold text-gray-100 mb-3">
+          Support MasterStat
+        </h3>
+        <p className="text-gray-300 mb-6 max-w-2xl mx-auto">
+          MasterStat is a free, open-source statistical analysis platform. If you find it useful for your research or work,
+          consider supporting the project to help us continue developing new features and improvements.
+        </p>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+          <button
+            onClick={() => window.open('https://www.paypal.com/donate', '_blank')}
+            className="group px-6 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 rounded-lg font-semibold text-white flex items-center gap-2 transition-all duration-300 hover:scale-105 shadow-lg"
+          >
+            <Heart className="w-5 h-5 group-hover:scale-110 transition-transform" />
+            Donate via PayPal
+          </button>
+          <button
+            onClick={() => window.open('https://ko-fi.com', '_blank')}
+            className="group px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 rounded-lg font-semibold text-white flex items-center gap-2 transition-all duration-300 hover:scale-105 shadow-lg"
+          >
+            <Coffee className="w-5 h-5 group-hover:scale-110 transition-transform" />
+            Buy us a Coffee
+          </button>
+        </div>
+        <p className="text-gray-400 text-sm mt-4">
+          Every contribution helps us improve MasterStat and keep it free for everyone
+        </p>
       </div>
 
       {/* Footer */}
