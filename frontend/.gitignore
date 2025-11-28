@@ -1,0 +1,44 @@
+# Planning and Analysis Documents (exclude from repo)
+IMPROVEMENT_PROPOSAL.md
+PROJECT_ANALYSIS_2025-11-28.md
+*_ANALYSIS_*.md
+*_PROPOSAL*.md
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Vite
+.vite/
+*.local
+
+# Testing
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
