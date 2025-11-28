@@ -113,20 +113,13 @@ const Home = () => {
           MasterStat is a free, open-source statistical analysis platform. If you find it useful for your research or work,
           consider supporting the project to help us continue developing new features and improvements.
         </p>
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+        <div className="flex items-center justify-center">
           <button
-            onClick={() => window.open('https://www.paypal.com/donate', '_blank')}
-            className="group px-6 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 rounded-lg font-semibold text-white flex items-center gap-2 transition-all duration-300 hover:scale-105 shadow-lg"
+            onClick={() => window.open('https://ko-fi.com/MasterStat', '_blank')}
+            className="group px-8 py-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 rounded-lg font-semibold text-white text-lg flex items-center gap-3 transition-all duration-300 hover:scale-105 shadow-lg"
           >
-            <Heart className="w-5 h-5 group-hover:scale-110 transition-transform" />
-            Donate via PayPal
-          </button>
-          <button
-            onClick={() => window.open('https://ko-fi.com', '_blank')}
-            className="group px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 rounded-lg font-semibold text-white flex items-center gap-2 transition-all duration-300 hover:scale-105 shadow-lg"
-          >
-            <Coffee className="w-5 h-5 group-hover:scale-110 transition-transform" />
-            Buy us a Coffee
+            <Coffee className="w-6 h-6 group-hover:scale-110 transition-transform" />
+            Support us on Ko-fi
           </button>
         </div>
         <p className="text-gray-400 text-sm mt-4">
