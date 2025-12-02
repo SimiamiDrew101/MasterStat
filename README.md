@@ -104,13 +104,52 @@ MasterStat includes **35+ professional visualization types**:
 
 ## 🚀 Installation
 
-### Prerequisites
+MasterStat can be run in two ways: **Docker** (recommended, includes full backend) or **Local Development** (frontend only).
 
+### Method 1: Docker (Recommended)
+
+Run the complete application with both frontend and backend using Docker.
+
+#### Prerequisites
+- **Docker Desktop** ([Download](https://www.docker.com/products/docker-desktop))
+
+#### Quick Start
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/SimiamiDrew101/MasterStat.git
+cd MasterStat
+
+# 2. Start the application
+./start.sh
+
+# Or use docker-compose directly:
+docker-compose up --build
+
+# 3. Open in browser
+# Frontend: http://localhost:5173
+# Backend API: http://localhost:8000
+# API Docs: http://localhost:8000/docs
+```
+
+#### Stop the Application
+
+```bash
+# Press Ctrl+C in terminal, or run:
+docker-compose down
+```
+
+---
+
+### Method 2: Local Development (Frontend Only)
+
+Run just the React frontend without Docker. Backend features will not be available.
+
+#### Prerequisites
 - **Node.js** v16 or higher ([Download](https://nodejs.org/))
-- **npm** or **yarn** (comes with Node.js)
-- (Optional) **Python 3.8+** for backend statistical computations
+- **npm** (comes with Node.js)
 
-### Quick Start
+#### Quick Start
 
 ```bash
 # 1. Clone the repository
@@ -127,7 +166,7 @@ npm run dev
 # Navigate to http://localhost:5173
 ```
 
-### Production Build
+#### Production Build
 
 ```bash
 # Build for production
@@ -138,6 +177,21 @@ npm run preview
 
 # The optimized files will be in the dist/ directory
 ```
+
+---
+
+### Which Method Should I Use?
+
+| Feature | Docker | Local Development |
+|---------|--------|-------------------|
+| **Full backend** | ✅ Yes | ❌ No |
+| **Statistical computations** | ✅ Yes | ❌ No |
+| **Frontend UI** | ✅ Yes | ✅ Yes |
+| **Setup complexity** | Medium | Easy |
+| **Prerequisites** | Docker Desktop | Node.js |
+| **Best for** | Full analysis, production | UI development, quick preview |
+
+**Recommendation:** Use Docker for the complete experience with all statistical features.
 
 ### Docker Deployment
 

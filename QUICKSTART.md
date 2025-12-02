@@ -1,86 +1,123 @@
-# Quick Start Guide
+# MasterStat Quick Start Guide
 
-## Step 1: Start Docker Desktop
+Get MasterStat up and running in under 5 minutes!
 
-1. Open **Docker Desktop** application on your Mac
-2. Wait for Docker to fully start (the whale icon in the menu bar should be steady)
+## 🚀 Option 1: Docker (Recommended)
 
-## Step 2: Launch MasterStat
+The easiest way to run MasterStat with both frontend and backend.
 
-Open Terminal and run:
+### Prerequisites
+- Docker Desktop ([Download](https://www.docker.com/products/docker-desktop))
+
+### Steps
+
+1. **Start Docker Desktop** and wait for it to fully launch
+
+2. **Open Terminal** and navigate to the project:
+   ```bash
+   cd /path/to/MasterStat
+   ```
+
+3. **Launch MasterStat:**
+   ```bash
+   ./start.sh
+   ```
+
+   Or use Docker Compose directly:
+   ```bash
+   docker-compose up --build
+   ```
+
+4. **Open your browser:**
+   - Frontend: **http://localhost:5173**
+   - Backend API: **http://localhost:8000**
+   - API Docs: **http://localhost:8000/docs**
+
+5. **Stop the application:**
+   - Press `Ctrl+C` in Terminal, or run:
+   ```bash
+   docker-compose down
+   ```
+
+---
+
+## 💻 Option 2: Local Development (Frontend Only)
+
+Run just the frontend without Docker. Note: Backend features won't be available.
+
+### Prerequisites
+- Node.js v16+ ([Download](https://nodejs.org/))
+
+### Steps
+
+1. **Navigate to frontend directory:**
+   ```bash
+   cd /path/to/MasterStat/frontend
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+3. **Start development server:**
+   ```bash
+   npm run dev
+   ```
+
+4. **Open your browser:**
+   - Frontend: **http://localhost:5173**
+
+---
+
+## ✅ Try Your First Analysis
+
+### Example 1: Two-Sample t-Test
+
+1. Navigate to **Hypothesis Testing** from the home page
+2. Select **t-Test** from the dropdown
+3. Enter Sample 1: `12.5, 13.1, 11.8, 14.2, 12.9`
+4. Enter Sample 2: `10.2, 11.5, 10.8, 11.9, 10.1`
+5. Click **Run Analysis**
+6. View results: t-statistic, p-value, confidence intervals
+
+### Example 2: Factorial Design
+
+1. Navigate to **Experiment Wizard**
+2. Select goal: **Screening**
+3. Enter 5 factors with names
+4. Generate design matrix
+5. Export to Excel, PDF, or CSV
+
+### Example 3: Response Surface
+
+1. Navigate to **Response Surface**
+2. Choose **Central Composite Design**
+3. Enter 3 factors
+4. View 3D surface plots and contour plots
+5. Perform optimization
+
+---
+
+## 🐛 Troubleshooting
+
+### Port Already in Use
+
+If ports 5173 or 8000 are already in use:
 
 ```bash
-cd /Users/nj/Desktop/MasterStat2
+# Check what's using the ports
+lsof -ti:5173
+lsof -ti:8000
+
+# Stop Docker containers
+docker-compose down
+
+# Try again
 ./start.sh
 ```
 
-Or use Docker Compose directly:
-
-```bash
-cd /Users/nj/Desktop/MasterStat2
-docker-compose up --build
-```
-
-## Step 3: Open in Browser
-
-Once you see "Application startup complete", open Safari and navigate to:
-
-**http://localhost:5173**
-
-## What You'll See
-
-- Beautiful gradient interface with statistical analysis tools
-- Sidebar navigation with 6 major statistical method categories
-- Interactive forms for data entry
-- Real-time analysis results with visualizations
-
-## Try Your First Analysis
-
-### Example: Two-Sample t-Test
-
-1. Click **"Hypothesis Testing"** in the sidebar
-2. Select **"t-Test"** from the dropdown
-3. Enter Sample 1: `12.5, 13.1, 11.8, 14.2, 12.9, 13.5`
-4. Enter Sample 2: `10.2, 11.5, 10.8, 11.9, 10.1, 11.2`
-5. Keep default settings (α = 0.05, two-sided)
-6. Click **"Run Analysis"**
-7. View comprehensive results including:
-   - t-statistic
-   - p-value
-   - Confidence intervals
-   - Sample statistics
-   - Decision (Reject H₀ or not)
-
-### Example: One-Way ANOVA
-
-1. Click **"ANOVA"** in the sidebar
-2. Enter data for Group A: `23, 25, 22, 24, 26`
-3. Enter data for Group B: `30, 32, 29, 31, 33`
-4. Enter data for Group C: `18, 20, 19, 21, 17`
-5. Click **"Run ANOVA"**
-6. View ANOVA table with F-statistic and p-values
-
-## Stopping the Application
-
-Press `Ctrl+C` in the Terminal window, or run:
-
-```bash
-docker-compose down
-```
-
-## Troubleshooting
-
-### Issue: Port already in use
-
-```bash
-# Stop all containers
-docker-compose down
-
-# Try starting again
-./start.sh
-```
-
-### Issue: Container won't build
+### Container Build Fails
 
 ```bash
 # Clean rebuild
@@ -89,29 +126,31 @@ docker-compose build --no-cache
 docker-compose up
 ```
 
-### Issue: Can't access on Safari
+### Can't Access in Browser
 
-- Make sure both containers are running (check Terminal output)
-- Try http://localhost:5173 instead of https://
-- Clear Safari cache if needed
-- Check if port 5173 is accessible: `lsof -i:5173`
+- Ensure Docker containers are running (check Terminal output)
+- Try `http://localhost:5173` (not `https://`)
+- Clear browser cache
+- Check Docker Desktop - both containers should show as running
 
-## API Documentation
+---
 
-You can also access the interactive API documentation:
+## 📚 Next Steps
 
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
+- Read the full [README.md](README.md) for detailed documentation
+- Explore all 12 statistical modules
+- Check API documentation at http://localhost:8000/docs
+- Support the project at [Ko-fi](https://ko-fi.com/MasterStat)
 
-## Next Steps
+---
 
-- Explore all 6 statistical method categories
-- Try different test types and parameters
-- Check the ANOVA tables and interpretations
-- View the raw JSON results for deeper insights
+## 💡 Tips
 
-## Need Help?
+- **Hot-reload enabled:** Changes to code automatically refresh in Docker
+- **API Documentation:** Interactive Swagger UI at `/docs` endpoint
+- **Multiple methods:** npm, Docker, or Docker with start script
+- **Backend optional:** Frontend works standalone, but backend enables full analysis features
 
-- Check README.md for full documentation
-- View subject_list.md to see all covered topics
-- API docs available at http://localhost:8000/docs
+---
+
+**Need help?** Open an issue on [GitHub](https://github.com/SimiamiDrew101/MasterStat/issues)
