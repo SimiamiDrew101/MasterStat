@@ -10,6 +10,17 @@ echo "  MasterStat - Statistical Analysis Tool"
 echo "========================================="
 echo ""
 
+# Get the script's directory and change to it
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Verify docker-compose.yml exists
+if [ ! -f "docker-compose.yml" ]; then
+    echo "❌ docker-compose.yml not found!"
+    echo "Please run this script from the MasterStat project root directory."
+    exit 1
+fi
+
 # Check if Docker is running
 if ! docker info > /dev/null 2>&1; then
     echo "❌ Docker is not running!"
@@ -38,27 +49,17 @@ else
     exit 1
 fi
 
-# Cleanup function for graceful shutdown
-cleanup() {
-    echo ""
-    echo "========================================="
-    echo "Shutting down containers..."
-    echo "========================================="
-    $DOCKER_COMPOSE down
-    exit 0
-}
-
-# Trap SIGINT and SIGTERM for graceful shutdown
-trap cleanup INT TERM
-
 # Build and start containers
 echo "Building and starting containers..."
 echo "This may take a few minutes on first run..."
 echo ""
+echo "Press Ctrl+C to stop the application"
+echo ""
 
+# Run docker compose in foreground - it handles Ctrl+C gracefully
 $DOCKER_COMPOSE up --build
 
-# This line runs after docker-compose exits
+# This runs if docker compose exits normally (shouldn't happen without -d flag)
 echo ""
 echo "========================================="
 echo "Application stopped."
