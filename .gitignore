@@ -16,9 +16,12 @@ test_*.py
 test_*.json
 test_*.html
 test_*.pdf
-*.png
-*.jpg
-*.jpeg
+test_*.png
+test_*.jpg
+test_*.jpeg
+modelfit_metrix.png
+test_rsm_report.pdf
+resolution.png
 
 # Python
 __pycache__/
@@ -32,6 +35,9 @@ ENV/
 *.egg-info/
 dist/
 build/
+.pytest_cache/
+.ruff_cache/
+*.pyc
 
 # Node
 node_modules/
@@ -39,6 +45,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+.vite/
 
 # Build outputs
 frontend/dist/
@@ -53,17 +60,18 @@ frontend/build/
 # IDE
 .vscode/
 .idea/
-.claude/
 *.swp
 *.swo
 *~
 
+# Claude Code (only ignore chat history and personal settings, not commands/hooks)
+.claude/chats/
+.claude/settings.local.json
+.claude/*roadmap*.md
+
 # OS
 .DS_Store
 Thumbs.db
-
-# Docker
-.dockerignore
 
 # Logs
 *.log
