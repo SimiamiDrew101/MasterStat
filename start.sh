@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Exit on error
+set -e
+
 # MasterStat Startup Script
 
 echo "========================================="
@@ -22,13 +25,40 @@ fi
 echo "✓ Docker is running"
 echo ""
 
+# Check if docker compose command exists (V2), fallback to docker-compose (V1)
+if docker compose version > /dev/null 2>&1; then
+    DOCKER_COMPOSE="docker compose"
+elif command -v docker-compose > /dev/null 2>&1; then
+    DOCKER_COMPOSE="docker-compose"
+    echo "⚠️  Using legacy docker-compose. Consider upgrading to Docker Compose V2"
+    echo ""
+else
+    echo "❌ Neither 'docker compose' nor 'docker-compose' found!"
+    echo "Please install Docker Compose"
+    exit 1
+fi
+
+# Cleanup function for graceful shutdown
+cleanup() {
+    echo ""
+    echo "========================================="
+    echo "Shutting down containers..."
+    echo "========================================="
+    $DOCKER_COMPOSE down
+    exit 0
+}
+
+# Trap SIGINT and SIGTERM for graceful shutdown
+trap cleanup INT TERM
+
 # Build and start containers
 echo "Building and starting containers..."
 echo "This may take a few minutes on first run..."
 echo ""
 
-docker-compose up --build
+$DOCKER_COMPOSE up --build
 
+# This line runs after docker-compose exits
 echo ""
 echo "========================================="
 echo "Application stopped."

@@ -1,16 +1,17 @@
-# Use Python 3.11 slim image for M1 compatibility
-FROM --platform=linux/arm64 python:3.11-slim
+# Use Python 3.11 slim image (multi-platform compatible)
+FROM python:3.11-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including curl for health checks
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     gfortran \
     libopenblas-dev \
     liblapack-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
