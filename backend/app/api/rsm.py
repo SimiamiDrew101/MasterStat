@@ -2055,9 +2055,18 @@ async def analyze_robust_design(request: RobustAnalysisRequest):
             else:
                 raise ValueError(f"Unknown quality characteristic: {quality_char}")
 
+            # Convert control_setting to dict (handle single value or tuple)
+            if isinstance(control_setting, dict):
+                control_dict = control_setting
+            elif isinstance(control_setting, (list, tuple)):
+                # Multiple factors - zip with factor names
+                control_dict = dict(zip(control_factors, [float(v) for v in control_setting]))
+            else:
+                # Single factor - wrap in list
+                control_dict = {control_factors[0]: float(control_setting)}
+
             sn_ratios.append({
-                "control_setting": control_setting if isinstance(control_setting, dict) else
-                                 dict(zip(control_factors, control_setting if hasattr(control_setting, '__iter__') else [control_setting])),
+                "control_setting": control_dict,
                 "mean_response": round(float(np.mean(responses)), 4),
                 "std_dev": round(float(np.std(responses)), 4),
                 "sn_ratio": round(float(sn), 4)
