@@ -1712,32 +1712,59 @@ async def fit_mixture_model(request: MixtureModelRequest):
         if not np.allclose(component_sums, 1.0, atol=0.01):
             raise ValueError("Component proportions must sum to 1.0 for each run")
 
-        # Build Scheffé model formula based on degree
-        terms = []
+        # Build Scheffé canonical polynomial model
+        # Create interaction terms manually to avoid statsmodels formula issues
 
-        # Linear terms (degree >= 1)
-        if degree >= 1:
-            # For Scheffé model, we exclude intercept and use pure mixture terms
-            terms.extend(components)
+        X_data = {}
 
-        # Quadratic terms (degree >= 2): all pairwise interactions
+        # Linear terms (pure component effects)
+        for comp in components:
+            X_data[comp] = df[comp].values
+
+        # Quadratic terms (binary blending effects)
         if degree >= 2:
             for i in range(len(components)):
                 for j in range(i + 1, len(components)):
-                    terms.append(f"{components[i]}:{components[j]}")
+                    interaction_name = f"{components[i]}*{components[j]}"
+                    X_data[interaction_name] = df[components[i]].values * df[components[j]].values
 
-        # Cubic terms (degree >= 3): three-way interactions
+        # Cubic terms (ternary blending effects)
         if degree >= 3:
             for i in range(len(components)):
                 for j in range(i + 1, len(components)):
                     for k in range(j + 1, len(components)):
-                        terms.append(f"{components[i]}:{components[j]}:{components[k]}")
+                        interaction_name = f"{components[i]}*{components[j]}*{components[k]}"
+                        X_data[interaction_name] = (df[components[i]].values *
+                                                    df[components[j]].values *
+                                                    df[components[k]].values)
 
-        # Build formula without intercept (mixture constraint handles it)
-        formula = f"{response} ~ {' + '.join(terms)} - 1"
+        # Create design matrix
+        X = pd.DataFrame(X_data)
+        y = df[response].values
 
-        # Fit model
-        model = ols(formula, data=df).fit()
+        # Fit using statsmodels OLS without formula
+        # Add constant for intercept-only if no terms
+        from statsmodels.api import add_constant
+        X_with_const = add_constant(X, has_constant='skip')
+
+        try:
+            model = sm.OLS(y, X_with_const).fit()
+        except Exception as e:
+            # If singular matrix, try without problematic terms
+            raise ValueError(f"Model fitting failed - likely singular design matrix. Try adding more experimental runs or reducing model degree. Error: {str(e)}")
+
+        # ANOVA-like decomposition (handle inf/nan values)
+        def safe_float(value, default=None, decimals=6):
+            """Safely convert to float, handling inf/nan"""
+            if value is None:
+                return default
+            try:
+                f = float(value)
+                if np.isfinite(f):
+                    return round(f, decimals)
+                return default
+            except (ValueError, TypeError):
+                return default
 
         # Extract coefficients
         coefficients = {}
@@ -1749,35 +1776,46 @@ async def fit_mixture_model(request: MixtureModelRequest):
             model.pvalues
         ):
             coefficients[term] = {
-                "estimate": round(float(coef), 6),
-                "std_error": round(float(se), 6),
-                "t_value": round(float(t_val), 4),
-                "p_value": round(float(p_val), 6)
+                "estimate": safe_float(coef, 0.0, 6),
+                "std_error": safe_float(se, None, 6),
+                "t_value": safe_float(t_val, None, 4),
+                "p_value": safe_float(p_val, None, 6)
             }
 
         # Model statistics
-        r_squared = float(model.rsquared)
-        adj_r_squared = float(model.rsquared_adj)
-        rmse = float(np.sqrt(model.mse_resid))
+        r_squared = safe_float(model.rsquared, None, 4)
+        adj_r_squared = safe_float(model.rsquared_adj, None, 4)
+        rmse = safe_float(np.sqrt(model.mse_resid), None, 4)
 
-        # ANOVA table
-        anova_table = sm.stats.anova_lm(model, typ=2)
-        anova_dict = {}
-        for idx, row in anova_table.iterrows():
-            anova_dict[idx] = {
-                "sum_sq": round(float(row.get('sum_sq', 0)), 6),
-                "df": int(row.get('df', 0)),
-                "F": round(float(row.get('F', 0)), 4) if pd.notna(row.get('F')) else None,
-                "PR(>F)": round(float(row.get('PR(>F)', 0)), 6) if pd.notna(row.get('PR(>F)')) else None
+        # Build model summary
+        model_type = f"Scheffé {['Linear', 'Quadratic', 'Cubic'][degree-1]} Mixture Model"
+
+        anova_dict = {
+            "Model": {
+                "sum_sq": safe_float(model.ess),
+                "df": int(model.df_model),
+                "F": safe_float(model.fvalue, None) if hasattr(model, 'fvalue') else None,
+                "PR(>F)": safe_float(model.f_pvalue, None) if hasattr(model, 'f_pvalue') else None
+            },
+            "Residual": {
+                "sum_sq": safe_float(model.ssr),
+                "df": int(model.df_resid),
+                "F": None,
+                "PR(>F)": None
             }
+        }
+
+        # Create a descriptive formula string
+        term_names = list(X.columns)
+        formula_str = f"{response} ~ {' + '.join(term_names)}"
 
         return {
-            "model_type": f"Scheffé {['Linear', 'Quadratic', 'Cubic'][degree-1]} Mixture Model",
-            "formula": formula,
+            "model_type": model_type,
+            "formula": formula_str,
             "coefficients": coefficients,
-            "r_squared": round(r_squared, 4),
-            "adj_r_squared": round(adj_r_squared, 4),
-            "rmse": round(rmse, 4),
+            "r_squared": r_squared,
+            "adj_r_squared": adj_r_squared,
+            "rmse": rmse,
             "anova": anova_dict,
             "n_obs": int(model.nobs),
             "df_resid": int(model.df_resid)
