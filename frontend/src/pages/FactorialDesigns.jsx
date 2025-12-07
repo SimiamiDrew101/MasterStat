@@ -1904,15 +1904,6 @@ const FactorialDesigns = () => {
         </>
       )}
 
-      {/* Cube Plot for 2^3 and 2^4 Designs */}
-      {result && result.cube_data && result.cube_data.length > 0 && (
-        <CubePlot
-          data={result.cube_data}
-          factors={factors}
-          responseName={responseName}
-        />
-      )}
-
       {/* Half-Normal Plot for Effect Screening (unreplicated designs) */}
       {result && result.lenths_analysis && (
         <HalfNormalPlot lenthsData={result.lenths_analysis} />

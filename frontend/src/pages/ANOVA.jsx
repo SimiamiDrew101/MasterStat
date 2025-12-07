@@ -757,6 +757,31 @@ const ANOVA = () => {
                       showKDE={true}
                     />
                   )}
+
+                  {/* Correlation Heatmap */}
+                  {oneWayResult.diagnostic_plots.factor_values && oneWayResult.diagnostic_plots.observed_values && (
+                    <CorrelationHeatmap
+                      data={{
+                        ...oneWayResult.diagnostic_plots.factor_values,
+                        Response: oneWayResult.diagnostic_plots.observed_values
+                      }}
+                      title="Factor and Response Correlation Matrix"
+                      method="pearson"
+                    />
+                  )}
+
+                  {/* Scatter Matrix */}
+                  {oneWayResult.diagnostic_plots.factor_values && oneWayResult.diagnostic_plots.observed_values && (
+                    <ScatterMatrix
+                      data={{
+                        ...oneWayResult.diagnostic_plots.factor_values,
+                        Response: oneWayResult.diagnostic_plots.observed_values
+                      }}
+                      title="Pairwise Factor and Response Relationships"
+                      showDiagonal={true}
+                      diagonalType="histogram"
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -1205,6 +1230,31 @@ const ANOVA = () => {
                       title="Distribution of Fitted Values"
                       showNormalCurve={false}
                       showKDE={true}
+                    />
+                  )}
+
+                  {/* Correlation Heatmap */}
+                  {twoWayResult.diagnostic_plots.factor_values && twoWayResult.diagnostic_plots.observed_values && (
+                    <CorrelationHeatmap
+                      data={{
+                        ...twoWayResult.diagnostic_plots.factor_values,
+                        Response: twoWayResult.diagnostic_plots.observed_values
+                      }}
+                      title="Factor and Response Correlation Matrix"
+                      method="pearson"
+                    />
+                  )}
+
+                  {/* Scatter Matrix */}
+                  {twoWayResult.diagnostic_plots.factor_values && twoWayResult.diagnostic_plots.observed_values && (
+                    <ScatterMatrix
+                      data={{
+                        ...twoWayResult.diagnostic_plots.factor_values,
+                        Response: twoWayResult.diagnostic_plots.observed_values
+                      }}
+                      title="Pairwise Factor and Response Relationships"
+                      showDiagonal={true}
+                      diagonalType="histogram"
                     />
                   )}
                 </div>

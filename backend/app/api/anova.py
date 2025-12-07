@@ -553,6 +553,16 @@ async def one_way_anova(request: OneWayANOVARequest):
             influence_diagnostics["standardized_residuals"]
         )
 
+        # Add factor values and observed values for correlation/scatter analysis
+        group_labels = []
+        response_values = []
+        for item in all_data_with_groups:
+            group_labels.append(item["group"])
+            response_values.append(item["value"])
+
+        diagnostic_plots["factor_values"] = {"Group": group_labels}
+        diagnostic_plots["observed_values"] = response_values
+
         return {
             "test_type": "One-Way ANOVA",
             "f_statistic": round(float(f_stat), 4),
@@ -704,6 +714,13 @@ async def two_way_anova(request: TwoWayANOVARequest):
             influence_diagnostics["leverage"],
             influence_diagnostics["standardized_residuals"]
         )
+
+        # Add factor values and observed values for correlation/scatter analysis
+        diagnostic_plots["factor_values"] = {
+            request.factor_a: df[request.factor_a].tolist(),
+            request.factor_b: df[request.factor_b].tolist()
+        }
+        diagnostic_plots["observed_values"] = df[request.response].tolist()
 
         return {
             "test_type": "Two-Way ANOVA",

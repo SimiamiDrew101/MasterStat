@@ -653,9 +653,10 @@ async def full_factorial_analysis(request: FactorialDesignRequest):
 
             lenths_analysis = calculate_lenths_pse(all_effects, request.alpha)
 
-        # Cube plot data for 2^3 designs
+        # Cube plot data for 2^3 and 2^4 designs
         cube_data = None
         if len(request.factors) == 3 and all(df[f].nunique() == 2 for f in request.factors):
+            # 2^3 design
             cube_data = []
             for combo in product([0, 1], repeat=3):
                 f1, f2, f3 = request.factors
@@ -678,6 +679,34 @@ async def full_factorial_analysis(request: FactorialDesignRequest):
                             "z": combo[2],
                             "response": round(float(mean_val), 4),
                             "label": f"({levels_f1[combo[0]]}, {levels_f2[combo[1]]}, {levels_f3[combo[2]]})"
+                        })
+        elif len(request.factors) == 4 and all(df[f].nunique() == 2 for f in request.factors):
+            # 2^4 design
+            cube_data = []
+            for combo in product([0, 1], repeat=4):
+                f1, f2, f3, f4 = request.factors
+                levels_f1 = sorted(df[f1].unique())
+                levels_f2 = sorted(df[f2].unique())
+                levels_f3 = sorted(df[f3].unique())
+                levels_f4 = sorted(df[f4].unique())
+
+                subset = df[
+                    (df[f1] == levels_f1[combo[0]]) &
+                    (df[f2] == levels_f2[combo[1]]) &
+                    (df[f3] == levels_f3[combo[2]]) &
+                    (df[f4] == levels_f4[combo[3]])
+                ]
+
+                if len(subset) > 0:
+                    mean_val = subset[request.response].mean()
+                    if pd.notna(mean_val):
+                        cube_data.append({
+                            "x": combo[0],
+                            "y": combo[1],
+                            "z": combo[2],
+                            "w": combo[3],  # 4th dimension
+                            "response": round(float(mean_val), 4),
+                            "label": f"({levels_f1[combo[0]]}, {levels_f2[combo[1]]}, {levels_f3[combo[2]]}, {levels_f4[combo[3]]})"
                         })
 
         return {
