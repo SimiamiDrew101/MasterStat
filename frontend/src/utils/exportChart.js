@@ -82,6 +82,55 @@ export const exportSvgToPng = (svgElement, filename = 'chart', options = {}) => 
 }
 
 /**
+ * Export SVG element directly as SVG file
+ * @param {SVGElement} svgElement - The SVG element to export
+ * @param {string} filename - The filename for the downloaded SVG (without extension)
+ */
+export const exportSvgDirect = (svgElement, filename = 'chart') => {
+  if (!svgElement) {
+    console.error('No SVG element provided for export')
+    return
+  }
+
+  try {
+    // Clone the SVG to avoid modifying the original
+    const svgClone = svgElement.cloneNode(true)
+
+    // Get SVG dimensions
+    const svgRect = svgElement.getBoundingClientRect()
+    const width = svgRect.width
+    const height = svgRect.height
+
+    // Set explicit dimensions on the clone
+    svgClone.setAttribute('width', width)
+    svgClone.setAttribute('height', height)
+
+    // Add XML namespace if not present
+    if (!svgClone.getAttribute('xmlns')) {
+      svgClone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+    }
+
+    // Serialize SVG to string
+    const svgString = new XMLSerializer().serializeToString(svgClone)
+
+    // Create blob and download
+    const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${filename}.svg`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+
+    // Cleanup
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    console.error('Error exporting SVG:', error)
+  }
+}
+
+/**
  * Export multiple SVG elements to a single PNG
  * @param {Array<SVGElement>} svgElements - Array of SVG elements
  * @param {string} filename - The filename for the downloaded PNG

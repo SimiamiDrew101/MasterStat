@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import hypothesis_testing, anova, factorial, block_designs, mixed_models, rsm, power_analysis, bayesian_doe
+from app.api import hypothesis_testing, anova, factorial, block_designs, mixed_models, rsm, power_analysis, bayesian_doe, import_data, stats
 
 app = FastAPI(
     title="MasterStat - Statistical Analysis Tool",
@@ -18,6 +18,8 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(import_data.router, prefix="/api/import", tags=["Data Import"])
+app.include_router(stats.router, prefix="/api/stats", tags=["Statistics"])
 app.include_router(power_analysis.router, prefix="/api/power", tags=["Power Analysis"])
 app.include_router(hypothesis_testing.router, prefix="/api/hypothesis", tags=["Hypothesis Testing"])
 app.include_router(anova.router, prefix="/api/anova", tags=["ANOVA"])

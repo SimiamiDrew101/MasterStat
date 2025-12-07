@@ -1,4 +1,5 @@
 import Plot from 'react-plotly.js'
+import { getPlotlyConfig } from '../utils/plotlyConfig'
 
 /**
  * HalfNormalPlot component for effect screening using Lenth's method
@@ -199,19 +200,9 @@ const HalfNormalPlot = ({ lenthsData }) => {
     }
   }
 
-  const config = {
-    responsive: true,
-    displayModeBar: true,
-    displaylogo: false,
-    modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-    toImageButtonOptions: {
-      format: 'png',
-      filename: `half-normal-plot-${new Date().toISOString().split('T')[0]}`,
-      height: 800,
-      width: 1200,
-      scale: 2
-    }
-  }
+  const config = getPlotlyConfig('half-normal-plot', {
+    modeBarButtonsToRemove: ['lasso2d', 'select2d']
+  })
 
   return (
     <div className="bg-slate-700/50 rounded-lg p-6">
@@ -307,7 +298,7 @@ const HalfNormalPlot = ({ lenthsData }) => {
               <span className="text-gray-400">Gray points</span> near the reference line represent inactive/insignificant effects (noise)
             </li>
             <li>
-              <span className="text-yellow-400">Yellow points</span> (diamonds) exceed the ME threshold - potentially active effects (± = {lenthsData.alpha})
+              <span className="text-yellow-400">Yellow points</span> (diamonds) exceed the ME threshold - potentially active effects (ï¿½ = {lenthsData.alpha})
             </li>
             <li>
               <span className="text-red-400">Red points</span> (diamonds) exceed the SME threshold - highly significant effects with multiple comparison adjustment
@@ -318,7 +309,7 @@ const HalfNormalPlot = ({ lenthsData }) => {
           </ul>
           <p className="mt-2">
             <strong className="text-purple-400">PSE = {lenthsData.pse.toFixed(4)}</strong> is the pseudo standard error,
-            calculated as 1.5 × median of small effects, providing a robust estimate of noise in unreplicated experiments.
+            calculated as 1.5 ï¿½ median of small effects, providing a robust estimate of noise in unreplicated experiments.
           </p>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import Plot from 'react-plotly.js'
+import { getPlotlyConfig } from '../utils/plotlyConfig'
 
 const ResponseSurface3D = ({ surfaceData, factor1, factor2, responseName }) => {
   if (!surfaceData || surfaceData.length === 0) return null
@@ -102,20 +103,10 @@ const ResponseSurface3D = ({ surfaceData, factor1, factor2, responseName }) => {
     }
   }
 
-  const config = {
-    responsive: true,
-    displayModeBar: true,
-    displaylogo: false,
+  const config = getPlotlyConfig('response-surface', {
     modeBarButtonsToAdd: ['hoverclosest', 'hovercompare'],
-    modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-    toImageButtonOptions: {
-      format: 'png',
-      filename: `response-surface-${new Date().toISOString().split('T')[0]}`,
-      height: 1000,
-      width: 1200,
-      scale: 2
-    }
-  }
+    modeBarButtonsToRemove: ['lasso2d', 'select2d']
+  })
 
   return (
     <div className="bg-slate-700/50 rounded-lg p-6">

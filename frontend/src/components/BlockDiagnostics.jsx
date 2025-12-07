@@ -1,5 +1,6 @@
 import { AlertCircle, CheckCircle, TrendingUp } from 'lucide-react'
 import Plot from 'react-plotly.js'
+import { getPlotlyConfig } from '../utils/plotlyConfig'
 
 /**
  * BlockDiagnostics component displays block-specific diagnostic tests and plots
@@ -183,19 +184,9 @@ const BlockDiagnostics = ({ normalityTest, homogeneityTest, interactionMeans, bl
               height: 400,
               margin: { l: 60, r: 40, b: 60, t: 40 }
             }}
-            config={{
-              responsive: true,
-              displayModeBar: true,
-              displaylogo: false,
-              modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-              toImageButtonOptions: {
-                format: 'png',
-                filename: `block-treatment-interaction-${new Date().toISOString().split('T')[0]}`,
-                height: 400,
-                width: 700,
-                scale: 2
-              }
-            }}
+            config={getPlotlyConfig('block-treatment-interaction', {
+              modeBarButtonsToRemove: ['lasso2d', 'select2d']
+            })}
             style={{ width: '100%' }}
           />
 

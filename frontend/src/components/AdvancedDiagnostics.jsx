@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import Plot from 'react-plotly.js'
 import { AlertTriangle, CheckCircle, Info, TrendingUp } from 'lucide-react'
+import { getPlotlyConfig } from '../utils/plotlyConfig'
 
 const AdvancedDiagnostics = ({ diagnosticsData }) => {
   const [activeView, setActiveView] = useState('summary') // 'summary', 'leverage', 'cooks', 'dffits', 'vif', 'press'
@@ -136,7 +137,7 @@ const AdvancedDiagnostics = ({ diagnosticsData }) => {
               legend: { x: 1, xanchor: 'right', y: 1 },
               margin: { l: 60, r: 40, t: 40, b: 60 }
             }}
-            config={{ responsive: true }}
+            config={getPlotlyConfig('leverage-plot')}
             className="w-full"
           />
         </div>
@@ -237,7 +238,7 @@ const AdvancedDiagnostics = ({ diagnosticsData }) => {
               legend: { x: 1, xanchor: 'right', y: 1 },
               margin: { l: 60, r: 40, t: 40, b: 60 }
             }}
-            config={{ responsive: true }}
+            config={getPlotlyConfig('cooks-distance-plot')}
             className="w-full"
           />
         </div>
@@ -334,7 +335,7 @@ const AdvancedDiagnostics = ({ diagnosticsData }) => {
               legend: { x: 1, xanchor: 'right', y: 1 },
               margin: { l: 60, r: 40, t: 40, b: 60 }
             }}
-            config={{ responsive: true }}
+            config={getPlotlyConfig('dffits-plot')}
             className="w-full"
           />
         </div>

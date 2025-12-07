@@ -6,7 +6,11 @@ import EffectSizePanel from '../components/EffectSizePanel'
 import InfluenceDiagnostics from '../components/InfluenceDiagnostics'
 import DiagnosticPlots from '../components/DiagnosticPlots'
 import ContrastsPanel from '../components/ContrastsPanel'
-import { TrendingUp } from 'lucide-react'
+import FileUploadZone from '../components/FileUploadZone'
+import Histogram from '../components/Histogram'
+import CorrelationHeatmap from '../components/CorrelationHeatmap'
+import ScatterMatrix from '../components/ScatterMatrix'
+import { TrendingUp, FileDown } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -196,6 +200,30 @@ const ANOVA = () => {
       })
     })
     setTwoWayTableData(newData)
+  }
+
+  // Handle data import from FileUploadZone
+  const handleOneWayDataImport = ({ tableData, factorColumns }) => {
+    // Update groups based on imported columns
+    const newGroups = factorColumns.map(col => ({ name: col, values: '' }))
+    setGroups(newGroups)
+
+    // Update table data - tableData is already in the correct format from fileParser
+    setOneWayTableData(tableData)
+  }
+
+  const handleTwoWayDataImport = ({ tableData, factorColumns, responseColumn }) => {
+    // For two-way ANOVA, we expect 2 factor columns and 1 response column
+    if (factorColumns.length >= 2) {
+      setFactorA(factorColumns[0])
+      setFactorB(factorColumns[1])
+    }
+    if (responseColumn) {
+      setResponseName(responseColumn)
+    }
+
+    // Update table data
+    setTwoWayTableData(tableData)
   }
 
   // Handle keyboard navigation
@@ -466,6 +494,61 @@ const ANOVA = () => {
     }
   }
 
+  const handleOneWayExportPDF = async () => {
+    try {
+      const payload = {
+        results: oneWayResult,
+        post_hoc_results: postHocResult,
+        contrast_results: contrastsResult,
+        title: 'One-Way ANOVA Analysis Report'
+      }
+
+      const response = await axios.post(`${API_URL}/api/anova/export-pdf`, payload, {
+        responseType: 'blob'
+      })
+
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `anova_oneway_report_${new Date().toISOString().slice(0,10)}.pdf`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Error exporting PDF:', err)
+      alert('Failed to export PDF: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
+  const handleTwoWayExportPDF = async () => {
+    try {
+      const payload = {
+        results: twoWayResult,
+        post_hoc_results: twoWayPostHocResult,
+        title: 'Two-Way ANOVA Analysis Report'
+      }
+
+      const response = await axios.post(`${API_URL}/api/anova/export-pdf`, payload, {
+        responseType: 'blob'
+      })
+
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `anova_twoway_report_${new Date().toISOString().slice(0,10)}.pdf`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Error exporting PDF:', err)
+      alert('Failed to export PDF: ' + (err.response?.data?.detail || err.message))
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -512,6 +595,15 @@ const ANOVA = () => {
         <form onSubmit={handleOneWaySubmit} className="space-y-6">
           {/* One-Way ANOVA: Groups */}
           <div className="space-y-4">
+            {/* File Upload Zone */}
+            <div className="mb-4">
+              <label className="text-gray-100 font-medium mb-3 block">Import Data from File</label>
+              <FileUploadZone
+                onDataImport={handleOneWayDataImport}
+                expectedColumns={groups.map(g => g.name)}
+              />
+            </div>
+
             <div className="space-y-4">
               <div className="flex items-center justify-between mb-2">
                 <label className="text-gray-100 font-medium">Data Entry (Excel-like navigation with arrow keys)</label>
@@ -631,7 +723,65 @@ const ANOVA = () => {
       )}
 
       {/* Results Display */}
-      {oneWayResult && <ResultCard result={oneWayResult} />}
+      {oneWayResult && (
+        <>
+          <ResultCard result={oneWayResult} />
+
+          {/* Exploratory Data Visualizations */}
+          {oneWayResult.diagnostic_plots && (
+            <div className="space-y-6">
+              <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+                <h3 className="text-2xl font-bold text-gray-100 mb-4">Exploratory Data Analysis</h3>
+                <p className="text-gray-300 text-sm mb-6">
+                  Visual exploration of residuals and data patterns to assess model assumptions and identify potential issues.
+                </p>
+                <div className="grid grid-cols-1 gap-6">
+                  {/* Residuals Histogram */}
+                  {oneWayResult.diagnostic_plots.residuals && (
+                    <Histogram
+                      data={oneWayResult.diagnostic_plots.residuals}
+                      variableName="Residuals"
+                      title="Distribution of Residuals"
+                      showNormalCurve={true}
+                      showKDE={true}
+                    />
+                  )}
+
+                  {/* Fitted Values Histogram */}
+                  {oneWayResult.diagnostic_plots.fitted && (
+                    <Histogram
+                      data={oneWayResult.diagnostic_plots.fitted}
+                      variableName="Fitted Values"
+                      title="Distribution of Fitted Values"
+                      showNormalCurve={false}
+                      showKDE={true}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Export PDF Button */}
+          <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-gray-100 mb-2">Export Analysis Report</h3>
+                <p className="text-gray-300 text-sm">
+                  Download a comprehensive PDF report including all analysis results, assumptions tests, effect sizes, and visualizations.
+                </p>
+              </div>
+              <button
+                onClick={handleOneWayExportPDF}
+                className="ml-4 flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-3 px-6 rounded-lg hover:from-emerald-700 hover:to-teal-700 transition-all shadow-lg hover:shadow-xl"
+              >
+                <FileDown className="w-5 h-5" />
+                Export PDF
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Effect Sizes */}
       {oneWayResult && oneWayResult.effect_sizes && (
@@ -922,6 +1072,15 @@ const ANOVA = () => {
             </div>
           </div>
 
+          {/* File Upload Zone */}
+          <div className="mb-4">
+            <label className="text-gray-100 font-medium mb-3 block">Import Data from File</label>
+            <FileUploadZone
+              onDataImport={handleTwoWayDataImport}
+              expectedColumns={[factorA || 'Factor A', factorB || 'Factor B', 'response']}
+            />
+          </div>
+
           {/* Data Entry */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -1014,7 +1173,65 @@ const ANOVA = () => {
       )}
 
       {/* Results Display */}
-      {twoWayResult && <ResultCard result={twoWayResult} />}
+      {twoWayResult && (
+        <>
+          <ResultCard result={twoWayResult} />
+
+          {/* Exploratory Data Visualizations */}
+          {twoWayResult.diagnostic_plots && (
+            <div className="space-y-6">
+              <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+                <h3 className="text-2xl font-bold text-gray-100 mb-4">Exploratory Data Analysis</h3>
+                <p className="text-gray-300 text-sm mb-6">
+                  Visual exploration of residuals and data patterns to assess model assumptions and identify potential issues.
+                </p>
+                <div className="grid grid-cols-1 gap-6">
+                  {/* Residuals Histogram */}
+                  {twoWayResult.diagnostic_plots.residuals && (
+                    <Histogram
+                      data={twoWayResult.diagnostic_plots.residuals}
+                      variableName="Residuals"
+                      title="Distribution of Residuals"
+                      showNormalCurve={true}
+                      showKDE={true}
+                    />
+                  )}
+
+                  {/* Fitted Values Histogram */}
+                  {twoWayResult.diagnostic_plots.fitted && (
+                    <Histogram
+                      data={twoWayResult.diagnostic_plots.fitted}
+                      variableName="Fitted Values"
+                      title="Distribution of Fitted Values"
+                      showNormalCurve={false}
+                      showKDE={true}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Export PDF Button */}
+          <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-gray-100 mb-2">Export Analysis Report</h3>
+                <p className="text-gray-300 text-sm">
+                  Download a comprehensive PDF report including all analysis results, assumptions tests, effect sizes, and visualizations.
+                </p>
+              </div>
+              <button
+                onClick={handleTwoWayExportPDF}
+                className="ml-4 flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-3 px-6 rounded-lg hover:from-emerald-700 hover:to-teal-700 transition-all shadow-lg hover:shadow-xl"
+              >
+                <FileDown className="w-5 h-5" />
+                Export PDF
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Effect Sizes */}
       {twoWayResult && twoWayResult.effect_sizes && (

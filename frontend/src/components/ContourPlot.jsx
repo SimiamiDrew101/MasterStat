@@ -1,5 +1,6 @@
 import Plot from 'react-plotly.js'
 import { Target } from 'lucide-react'
+import { getPlotlyConfig } from '../utils/plotlyConfig'
 
 const ContourPlot = ({
   surfaceData,
@@ -261,18 +262,7 @@ const ContourPlot = ({
     }
   }
 
-  const config = {
-    responsive: true,
-    displayModeBar: true,
-    displaylogo: false,
-    toImageButtonOptions: {
-      format: 'png',
-      filename: `contour-plot-${new Date().toISOString().split('T')[0]}`,
-      height: 1000,
-      width: 1200,
-      scale: 2
-    }
-  }
+  const config = getPlotlyConfig('contour-plot')
 
   return (
     <div className="bg-slate-700/50 rounded-lg p-6">

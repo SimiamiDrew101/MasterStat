@@ -1,5 +1,6 @@
 import { BarChart3, AlertCircle, CheckCircle } from 'lucide-react'
 import Plot from 'react-plotly.js'
+import { getPlotlyConfig } from '../utils/plotlyConfig'
 
 const EnhancedANOVA = ({ enhancedAnova, lackOfFitTest, alpha = 0.05 }) => {
   if (!enhancedAnova) return null
@@ -71,11 +72,7 @@ const EnhancedANOVA = ({ enhancedAnova, lackOfFitTest, alpha = 0.05 }) => {
     height: 400
   }
 
-  const config = {
-    responsive: true,
-    displayModeBar: true,
-    displaylogo: false
-  }
+  const config = getPlotlyConfig('anova-contributions')
 
   return (
     <div className="space-y-6">

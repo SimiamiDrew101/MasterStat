@@ -1,5 +1,6 @@
 import Plot from 'react-plotly.js'
 import { Activity } from 'lucide-react'
+import { getPlotlyConfig } from '../utils/plotlyConfig'
 
 const DistributionPlot = ({ distributionData, pValue, testType = "t-test", alpha = 0.05 }) => {
   if (!distributionData) return null
@@ -272,12 +273,9 @@ const DistributionPlot = ({ distributionData, pValue, testType = "t-test", alpha
     }
   }
 
-  const config = {
-    responsive: true,
-    displayModeBar: true,
-    displaylogo: false,
+  const config = getPlotlyConfig('distribution-plot', {
     modeBarButtonsToRemove: ['lasso2d', 'select2d']
-  }
+  })
 
   return (
     <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">

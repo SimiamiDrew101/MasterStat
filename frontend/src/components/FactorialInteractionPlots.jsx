@@ -1,4 +1,5 @@
 import Plot from 'react-plotly.js'
+import { getPlotlyConfig } from '../utils/plotlyConfig'
 
 /**
  * FactorialInteractionPlots component using Plotly
@@ -73,19 +74,9 @@ const FactorialInteractionPlots = ({ mainEffectsData, interactionData, factors }
       }
     }
 
-    const config = {
-      responsive: true,
-      displayModeBar: true,
-      displaylogo: false,
-      modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-      toImageButtonOptions: {
-        format: 'png',
-        filename: `main-effect-${factor}-${new Date().toISOString().split('T')[0]}`,
-        height: 400,
-        width: 600,
-        scale: 2
-      }
-    }
+    const config = getPlotlyConfig(`main-effect-${factor}`, {
+      modeBarButtonsToRemove: ['lasso2d', 'select2d']
+    })
 
     return (
       <div key={idx} className="bg-slate-800/50 rounded-lg p-4">
@@ -175,19 +166,9 @@ const FactorialInteractionPlots = ({ mainEffectsData, interactionData, factors }
       }
     }
 
-    const interactionConfig = {
-      responsive: true,
-      displayModeBar: true,
-      displaylogo: false,
-      modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-      toImageButtonOptions: {
-        format: 'png',
-        filename: `interaction-${interactionName.replace(/×/g, 'x')}-${new Date().toISOString().split('T')[0]}`,
-        height: 400,
-        width: 600,
-        scale: 2
-      }
-    }
+    const interactionConfig = getPlotlyConfig(`interaction-${interactionName.replace(/×/g, 'x')}`, {
+      modeBarButtonsToRemove: ['lasso2d', 'select2d']
+    })
 
     return (
       <div key={idx} className="bg-slate-800/50 rounded-lg p-4">

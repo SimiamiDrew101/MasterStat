@@ -1,5 +1,6 @@
 import Plot from 'react-plotly.js'
 import { AlertCircle, CheckCircle, Activity } from 'lucide-react'
+import { getPlotlyConfig } from '../utils/plotlyConfig'
 
 const ResidualAnalysis = ({ diagnostics, responseName }) => {
   if (!diagnostics) return null
@@ -176,12 +177,9 @@ const ResidualAnalysis = ({ diagnostics, responseName }) => {
     margin: { l: 60, r: 40, b: 60, t: 40 }
   }
 
-  const config = {
-    responsive: true,
-    displayModeBar: true,
-    displaylogo: false,
+  const config = getPlotlyConfig('residual-analysis', {
     modeBarButtonsToRemove: ['lasso2d', 'select2d']
-  }
+  })
 
   return (
     <div className="space-y-6">

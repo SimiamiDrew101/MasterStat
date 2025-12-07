@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
-import { Mountain, Plus, Trash2, Target, TrendingUp, Sparkles } from 'lucide-react'
+import { Mountain, Plus, Trash2, Target, TrendingUp, Sparkles, FileDown } from 'lucide-react'
 import ResultCard from '../components/ResultCard'
 import ResponseSurface3D from '../components/ResponseSurface3D'
 import ContourPlot from '../components/ContourPlot'
@@ -12,6 +12,10 @@ import AdvancedDiagnostics from '../components/AdvancedDiagnostics'
 import CrossValidationResults from '../components/CrossValidationResults'
 import MultiResponseManager from '../components/MultiResponseManager'
 import MultiResponseContourOverlay from '../components/MultiResponseContourOverlay'
+import FileUploadZone from '../components/FileUploadZone'
+import Histogram from '../components/Histogram'
+import CorrelationHeatmap from '../components/CorrelationHeatmap'
+import ScatterMatrix from '../components/ScatterMatrix'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -494,6 +498,37 @@ const RSM = () => {
     }
   }
 
+  const handleExportPDF = async () => {
+    try {
+      if (!modelResult || !modelResult.coefficients) {
+        throw new Error('Fit a model first before exporting PDF report')
+      }
+
+      const payload = {
+        results: modelResult,
+        design_type: designType,
+        title: 'Response Surface Methodology Analysis Report'
+      }
+
+      const response = await axios.post(`${API_URL}/api/rsm/export-pdf`, payload, {
+        responseType: 'blob'
+      })
+
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `rsm_${designType}_report_${new Date().toISOString().slice(0,10)}.pdf`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Error exporting PDF:', err)
+      setError(err.response?.data?.detail || err.message || 'Failed to export PDF report')
+    }
+  }
+
   // Calculate steepest ascent
   const handleSteepestAscent = async () => {
     setLoading(true)
@@ -776,6 +811,23 @@ const RSM = () => {
     setTableData(newData)
   }
 
+  // Handle data import from FileUploadZone
+  const handleDataImport = ({ tableData: importedTableData, factorColumns, responseColumn }) => {
+    // Update factor names based on imported columns
+    if (factorColumns && factorColumns.length > 0) {
+      setFactorNames(factorColumns)
+      setNumFactors(factorColumns.length)
+    }
+
+    // Update response name if provided
+    if (responseColumn) {
+      setResponseName(responseColumn)
+    }
+
+    // Update table data - importedTableData is already in the correct format
+    setTableData(importedTableData)
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -987,6 +1039,15 @@ const RSM = () => {
               </div>
             )}
 
+            {/* File Upload Zone */}
+            <div className="mb-6">
+              <h4 className="text-gray-100 font-semibold text-lg mb-3">Import Data from File</h4>
+              <FileUploadZone
+                onDataImport={handleDataImport}
+                expectedColumns={[...factorNames, 'response']}
+              />
+            </div>
+
             {/* Data Entry Table */}
             {tableData.length > 0 && (
               <div>
@@ -1187,38 +1248,61 @@ const RSM = () => {
             </div>
 
             {/* Coefficients Table */}
-            <h4 className="text-gray-100 font-semibold mb-3">Model Coefficients</h4>
-            <div className="overflow-x-auto bg-slate-700/30 rounded-lg">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-slate-700/70">
-                    <th className="px-4 py-2 text-left text-gray-100 font-semibold border-b border-slate-600">Term</th>
-                    <th className="px-4 py-2 text-right text-gray-100 font-semibold border-b border-slate-600">Estimate</th>
-                    <th className="px-4 py-2 text-right text-gray-100 font-semibold border-b border-slate-600">Std Error</th>
-                    <th className="px-4 py-2 text-right text-gray-100 font-semibold border-b border-slate-600">t-value</th>
-                    <th className="px-4 py-2 text-right text-gray-100 font-semibold border-b border-slate-600">p-value</th>
-                    <th className="px-4 py-2 text-center text-gray-100 font-semibold border-b border-slate-600">Sig.</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(modelResult.coefficients).map(([term, values], idx) => (
-                    <tr key={idx} className="border-b border-slate-700/30 hover:bg-slate-600/10">
-                      <td className="px-4 py-2 text-gray-100 font-mono text-sm">{term}</td>
-                      <td className="px-4 py-2 text-right text-gray-100">{values.estimate}</td>
-                      <td className="px-4 py-2 text-right text-gray-300">{values.std_error}</td>
-                      <td className="px-4 py-2 text-right text-gray-100">{values.t_value}</td>
-                      <td className="px-4 py-2 text-right text-gray-100">{values.p_value}</td>
-                      <td className="px-4 py-2 text-center">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          values.p_value < alpha ? 'bg-green-900/50 text-green-200' : 'bg-slate-700 text-gray-400'
-                        }`}>
-                          {values.p_value < alpha ? '***' : 'ns'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {modelResult.coefficients && (
+              <>
+                <h4 className="text-gray-100 font-semibold mb-3">Model Coefficients</h4>
+                <div className="overflow-x-auto bg-slate-700/30 rounded-lg">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-slate-700/70">
+                        <th className="px-4 py-2 text-left text-gray-100 font-semibold border-b border-slate-600">Term</th>
+                        <th className="px-4 py-2 text-right text-gray-100 font-semibold border-b border-slate-600">Estimate</th>
+                        <th className="px-4 py-2 text-right text-gray-100 font-semibold border-b border-slate-600">Std Error</th>
+                        <th className="px-4 py-2 text-right text-gray-100 font-semibold border-b border-slate-600">t-value</th>
+                        <th className="px-4 py-2 text-right text-gray-100 font-semibold border-b border-slate-600">p-value</th>
+                        <th className="px-4 py-2 text-center text-gray-100 font-semibold border-b border-slate-600">Sig.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(modelResult.coefficients).map(([term, values], idx) => (
+                        <tr key={idx} className="border-b border-slate-700/30 hover:bg-slate-600/10">
+                          <td className="px-4 py-2 text-gray-100 font-mono text-sm">{term}</td>
+                          <td className="px-4 py-2 text-right text-gray-100">{values.estimate}</td>
+                          <td className="px-4 py-2 text-right text-gray-300">{values.std_error}</td>
+                          <td className="px-4 py-2 text-right text-gray-100">{values.t_value}</td>
+                          <td className="px-4 py-2 text-right text-gray-100">{values.p_value}</td>
+                          <td className="px-4 py-2 text-center">
+                            <span className={`px-2 py-1 rounded text-xs font-medium ${
+                              values.p_value < alpha ? 'bg-green-900/50 text-green-200' : 'bg-slate-700 text-gray-400'
+                            }`}>
+                              {values.p_value < alpha ? '***' : 'ns'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Export PDF Button */}
+          <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-gray-100 mb-2">Export Analysis Report</h3>
+                <p className="text-gray-300 text-sm">
+                  Download a comprehensive PDF report including model coefficients, canonical analysis, optimization results, and recommendations.
+                </p>
+              </div>
+              <button
+                onClick={handleExportPDF}
+                className="ml-4 flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-3 px-6 rounded-lg hover:from-emerald-700 hover:to-teal-700 transition-all shadow-lg hover:shadow-xl"
+              >
+                <FileDown className="w-5 h-5" />
+                Export PDF
+              </button>
             </div>
           </div>
 
@@ -1302,6 +1386,41 @@ const RSM = () => {
               diagnostics={modelResult.diagnostics}
               responseName={responseName}
             />
+          )}
+
+          {/* Exploratory Data Analysis */}
+          {modelResult.diagnostics && (
+            <div className="space-y-6">
+              <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+                <h3 className="text-2xl font-bold text-gray-100 mb-4">Exploratory Data Analysis</h3>
+                <p className="text-gray-300 text-sm mb-6">
+                  Visual exploration of residuals and fitted values to assess model assumptions and identify patterns.
+                </p>
+                <div className="grid grid-cols-1 gap-6">
+                  {/* Residuals Histogram */}
+                  {modelResult.diagnostics.residuals && (
+                    <Histogram
+                      data={modelResult.diagnostics.residuals}
+                      variableName="Residuals"
+                      title="Distribution of Residuals"
+                      showNormalCurve={true}
+                      showKDE={true}
+                    />
+                  )}
+
+                  {/* Fitted Values Histogram */}
+                  {modelResult.diagnostics.fitted && (
+                    <Histogram
+                      data={modelResult.diagnostics.fitted}
+                      variableName="Fitted Values"
+                      title="Distribution of Fitted Values"
+                      showNormalCurve={false}
+                      showKDE={true}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Advanced Model Diagnostics (Phase 1 Feature) */}

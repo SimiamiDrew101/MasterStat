@@ -7,6 +7,7 @@ import {
   getDesignCoverageInfo,
   getPointTypeLegend
 } from '../utils/designPreview'
+import { getPlotlyConfig } from '../utils/plotlyConfig'
 
 const DesignPreview = ({ wizardData }) => {
   const { selectedDesign, nFactors, factorNames } = wizardData
@@ -103,7 +104,7 @@ const DesignPreview = ({ wizardData }) => {
       <Plot
         data={traces}
         layout={layout}
-        config={{ responsive: true, displayModeBar: false }}
+        config={getPlotlyConfig('design-preview-2d', { displayModeBar: false })}
         style={{ width: '100%', height: '500px' }}
       />
     )
@@ -186,7 +187,7 @@ const DesignPreview = ({ wizardData }) => {
       <Plot
         data={traces}
         layout={layout}
-        config={{ responsive: true, displayModeBar: true }}
+        config={getPlotlyConfig('design-preview-3d')}
         style={{ width: '100%', height: '600px' }}
       />
     )
@@ -258,7 +259,7 @@ const DesignPreview = ({ wizardData }) => {
                 <Plot
                   data={traces}
                   layout={layout}
-                  config={{ responsive: true, displayModeBar: false }}
+                  config={getPlotlyConfig(`design-preview-projection-${idx}`, { displayModeBar: false })}
                   style={{ width: '100%' }}
                 />
               </div>

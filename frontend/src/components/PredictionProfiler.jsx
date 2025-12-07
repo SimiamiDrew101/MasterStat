@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Sliders, TrendingUp, AlertCircle, Info } from 'lucide-react'
 import Plot from 'react-plotly.js'
+import { getPlotlyConfig } from '../utils/plotlyConfig'
 
 const PredictionProfiler = ({
   coefficients,
@@ -341,10 +342,7 @@ const PredictionProfiler = ({
                   showlegend: false,
                   hovermode: 'closest'
                 }}
-                config={{
-                  displayModeBar: false,
-                  responsive: true
-                }}
+                config={getPlotlyConfig(`prediction-profile-${factor}`, { displayModeBar: false })}
                 style={{ width: '100%' }}
                 useResizeHandler={true}
               />
@@ -417,11 +415,7 @@ const PredictionProfiler = ({
               font: { color: '#e2e8f0' },
               showlegend: false
             }}
-            config={{
-              responsive: true,
-              displayModeBar: true,
-              displaylogo: false
-            }}
+            config={getPlotlyConfig('prediction-surface')}
             style={{ width: '100%' }}
             useResizeHandler={true}
           />

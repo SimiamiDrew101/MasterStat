@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional, Any
 import numpy as np
@@ -7,6 +8,7 @@ from scipy import stats as scipy_stats
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from pyDOE3 import ccdesign, bbdesign
+from app.utils.report_generator import PDFReportGenerator, format_pvalue, format_number
 
 router = APIRouter()
 
@@ -142,7 +144,7 @@ async def fit_rsm_model(request: RSMRequest):
         # Prepare diagnostic data
         diagnostics = {
             "residuals": [round(float(r), 4) for r in residuals],
-            "fitted_values": [round(float(f), 4) for f in fitted_values],
+            "fitted": [round(float(f), 4) for f in fitted_values],
             "standardized_residuals": [round(float(r), 4) for r in standardized_residuals],
             "studentized_residuals": [round(float(r), 4) for r in studentized_residuals],
             "leverage": [round(float(l), 4) for l in leverage],
@@ -3571,3 +3573,378 @@ async def cross_validate_model(request: CrossValidationRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Cross-validation failed: {str(e)}")
+
+class RSMPDFRequest(BaseModel):
+    """Request model for generating RSM PDF report"""
+    results: Dict[str, Any] = Field(..., description="RSM analysis results")
+    design_type: Optional[str] = Field("response_surface", description="Design type: ccd, box_behnken, response_surface, mixture_design")
+    title: Optional[str] = Field("Response Surface Methodology Report", description="Report title")
+
+@router.post("/export-pdf")
+async def export_rsm_pdf(request: RSMPDFRequest):
+    """
+    Generate a comprehensive PDF report for RSM analysis
+
+    Includes:
+    - Executive summary
+    - Design information
+    - ANOVA table
+    - Model equation
+    - Coefficient table
+    - Canonical analysis
+    - Stationary point
+    - Ridge analysis (if available)
+    - Diagnostic information
+    - Recommendations
+    """
+    try:
+        results = request.results
+        test_type = results.get("test_type", "Response Surface Methodology")
+
+        # Initialize PDF generator
+        pdf = PDFReportGenerator(title=request.title, author="MasterStat")
+
+        # Cover page metadata
+        metadata = {
+            "Design Type": request.design_type.replace('_', ' ').title(),
+            "Analysis Type": test_type,
+            "Significance Level (α)": str(results.get("alpha", 0.05)),
+            "Software": "MasterStat Statistical Analysis Platform"
+        }
+
+        # Add design-specific metadata
+        if "n_factors" in results:
+            metadata["Number of Factors"] = str(results["n_factors"])
+        if "n_runs" in results:
+            metadata["Number of Runs"] = str(results["n_runs"])
+        if "response_name" in results:
+            metadata["Response Variable"] = results["response_name"]
+
+        pdf.add_cover_page(subtitle=test_type, metadata=metadata)
+
+        # Executive Summary
+        pdf.add_section("Executive Summary")
+
+        # Get model summary
+        r_squared = results.get("r_squared", results.get("model_r_squared", 0))
+        adj_r_squared = results.get("adj_r_squared", results.get("model_adj_r_squared", 0))
+
+        summary_text = f"""
+        A response surface methodology (RSM) analysis was conducted to model the relationship between
+        {results.get('n_factors', 'multiple')} factors and the response variable{f" '{results.get('response_name', '')}'" if results.get('response_name') else ''}.
+        """
+
+        if "design_type" in results:
+            summary_text += f" The experimental design used was {results['design_type'].replace('_', ' ')}."
+
+        summary_text += f"""
+        \n\nThe fitted second-order response surface model explains {r_squared*100:.1f}% of the variation
+        in the response (R² = {format_number(r_squared, 4)}, Adj R² = {format_number(adj_r_squared, 4)}).
+        """
+
+        pdf.add_paragraph(summary_text.strip())
+
+        # Stationary Point Summary (if available)
+        if "stationary_point" in results:
+            sp = results["stationary_point"]
+            sp_type = sp.get("type", "Unknown")
+
+            if sp_type == "saddle_point":
+                pdf.add_paragraph(
+                    f"\n<b>Critical Finding:</b> The response surface has a saddle point, indicating no global "
+                    f"optimum exists within the experimental region. Ridge analysis is recommended to find "
+                    f"optimal operating conditions."
+                )
+            elif sp_type == "minimum":
+                pdf.add_paragraph(
+                    f"\n<b>Optimization Result:</b> A minimum response was identified at the stationary point."
+                )
+            elif sp_type == "maximum":
+                pdf.add_paragraph(
+                    f"\n<b>Optimization Result:</b> A maximum response was identified at the stationary point."
+                )
+
+        # Design Information
+        pdf.add_section("Design Information")
+
+        design_info_dict = {
+            "Design Type": request.design_type.replace('_', ' ').title(),
+            "Number of Runs": str(results.get("n_runs", results.get("n_total_runs", "-"))),
+            "Number of Factors": str(results.get("n_factors", len(results.get("factors", [])))),
+            "Response Variable": results.get("response_name", "-"),
+            "Significance Level": str(results.get("alpha", 0.05))
+        }
+
+        # Add CCD-specific info
+        if "center_points" in results:
+            design_info_dict["Center Points"] = str(results["center_points"])
+        if "axial_points" in results:
+            design_info_dict["Axial Points"] = str(results["axial_points"])
+        if "alpha_value" in results:
+            design_info_dict["Alpha (α) Value"] = format_number(results["alpha_value"], 4)
+
+        pdf.add_summary_stats(design_info_dict, title="")
+
+        # ANOVA Table
+        pdf.add_section("ANOVA Table")
+
+        if "anova_table" in results:
+            anova_data = results["anova_table"]
+            headers = ["Source", "Sum of Squares", "df", "Mean Square", "F-statistic", "p-value"]
+            table_data = []
+
+            # Define order for better readability
+            source_order = ["Model", "Linear", "Square", "Interaction", "Lack of Fit", "Pure Error", "Residual", "Total"]
+
+            # Add sources in order
+            for source in source_order:
+                if source in anova_data:
+                    values = anova_data[source]
+                    f_val = values.get("f_value", values.get("F"))
+                    p_val = values.get("p_value", values.get("PR(>F)"))
+
+                    row = [
+                        source,
+                        format_number(values.get("sum_sq", values.get("SS")), 4),
+                        str(values.get("df", "-")),
+                        format_number(values.get("mean_sq", values.get("MS")), 4),
+                        format_number(f_val, 4) if f_val is not None else "-",
+                        format_pvalue(p_val) if p_val is not None else "-"
+                    ]
+                    table_data.append(row)
+
+            # Add remaining sources not in the predefined order
+            for source, values in anova_data.items():
+                if source not in source_order:
+                    f_val = values.get("f_value", values.get("F"))
+                    p_val = values.get("p_value", values.get("PR(>F)"))
+
+                    row = [
+                        source,
+                        format_number(values.get("sum_sq", values.get("SS")), 4),
+                        str(values.get("df", "-")),
+                        format_number(values.get("mean_sq", values.get("MS")), 4),
+                        format_number(f_val, 4) if f_val is not None else "-",
+                        format_pvalue(p_val) if p_val is not None else "-"
+                    ]
+                    table_data.append(row)
+
+            pdf.add_table(table_data, headers=headers)
+
+        # Model Summary
+        pdf.add_subsection("Model Summary")
+        model_stats = {
+            "R-squared": format_number(r_squared, 4),
+            "Adjusted R-squared": format_number(adj_r_squared, 4),
+            "Predicted R-squared": format_number(results.get("pred_r_squared"), 4) if results.get("pred_r_squared") else "N/A",
+            "Adequate Precision": format_number(results.get("adequate_precision"), 2) if results.get("adequate_precision") else "N/A",
+            "Root MSE": format_number(results.get("root_mse", results.get("rmse")), 4) if results.get("root_mse") or results.get("rmse") else "N/A"
+        }
+
+        # Add lack of fit test if available
+        if "anova_table" in results and "Lack of Fit" in results["anova_table"]:
+            lof = results["anova_table"]["Lack of Fit"]
+            lof_p = lof.get("p_value", lof.get("PR(>F)"))
+            if lof_p is not None:
+                model_stats["Lack of Fit p-value"] = format_pvalue(lof_p)
+                model_stats["Lack of Fit Status"] = "Not Significant ✓" if lof_p > results.get("alpha", 0.05) else "Significant ✗"
+
+        pdf.add_summary_stats(model_stats, title="")
+
+        # Regression Coefficients
+        if "coefficients" in results or "coefficient_table" in results:
+            pdf.add_section("Regression Coefficients")
+
+            coeff_data = results.get("coefficients", results.get("coefficient_table", {}))
+
+            headers = ["Term", "Coefficient", "Std Error", "t-statistic", "p-value", "VIF"]
+            table_data = []
+
+            for term, coeff_info in coeff_data.items():
+                # Handle different data structures
+                if isinstance(coeff_info, dict):
+                    coeff = coeff_info.get("coef", coeff_info.get("coefficient", 0))
+                    std_err = coeff_info.get("std_err", coeff_info.get("se", None))
+                    t_stat = coeff_info.get("t", coeff_info.get("t_statistic", None))
+                    p_val = coeff_info.get("p", coeff_info.get("p_value", None))
+                    vif = coeff_info.get("vif", None)
+                else:
+                    # If it's just a number
+                    coeff = coeff_info
+                    std_err = None
+                    t_stat = None
+                    p_val = None
+                    vif = None
+
+                row = [
+                    term,
+                    format_number(coeff, 6),
+                    format_number(std_err, 6) if std_err is not None else "-",
+                    format_number(t_stat, 4) if t_stat is not None else "-",
+                    format_pvalue(p_val) if p_val is not None else "-",
+                    format_number(vif, 2) if vif is not None else "-"
+                ]
+                table_data.append(row)
+
+            pdf.add_table(table_data, headers=headers)
+
+        # Model Equations
+        if "coded_equation" in results or "natural_equation" in results:
+            pdf.add_section("Regression Equations")
+
+            if "coded_equation" in results:
+                pdf.add_subsection("Coded Equation")
+                pdf.add_paragraph(f"<font name='Courier' size='9'>{results['coded_equation']}</font>")
+
+            if "natural_equation" in results:
+                pdf.add_subsection("Natural (Uncoded) Equation")
+                pdf.add_paragraph(f"<font name='Courier' size='9'>{results['natural_equation']}</font>")
+
+        # Canonical Analysis
+        if "canonical_analysis" in results:
+            pdf.add_section("Canonical Analysis")
+
+            canonical = results["canonical_analysis"]
+
+            pdf.add_paragraph(
+                "Canonical analysis transforms the fitted surface into a more interpretable form by rotating "
+                "the coordinate system to align with the principal axes of the response surface."
+            )
+
+            # Canonical form
+            if "canonical_form" in canonical:
+                pdf.add_subsection("Canonical Form")
+                pdf.add_paragraph(f"<font name='Courier'>{canonical['canonical_form']}</font>")
+
+            # Eigenvalues
+            if "eigenvalues" in canonical:
+                pdf.add_subsection("Eigenvalues (Curvature)")
+
+                headers = ["Eigenvalue", "Value", "Interpretation"]
+                table_data = []
+
+                eigenvalues = canonical["eigenvalues"]
+                for i, (name, value) in enumerate(eigenvalues.items()):
+                    interpretation = ""
+                    if value > 0:
+                        interpretation = "Concave upward"
+                    elif value < 0:
+                        interpretation = "Concave downward"
+                    else:
+                        interpretation = "Flat/saddle"
+
+                    table_data.append([name, format_number(value, 6), interpretation])
+
+                pdf.add_table(table_data, headers=headers)
+
+        # Stationary Point
+        if "stationary_point" in results:
+            pdf.add_section("Stationary Point Analysis")
+
+            sp = results["stationary_point"]
+
+            # Type and location
+            sp_type = sp.get("type", "Unknown")
+            pdf.add_paragraph(f"<b>Type:</b> {sp_type.replace('_', ' ').title()}")
+
+            # Coded coordinates
+            if "coded" in sp:
+                pdf.add_subsection("Stationary Point (Coded Units)")
+                headers = ["Factor", "Value"]
+                table_data = [[factor, format_number(value, 4)] for factor, value in sp["coded"].items()]
+                pdf.add_table(table_data, headers=headers)
+
+            # Natural coordinates
+            if "natural" in sp:
+                pdf.add_subsection("Stationary Point (Natural Units)")
+                headers = ["Factor", "Value"]
+                table_data = [[factor, format_number(value, 4)] for factor, value in sp["natural"].items()]
+                pdf.add_table(table_data, headers=headers)
+
+            # Predicted response at stationary point
+            if "predicted_response" in sp:
+                pdf.add_paragraph(
+                    f"<b>Predicted Response at Stationary Point:</b> {format_number(sp['predicted_response'], 4)}"
+                )
+
+        # Ridge Analysis (if available)
+        if "ridge_analysis" in results:
+            pdf.add_section("Ridge Analysis")
+
+            pdf.add_paragraph(
+                "Ridge analysis is used when the stationary point is far from the experimental region or when "
+                "a saddle point is present. It finds the factor settings that maximize or minimize the response "
+                "along paths of constant distance from the design center."
+            )
+
+            ridge = results["ridge_analysis"]
+
+            if "ridge_path" in ridge and len(ridge["ridge_path"]) > 0:
+                # Show a sample of ridge path points
+                pdf.add_subsection("Ridge Path (Sample)")
+                headers = ["Radius", "Response"] + [f for f in results.get("factors", [])]
+                table_data = []
+
+                # Show every 10th point or max 10 points
+                step = max(1, len(ridge["ridge_path"]) // 10)
+                for i in range(0, len(ridge["ridge_path"]), step):
+                    point = ridge["ridge_path"][i]
+                    row = [
+                        format_number(point.get("radius"), 2),
+                        format_number(point.get("response"), 4)
+                    ]
+                    row.extend([format_number(point.get(f), 4) for f in results.get("factors", [])])
+                    table_data.append(row)
+
+                if len(table_data) > 0:
+                    pdf.add_table(table_data, headers=headers)
+
+        # Recommendations
+        pdf.add_section("Recommendations")
+        recommendations = []
+
+        # Model fit recommendations
+        if r_squared < 0.70:
+            recommendations.append("Model R² is below 70%. Consider adding additional factors, transforming the response, or collecting more data.")
+        elif r_squared > 0.95:
+            recommendations.append("Excellent model fit (R² > 95%). The model explains the response very well.")
+
+        # Lack of fit
+        if "anova_table" in results and "Lack of Fit" in results["anova_table"]:
+            lof_p = results["anova_table"]["Lack of Fit"].get("p_value", results["anova_table"]["Lack of Fit"].get("PR(>F)"))
+            if lof_p and lof_p < results.get("alpha", 0.05):
+                recommendations.append("Significant lack of fit detected. The second-order model may be inadequate. Consider higher-order terms or alternative model forms.")
+
+        # Stationary point recommendations
+        if "stationary_point" in results:
+            sp_type = results["stationary_point"].get("type", "")
+            if sp_type == "saddle_point":
+                recommendations.append("Saddle point detected: No true optimum exists. Use ridge analysis to identify optimal operating conditions along constrained paths.")
+            elif sp_type in ["maximum", "minimum"]:
+                # Check if stationary point is within bounds
+                if "within_bounds" in results["stationary_point"] and not results["stationary_point"]["within_bounds"]:
+                    recommendations.append("The stationary point is outside the experimental region. Consider expanding the design or using ridge analysis.")
+                else:
+                    recommendations.append(f"A {sp_type} was found. Verify the optimum through confirmation runs.")
+
+        # General recommendations
+        recommendations.append("Examine residual plots to verify model assumptions (normality, constant variance, independence).")
+        recommendations.append("Conduct confirmation experiments at the predicted optimal conditions.")
+        recommendations.append("Consider robustness testing of the optimal conditions to process variability.")
+
+        pdf.add_recommendations(recommendations)
+
+        # Build PDF
+        pdf_bytes = pdf.build()
+
+        # Return PDF as downloadable file
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=rsm_report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            }
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating PDF: {str(e)}")

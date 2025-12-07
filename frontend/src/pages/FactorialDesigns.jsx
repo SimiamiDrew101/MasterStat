@@ -6,7 +6,10 @@ import HalfNormalPlot from '../components/HalfNormalPlot'
 import FactorialInteractionPlots from '../components/FactorialInteractionPlots'
 import AliasStructureGraph from '../components/AliasStructureGraph'
 import DiagnosticPlots from '../components/DiagnosticPlots'
-import { Beaker, Plus, Trash2, Download, Copy, FileJson } from 'lucide-react'
+import Histogram from '../components/Histogram'
+import CorrelationHeatmap from '../components/CorrelationHeatmap'
+import ScatterMatrix from '../components/ScatterMatrix'
+import { Beaker, Plus, Trash2, Download, Copy, FileJson, FileDown } from 'lucide-react'
 import { exportToCSVWithMetadata, copyToClipboard, exportResultsToJSON } from '../utils/exportDesign'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -619,6 +622,33 @@ const FactorialDesigns = () => {
       setError(err.response?.data?.detail || err.message || 'An error occurred')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleExportPDF = async () => {
+    try {
+      const payload = {
+        results: result,
+        design_type: activeTab === '2k' ? 'full_factorial' : activeTab === 'fractional' ? 'fractional_factorial' : activeTab === 'pb' ? 'plackett_burman' : 'three_level_factorial',
+        title: `${activeTab === '2k' ? 'Full Factorial' : activeTab === 'fractional' ? 'Fractional Factorial' : activeTab === 'pb' ? 'Plackett-Burman' : 'Three-Level Factorial'} Design Analysis Report`
+      }
+
+      const response = await axios.post(`${API_URL}/api/factorial/export-pdf`, payload, {
+        responseType: 'blob'
+      })
+
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `factorial_${activeTab}_report_${new Date().toISOString().slice(0,10)}.pdf`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Error exporting PDF:', err)
+      alert('Failed to export PDF: ' + (err.response?.data?.detail || err.message))
     }
   }
 
@@ -1849,7 +1879,30 @@ const FactorialDesigns = () => {
       )}
 
       {/* Results Display */}
-      {result && <ResultCard result={result} />}
+      {result && (
+        <>
+          <ResultCard result={result} />
+
+          {/* Export PDF Button */}
+          <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-gray-100 mb-2">Export Analysis Report</h3>
+                <p className="text-gray-300 text-sm">
+                  Download a comprehensive PDF report including all analysis results, effects, interactions, and visualizations.
+                </p>
+              </div>
+              <button
+                onClick={handleExportPDF}
+                className="ml-4 flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold py-3 px-6 rounded-lg hover:from-emerald-700 hover:to-teal-700 transition-all shadow-lg hover:shadow-xl"
+              >
+                <FileDown className="w-5 h-5" />
+                Export PDF
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Cube Plot for 2^3 and 2^4 Designs */}
       {result && result.cube_data && result.cube_data.length > 0 && (
@@ -1877,6 +1930,41 @@ const FactorialDesigns = () => {
       {/* Diagnostic Plots */}
       {result && result.diagnostic_plots && (
         <DiagnosticPlots diagnosticPlots={result.diagnostic_plots} />
+      )}
+
+      {/* Exploratory Data Analysis */}
+      {result && result.diagnostic_plots && (
+        <div className="space-y-6">
+          <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+            <h3 className="text-2xl font-bold text-gray-100 mb-4">Exploratory Data Analysis</h3>
+            <p className="text-gray-300 text-sm mb-6">
+              Visual exploration of residuals and fitted values to assess model assumptions and identify patterns.
+            </p>
+            <div className="grid grid-cols-1 gap-6">
+              {/* Residuals Histogram */}
+              {result.diagnostic_plots.residuals && (
+                <Histogram
+                  data={result.diagnostic_plots.residuals}
+                  variableName="Residuals"
+                  title="Distribution of Residuals"
+                  showNormalCurve={true}
+                  showKDE={true}
+                />
+              )}
+
+              {/* Fitted Values Histogram */}
+              {result.diagnostic_plots.fitted && (
+                <Histogram
+                  data={result.diagnostic_plots.fitted}
+                  variableName="Fitted Values"
+                  title="Distribution of Fitted Values"
+                  showNormalCurve={false}
+                  showKDE={true}
+                />
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Alias Structure Visualization (for fractional factorial designs) */}

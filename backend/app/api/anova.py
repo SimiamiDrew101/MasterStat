@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 import numpy as np
@@ -6,6 +7,7 @@ import pandas as pd
 from scipy import stats
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
+from app.utils.report_generator import PDFReportGenerator, format_pvalue, format_number
 
 router = APIRouter()
 
@@ -240,6 +242,7 @@ def generate_diagnostic_plots_data(residuals, fitted_values, leverage, std_resid
     Generate data for additional diagnostic plots:
     1. Scale-Location plot (sqrt of standardized residuals vs fitted values)
     2. Leverage vs Residuals plot
+    3. Raw residuals and fitted values for histograms
     """
     residuals = np.array(residuals)
     fitted_values = np.array(fitted_values)
@@ -268,7 +271,9 @@ def generate_diagnostic_plots_data(residuals, fitted_values, leverage, std_resid
 
     return {
         "scale_location": scale_location,
-        "leverage_residuals": leverage_residuals
+        "leverage_residuals": leverage_residuals,
+        "residuals": residuals.tolist(),
+        "fitted": fitted_values.tolist()
     }
 
 class OneWayANOVARequest(BaseModel):
@@ -1226,3 +1231,362 @@ async def perform_contrasts(request: ContrastRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+class ANOVAPDFRequest(BaseModel):
+    """Request model for generating ANOVA PDF report"""
+    results: Dict[str, Any] = Field(..., description="ANOVA analysis results")
+    post_hoc_results: Optional[Dict[str, Any]] = Field(None, description="Optional post-hoc test results")
+    contrast_results: Optional[Dict[str, Any]] = Field(None, description="Optional contrast analysis results")
+    title: Optional[str] = Field("ANOVA Analysis Report", description="Report title")
+
+@router.post("/export-pdf")
+async def export_anova_pdf(request: ANOVAPDFRequest):
+    """
+    Generate a comprehensive PDF report for ANOVA analysis
+
+    Includes:
+    - Executive summary
+    - ANOVA table
+    - Group statistics
+    - Effect sizes
+    - Diagnostic tests
+    - Post-hoc comparisons (if provided)
+    - Contrast analysis (if provided)
+    - Recommendations
+    """
+    try:
+        results = request.results
+        test_type = results.get("test_type", "ANOVA")
+
+        # Initialize PDF generator
+        pdf = PDFReportGenerator(title=request.title, author="MasterStat")
+
+        # Cover page metadata
+        metadata = {
+            "Analysis Type": test_type,
+            "Significance Level (α)": str(results.get("alpha", 0.05)),
+            "Software": "MasterStat Statistical Analysis Platform"
+        }
+
+        # Add number of groups for one-way, or factors for two-way
+        if "group_statistics" in results:
+            metadata["Number of Groups"] = str(len(results["group_statistics"]))
+        elif "factor_a_name" in results:
+            metadata["Factor A"] = results["factor_a_name"]
+            metadata["Factor B"] = results["factor_b_name"]
+
+        pdf.add_cover_page(subtitle=test_type, metadata=metadata)
+
+        # Executive Summary
+        pdf.add_section("Executive Summary")
+
+        # Determine overall result
+        f_stat = results.get("f_statistic")
+        p_value = results.get("p_value")
+        alpha = results.get("alpha", 0.05)
+        reject_null = results.get("reject_null", False)
+
+        if test_type == "One-Way ANOVA":
+            if reject_null:
+                summary_text = f"""
+                The one-way ANOVA analysis revealed a statistically significant difference among the group means
+                (F = {format_number(f_stat, 4)}, p {format_pvalue(p_value)}). This indicates that at least one group mean
+                differs significantly from the others at the α = {alpha} significance level.
+                """
+            else:
+                summary_text = f"""
+                The one-way ANOVA analysis did not reveal a statistically significant difference among the group means
+                (F = {format_number(f_stat, 4)}, p = {format_pvalue(p_value)}). There is insufficient evidence to conclude
+                that the group means differ at the α = {alpha} significance level.
+                """
+        else:  # Two-way ANOVA
+            summary_text = f"""
+            A two-way ANOVA was conducted to examine the effects of {results.get('factor_a_name', 'Factor A')} and
+            {results.get('factor_b_name', 'Factor B')} on the response variable. The analysis evaluated main effects
+            for each factor and their interaction effect.
+            """
+
+        pdf.add_paragraph(summary_text.strip())
+
+        # ANOVA Table
+        pdf.add_section("ANOVA Table")
+
+        if "anova_table" in results:
+            anova_data = results["anova_table"]
+
+            if "source" in anova_data:  # One-way format
+                headers = ["Source", "SS", "df", "MS", "F", "p-value"]
+                table_data = []
+                for i in range(len(anova_data["source"])):
+                    row = [
+                        anova_data["source"][i],
+                        format_number(anova_data["ss"][i], 4),
+                        str(anova_data["df"][i]),
+                        format_number(anova_data["ms"][i], 4) if anova_data["ms"][i] is not None else "-",
+                        format_number(anova_data["f"][i], 4) if anova_data["f"][i] is not None else "-",
+                        format_pvalue(anova_data["p"][i]) if anova_data["p"][i] is not None else "-"
+                    ]
+                    table_data.append(row)
+            else:  # Two-way format (dict of effects)
+                headers = ["Source", "Sum of Squares", "df", "F-statistic", "p-value"]
+                table_data = []
+                for source, values in anova_data.items():
+                    row = [
+                        source,
+                        format_number(values.get("sum_sq"), 4),
+                        str(values.get("df", "-")),
+                        format_number(values.get("F"), 4) if values.get("F") is not None else "-",
+                        format_pvalue(values.get("PR(>F)")) if values.get("PR(>F)") is not None else "-"
+                    ]
+                    table_data.append(row)
+
+            pdf.add_table(table_data, headers=headers)
+
+        # Group Statistics / Descriptive Statistics
+        pdf.add_section("Descriptive Statistics")
+
+        if "group_statistics" in results:
+            headers = ["Group", "Mean", "Std Dev", "N", "SEM"]
+            table_data = []
+            for group_name, stats in results["group_statistics"].items():
+                row = [
+                    group_name,
+                    format_number(stats["mean"], 4),
+                    format_number(stats["std"], 4),
+                    str(stats["n"]),
+                    format_number(stats["sem"], 4)
+                ]
+                table_data.append(row)
+            pdf.add_table(table_data, headers=headers, title="Group Statistics")
+
+            # Grand mean
+            if "grand_mean" in results:
+                pdf.add_paragraph(f"<b>Grand Mean:</b> {format_number(results['grand_mean'], 4)}")
+
+        elif "factor_means" in results:
+            # Two-way ANOVA: show marginal means
+            for factor_name, means_dict in results["factor_means"].items():
+                headers = ["Level", "Mean"]
+                table_data = [[str(level), format_number(mean, 4)] for level, mean in means_dict.items()]
+                pdf.add_table(table_data, headers=headers, title=f"{factor_name} Marginal Means")
+
+            # Interaction means
+            if "interaction_means" in results:
+                headers = ["Cell (A, B)", "Mean"]
+                table_data = [[cell, format_number(mean, 4)] for cell, mean in results["interaction_means"].items()]
+                pdf.add_table(table_data, headers=headers, title="Cell Means (Interaction)")
+
+        # Effect Sizes
+        if "effect_sizes" in results:
+            pdf.add_section("Effect Sizes")
+
+            effect_sizes = results["effect_sizes"]
+
+            if "eta_squared" in effect_sizes:  # One-way format
+                stats_dict = {
+                    "Eta-squared (η²)": f"{format_number(effect_sizes['eta_squared']['value'], 6)} ({effect_sizes['eta_squared']['interpretation']})",
+                    "Omega-squared (ω²)": f"{format_number(effect_sizes['omega_squared']['value'], 6)} ({effect_sizes['omega_squared']['interpretation']})",
+                    "Cohen's f": f"{format_number(effect_sizes['cohens_f']['value'], 6)} ({effect_sizes['cohens_f']['interpretation']})"
+                }
+                pdf.add_summary_stats(stats_dict)
+
+                pdf.add_paragraph(
+                    "<i>Effect size interpretations: Eta²/Omega² (small: 0.01, medium: 0.06, large: 0.14); "
+                    "Cohen's f (small: 0.10, medium: 0.25, large: 0.40)</i>"
+                )
+            else:  # Two-way format (effect sizes per factor)
+                for effect_name, effect_data in effect_sizes.items():
+                    stats_dict = {
+                        f"Partial η² for {effect_name}": f"{format_number(effect_data['partial_eta_squared']['value'], 6)} ({effect_data['partial_eta_squared']['interpretation']})",
+                        f"Cohen's f for {effect_name}": f"{format_number(effect_data['cohens_f']['value'], 6)} ({effect_data['cohens_f']['interpretation']})"
+                    }
+                    pdf.add_summary_stats(stats_dict, title=f"Effect Size: {effect_name}")
+
+        # Assumptions Testing
+        if "assumptions" in results:
+            pdf.add_section("Assumptions Testing")
+
+            assumptions = results["assumptions"]
+
+            # Normality tests
+            if "normality" in assumptions:
+                pdf.add_subsection("Normality of Residuals")
+
+                norm_tests = assumptions["normality"]
+                headers = ["Test", "Statistic", "p-value", "Result"]
+                table_data = []
+
+                if "shapiro_wilk" in norm_tests:
+                    sw = norm_tests["shapiro_wilk"]
+                    table_data.append([
+                        "Shapiro-Wilk",
+                        format_number(sw["statistic"], 6),
+                        format_pvalue(sw["p_value"]),
+                        "✓ Pass" if sw["passed"] else "✗ Fail"
+                    ])
+
+                if "anderson_darling" in norm_tests:
+                    ad = norm_tests["anderson_darling"]
+                    table_data.append([
+                        "Anderson-Darling",
+                        format_number(ad["statistic"], 6),
+                        f"Critical: {format_number(ad['critical_value'], 6)}",
+                        "✓ Pass" if ad["passed"] else "✗ Fail"
+                    ])
+
+                if "kolmogorov_smirnov" in norm_tests:
+                    ks = norm_tests["kolmogorov_smirnov"]
+                    table_data.append([
+                        "Kolmogorov-Smirnov",
+                        format_number(ks["statistic"], 6),
+                        format_pvalue(ks["p_value"]),
+                        "✓ Pass" if ks["passed"] else "✗ Fail"
+                    ])
+
+                pdf.add_table(table_data, headers=headers)
+
+            # Homogeneity of variance
+            if "homogeneity_of_variance" in assumptions:
+                pdf.add_subsection("Homogeneity of Variance")
+
+                hov_tests = assumptions["homogeneity_of_variance"]
+                headers = ["Test", "Statistic", "p-value", "Result"]
+                table_data = []
+
+                if "levene" in hov_tests:
+                    lev = hov_tests["levene"]
+                    table_data.append([
+                        "Levene's Test",
+                        format_number(lev["statistic"], 6),
+                        format_pvalue(lev["p_value"]),
+                        "✓ Equal variances" if lev["passed"] else "✗ Unequal variances"
+                    ])
+
+                if "bartlett" in hov_tests:
+                    bart = hov_tests["bartlett"]
+                    table_data.append([
+                        "Bartlett's Test",
+                        format_number(bart["statistic"], 6),
+                        format_pvalue(bart["p_value"]),
+                        "✓ Equal variances" if bart["passed"] else "✗ Unequal variances"
+                    ])
+
+                pdf.add_table(table_data, headers=headers)
+
+        # Post-hoc Tests (if provided)
+        if request.post_hoc_results:
+            pdf.add_section("Post-Hoc Comparisons")
+
+            post_hoc = request.post_hoc_results
+            pdf.add_paragraph(f"<b>Test Method:</b> {post_hoc.get('test_type', 'Post-hoc Analysis')}")
+
+            if "description" in post_hoc:
+                pdf.add_paragraph(f"<i>{post_hoc['description']}</i>")
+
+            if "comparisons" in post_hoc:
+                headers = ["Group 1", "Group 2", "Mean Diff", "Lower CI", "Upper CI", "Significant"]
+                table_data = []
+
+                for comp in post_hoc["comparisons"]:
+                    row = [
+                        comp.get("group1", "-"),
+                        comp.get("group2", "-"),
+                        format_number(comp.get("mean_diff"), 4),
+                        format_number(comp.get("lower_ci"), 4),
+                        format_number(comp.get("upper_ci"), 4),
+                        "Yes" if comp.get("reject", False) else "No"
+                    ]
+                    table_data.append(row)
+
+                pdf.add_table(table_data, headers=headers)
+
+        # Contrast Analysis (if provided)
+        if request.contrast_results:
+            pdf.add_section("Contrast Analysis")
+
+            contrasts = request.contrast_results
+            pdf.add_paragraph(f"<b>Analysis Type:</b> {contrasts.get('description', 'Contrast Analysis')}")
+
+            if "contrasts" in contrasts:
+                for contrast in contrasts["contrasts"]:
+                    pdf.add_subsection(contrast.get("name", "Contrast"))
+
+                    stats_dict = {
+                        "Contrast Estimate": format_number(contrast.get("contrast_estimate"), 6),
+                        "Standard Error": format_number(contrast.get("standard_error"), 6),
+                        "t-statistic": format_number(contrast.get("t_statistic"), 4),
+                        "df": str(contrast.get("df", "-")),
+                        "p-value": format_pvalue(contrast.get("p_value")),
+                        "95% CI": f"[{format_number(contrast.get('ci_lower'), 4)}, {format_number(contrast.get('ci_upper'), 4)}]",
+                        "Significant": "Yes" if contrast.get("reject_null", False) else "No"
+                    }
+                    pdf.add_summary_stats(stats_dict, title="")
+
+                    if "interpretation" in contrast:
+                        pdf.add_paragraph(f"<i>{contrast['interpretation']}</i>")
+
+        # Recommendations
+        pdf.add_section("Recommendations")
+        recommendations = []
+
+        # Based on main effect
+        if reject_null:
+            if test_type == "One-Way ANOVA":
+                recommendations.append("Significant group differences detected. Conduct post-hoc tests (e.g., Tukey's HSD) to identify which specific groups differ.")
+            else:
+                recommendations.append("Review the ANOVA table to determine which effects (main effects and/or interaction) are significant.")
+        else:
+            recommendations.append("No significant differences detected at the chosen significance level. Consider increasing sample size or exploring other factors.")
+
+        # Based on assumptions
+        if "assumptions" in results:
+            assumptions = results["assumptions"]
+
+            # Check normality
+            if "normality" in assumptions:
+                norm_tests = assumptions["normality"]
+                if "shapiro_wilk" in norm_tests and not norm_tests["shapiro_wilk"]["passed"]:
+                    recommendations.append("Normality assumption violated. Consider data transformation (log, square root) or use non-parametric alternatives (Kruskal-Wallis test).")
+
+            # Check homogeneity
+            if "homogeneity_of_variance" in assumptions:
+                hov_tests = assumptions["homogeneity_of_variance"]
+                if "levene" in hov_tests and not hov_tests["levene"]["passed"]:
+                    recommendations.append("Homogeneity of variance assumption violated. Consider Welch's ANOVA or data transformation to stabilize variances.")
+
+        # Based on effect size
+        if "effect_sizes" in results:
+            effect_sizes = results["effect_sizes"]
+            if "omega_squared" in effect_sizes:
+                omega_value = effect_sizes["omega_squared"]["value"]
+                if omega_value < 0.01:
+                    recommendations.append("Effect size is negligible. Even if significant, the practical importance may be limited.")
+                elif omega_value > 0.14:
+                    recommendations.append("Large effect size detected. The factor has substantial practical significance.")
+
+        # Add influential observations warning
+        if "influence_diagnostics" in results:
+            n_influential = results["influence_diagnostics"].get("n_influential", 0)
+            if n_influential > 0:
+                recommendations.append(f"{n_influential} influential observation(s) detected. Review these data points for potential outliers or data entry errors.")
+
+        # General recommendations
+        recommendations.append("Examine diagnostic plots (residuals vs fitted, Q-Q plot) to verify model assumptions.")
+        recommendations.append("Report effect sizes alongside p-values to provide complete information about the magnitude of differences.")
+
+        pdf.add_recommendations(recommendations)
+
+        # Build PDF
+        pdf_bytes = pdf.build()
+
+        # Return PDF as downloadable file
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=anova_report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            }
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating PDF: {str(e)}")

@@ -1,5 +1,6 @@
 import Plot from 'react-plotly.js'
 import { AlertCircle, CheckCircle, HelpCircle } from 'lucide-react'
+import { getPlotlyConfig } from '../utils/plotlyConfig'
 
 const AssumptionsPanel = ({ assumptions, alpha = 0.05 }) => {
   if (!assumptions) return null
@@ -249,12 +250,9 @@ const AssumptionsPanel = ({ assumptions, alpha = 0.05 }) => {
                 showlegend: false
               }
 
-              const config = {
-                responsive: true,
-                displayModeBar: true,
-                displaylogo: false,
+              const config = getPlotlyConfig('qq-plot', {
                 modeBarButtonsToRemove: ['lasso2d', 'select2d']
-              }
+              })
 
               return (
                 <div key={sampleName}>

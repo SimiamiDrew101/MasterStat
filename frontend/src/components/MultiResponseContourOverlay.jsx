@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Plot from 'react-plotly.js'
 import { Eye, EyeOff, Layers, Grid, Maximize2 } from 'lucide-react'
+import { getPlotlyConfig } from '../utils/plotlyConfig'
 
 const MultiResponseContourOverlay = ({
   surfacesData,
@@ -182,12 +183,9 @@ const MultiResponseContourOverlay = ({
     return { data: traces, layout }
   }
 
-  const config = {
-    responsive: true,
-    displayModeBar: true,
-    displaylogo: false,
+  const config = getPlotlyConfig('multi-response-contour', {
     modeBarButtonsToRemove: ['lasso2d', 'select2d']
-  }
+  })
 
   const toggleResponseVisibility = (responseName) => {
     setVisibleResponses(prev => ({

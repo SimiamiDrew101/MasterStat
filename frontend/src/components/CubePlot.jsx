@@ -1,4 +1,5 @@
 import Plot from 'react-plotly.js'
+import { getPlotlyConfig } from '../utils/plotlyConfig'
 
 /**
  * CubePlot component for visualizing 2^3 and 2^4 factorial designs using Plotly
@@ -152,19 +153,9 @@ const CubePlot = ({ data, factors, responseName = 'Response' }) => {
       }
     }
 
-    const config = {
-      responsive: true,
-      displayModeBar: true,
-      displaylogo: false,
-      modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-      toImageButtonOptions: {
-        format: 'png',
-        filename: `cube-plot-${new Date().toISOString().split('T')[0]}`,
-        height: 1000,
-        width: 1200,
-        scale: 2
-      }
-    }
+    const config = getPlotlyConfig('cube-plot', {
+      modeBarButtonsToRemove: ['lasso2d', 'select2d']
+    })
 
     return (
       <div className="bg-slate-700/50 rounded-lg p-6">
@@ -351,19 +342,9 @@ const CubePlot = ({ data, factors, responseName = 'Response' }) => {
               margin: { l: 0, r: 0, b: 0, t: 40 }
             }
 
-            const config = {
-              responsive: true,
-              displayModeBar: true,
-              displaylogo: false,
-              modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-              toImageButtonOptions: {
-                format: 'png',
-                filename: `cube-plot-${factors[3]}-${level4 === 0 ? 'low' : 'high'}-${new Date().toISOString().split('T')[0]}`,
-                height: 800,
-                width: 800,
-                scale: 2
-              }
-            }
+            const config = getPlotlyConfig(`cube-plot-${factors[3]}-${level4 === 0 ? 'low' : 'high'}`, {
+              modeBarButtonsToRemove: ['lasso2d', 'select2d']
+            })
 
             return (
               <div key={level4} className="bg-slate-800/50 rounded-lg p-3">

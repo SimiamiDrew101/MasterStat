@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional, Any, Union
 import numpy as np
@@ -8,6 +9,7 @@ import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from scipy import stats
 from scipy.stats import norm
+from app.utils.report_generator import PDFReportGenerator, format_pvalue, format_number
 
 router = APIRouter()
 
@@ -44,7 +46,9 @@ def generate_diagnostic_plots_data(residuals, fitted_values, leverage, std_resid
 
     return {
         "scale_location": scale_location,
-        "leverage_residuals": leverage_residuals
+        "leverage_residuals": leverage_residuals,
+        "residuals": residuals.tolist(),
+        "fitted": fitted_values.tolist()
     }
 
 def calculate_lenths_pse(effects: Dict[str, float], alpha: float = 0.05) -> Dict[str, Any]:
@@ -1804,3 +1808,301 @@ async def analyze_combined_design(request: CombinedAnalysisRequest):
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+class FactorialPDFRequest(BaseModel):
+    """Request model for generating Factorial Design PDF report"""
+    results: Dict[str, Any] = Field(..., description="Factorial analysis results")
+    design_type: Optional[str] = Field("full_factorial", description="Design type: full_factorial, fractional_factorial, plackett_burman, etc.")
+    title: Optional[str] = Field("Factorial Design Analysis Report", description="Report title")
+
+@router.post("/export-pdf")
+async def export_factorial_pdf(request: FactorialPDFRequest):
+    """
+    Generate a comprehensive PDF report for Factorial Design analysis
+
+    Includes:
+    - Executive summary
+    - Design information
+    - ANOVA table
+    - Main effects and interactions
+    - Effect sizes
+    - Alias structure (for fractional designs)
+    - Diagnostic plots data
+    - Recommendations
+    """
+    try:
+        results = request.results
+        test_type = results.get("test_type", "Factorial Design Analysis")
+
+        # Initialize PDF generator
+        pdf = PDFReportGenerator(title=request.title, author="MasterStat")
+
+        # Cover page metadata
+        metadata = {
+            "Design Type": request.design_type.replace('_', ' ').title(),
+            "Analysis Type": test_type,
+            "Significance Level (α)": str(results.get("alpha", 0.05)),
+            "Software": "MasterStat Statistical Analysis Platform"
+        }
+
+        # Add design-specific metadata
+        if "n_factors" in results:
+            metadata["Number of Factors"] = str(results["n_factors"])
+        if "n_runs" in results:
+            metadata["Number of Runs"] = str(results["n_runs"])
+        if "resolution" in results.get("alias_structure", {}):
+            metadata["Resolution"] = results["alias_structure"]["resolution"]
+
+        pdf.add_cover_page(subtitle=test_type, metadata=metadata)
+
+        # Executive Summary
+        pdf.add_section("Executive Summary")
+
+        # Get model summary
+        r_squared = results.get("model_r_squared", results.get("r_squared", 0))
+        adj_r_squared = results.get("model_adj_r_squared", results.get("adj_r_squared", 0))
+
+        summary_text = f"""
+        A factorial design analysis was conducted to evaluate the effects of {results.get('n_factors', 'multiple')} factors
+        on the response variable{f" '{results.get('response_name', '')}'" if results.get('response_name') else ''}.
+        The model explains {r_squared*100:.1f}% of the variation in the response (R² = {format_number(r_squared, 4)},
+        Adj R² = {format_number(adj_r_squared, 4)}).
+        """
+
+        # Add interpretation summary if available
+        if "interpretation" in results and "summary" in results["interpretation"]:
+            summary_text += f"\n\n{results['interpretation']['summary']}"
+
+        pdf.add_paragraph(summary_text.strip())
+
+        # Design Information
+        pdf.add_section("Design Information")
+
+        design_info_dict = {
+            "Design Type": request.design_type.replace('_', ' ').title(),
+            "Number of Runs": str(results.get("n_runs", results.get("n_total_runs", "-"))),
+            "Number of Factors": str(results.get("n_factors", len(results.get("factors", [])))),
+            "Response Variable": results.get("response_name", "-"),
+            "Significance Level": str(results.get("alpha", 0.05))
+        }
+
+        # Add fractional factorial specific info
+        if "alias_structure" in results:
+            alias_info = results["alias_structure"]
+            design_info_dict["Resolution"] = alias_info.get("resolution", "-")
+            design_info_dict["Number of Generators"] = str(alias_info.get("n_generators", "-"))
+
+        # Add foldover info if present
+        if "foldover_type" in results:
+            design_info_dict["Foldover Type"] = results["foldover_type"].title()
+            design_info_dict["Original Runs"] = str(results.get("n_original_runs", "-"))
+            design_info_dict["Foldover Runs"] = str(results.get("n_foldover_runs", "-"))
+
+        pdf.add_summary_stats(design_info_dict, title="")
+
+        # Alias Structure (for fractional designs)
+        if "alias_structure" in results:
+            pdf.add_section("Alias Structure")
+
+            alias_info = results["alias_structure"]
+
+            pdf.add_paragraph(
+                f"<b>Design Resolution:</b> {alias_info.get('resolution', 'Unknown')}<br/>"
+                f"<i>Resolution indicates the level of confounding in the design.</i>"
+            )
+
+            # Defining Relations
+            if "defining_relations" in alias_info and alias_info["defining_relations"]:
+                pdf.add_subsection("Defining Relations")
+                defining_text = "<br/>".join(alias_info["defining_relations"][:5])
+                pdf.add_paragraph(defining_text)
+
+            # Alias Patterns (show subset)
+            if "aliases" in alias_info:
+                pdf.add_subsection("Confounding Patterns (Sample)")
+                headers = ["Effect", "Confounded With"]
+                table_data = []
+
+                # Show first 10 alias patterns
+                for i, (effect, aliases_list) in enumerate(list(alias_info["aliases"].items())[:10]):
+                    aliases_str = ", ".join(aliases_list[1:]) if len(aliases_list) > 1 else "Clear"
+                    table_data.append([effect, aliases_str if aliases_str else "Clear"])
+
+                pdf.add_table(table_data, headers=headers)
+
+        # ANOVA Table
+        pdf.add_section("ANOVA Table")
+
+        if "anova_table" in results:
+            anova_data = results["anova_table"]
+            headers = ["Source", "Sum of Squares", "df", "Mean Square", "F-statistic", "p-value"]
+            table_data = []
+
+            for source, values in anova_data.items():
+                # Format F and p-value
+                f_val = values.get("f_value", values.get("F"))
+                p_val = values.get("p_value", values.get("PR(>F)"))
+
+                row = [
+                    source,
+                    format_number(values.get("sum_sq", values.get("SS")), 4),
+                    str(values.get("df", "-")),
+                    format_number(values.get("mean_sq", values.get("MS")), 4),
+                    format_number(f_val, 4) if f_val is not None else "-",
+                    format_pvalue(p_val) if p_val is not None else "-"
+                ]
+                table_data.append(row)
+
+            pdf.add_table(table_data, headers=headers)
+
+        # Model Summary
+        pdf.add_subsection("Model Summary")
+        model_stats = {
+            "R-squared": format_number(r_squared, 4),
+            "Adjusted R-squared": format_number(adj_r_squared, 4),
+            "Root MSE": format_number(results.get("root_mse"), 4) if results.get("root_mse") else "N/A"
+        }
+
+        # Add lack of fit test if available
+        if "anova_table" in results and "Lack of Fit" in results["anova_table"]:
+            lof = results["anova_table"]["Lack of Fit"]
+            lof_p = lof.get("p_value", lof.get("PR(>F)"))
+            if lof_p is not None:
+                model_stats["Lack of Fit p-value"] = format_pvalue(lof_p)
+                model_stats["Lack of Fit Status"] = "Not Significant ✓" if lof_p > results.get("alpha", 0.05) else "Significant ✗"
+
+        pdf.add_summary_stats(model_stats, title="")
+
+        # Main Effects
+        if "main_effects" in results or "effects" in results:
+            pdf.add_section("Main Effects")
+
+            effects_data = results.get("main_effects", results.get("effects", {}))
+
+            headers = ["Factor", "Effect", "Contribution (%)"]
+            table_data = []
+
+            for factor, effect_value in effects_data.items():
+                # Get contribution if available
+                contribution = ""
+                if "effect_contributions" in results and isinstance(results["effect_contributions"], dict):
+                    contribution = format_number(results["effect_contributions"].get(factor, 0), 2)
+                elif "effect_magnitudes" in results and isinstance(results["effect_magnitudes"], dict):
+                    contribution = format_number(results["effect_magnitudes"].get(factor, 0), 2)
+
+                table_data.append([
+                    factor,
+                    format_number(effect_value, 4),
+                    contribution if contribution else "-"
+                ])
+
+            pdf.add_table(table_data, headers=headers)
+
+        # Interaction Effects
+        if "interaction_effects" in results and results["interaction_effects"]:
+            pdf.add_section("Interaction Effects")
+
+            headers = ["Interaction", "Effect", "Contribution (%)"]
+            table_data = []
+
+            for interaction, effect_value in results["interaction_effects"].items():
+                # Get contribution if available
+                contribution = ""
+                if "effect_contributions" in results and isinstance(results["effect_contributions"], dict):
+                    contribution = format_number(results["effect_contributions"].get(interaction, 0), 2)
+                elif "effect_magnitudes" in results and isinstance(results["effect_magnitudes"], dict):
+                    contribution = format_number(results["effect_magnitudes"].get(interaction, 0), 2)
+
+                table_data.append([
+                    interaction,
+                    format_number(effect_value, 4),
+                    contribution if contribution else "-"
+                ])
+
+            pdf.add_table(table_data, headers=headers)
+
+        # Lenth's Analysis (for unreplicated designs)
+        if "lenths_analysis" in results:
+            pdf.add_section("Lenth's Analysis")
+
+            lenths = results["lenths_analysis"]
+
+            pdf.add_paragraph(
+                "Lenth's method provides a way to identify significant effects in unreplicated factorial designs "
+                "by comparing effect magnitudes to a pseudo-standard error calculated from the data."
+            )
+
+            lenths_stats = {
+                "Pseudo Standard Error (PSE)": format_number(lenths.get("pse"), 4),
+                "Margin of Error (ME)": format_number(lenths.get("me"), 4),
+                "Simultaneous Margin of Error (SME)": format_number(lenths.get("sme"), 4),
+                "Number of Effects": str(lenths.get("n_effects", "-"))
+            }
+            pdf.add_summary_stats(lenths_stats, title="Lenth's Statistics")
+
+            # Significant effects
+            if "significant_effects_sme" in lenths and lenths["significant_effects_sme"]:
+                pdf.add_subsection("Significant Effects (SME Criterion)")
+                sig_effects_text = "<br/>".join([f"• {eff}" for eff in lenths["significant_effects_sme"]])
+                pdf.add_paragraph(sig_effects_text)
+
+        # Coded Equation (if available)
+        if "coded_equation" in results:
+            pdf.add_section("Regression Equation (Coded Units)")
+            pdf.add_paragraph(f"<font name='Courier'>{results['coded_equation']}</font>")
+
+        # Natural Equation (if available)
+        if "natural_equation" in results:
+            pdf.add_subsection("Regression Equation (Natural Units)")
+            pdf.add_paragraph(f"<font name='Courier'>{results['natural_equation']}</font>")
+
+        # Recommendations
+        pdf.add_section("Recommendations")
+        recommendations = []
+
+        # Use interpretation recommendations if available
+        if "interpretation" in results and "recommendations" in results["interpretation"]:
+            recommendations.extend(results["interpretation"]["recommendations"])
+        else:
+            # Generate basic recommendations
+            if r_squared < 0.70:
+                recommendations.append("Model fit is below 70%. Consider adding interaction terms or checking for curvature.")
+
+            # Check for lack of fit
+            if "anova_table" in results and "Lack of Fit" in results["anova_table"]:
+                lof_p = results["anova_table"]["Lack of Fit"].get("p_value", results["anova_table"]["Lack of Fit"].get("PR(>F)"))
+                if lof_p and lof_p < results.get("alpha", 0.05):
+                    recommendations.append("Significant lack of fit detected. The current model may not adequately describe the response. Consider adding higher-order terms or checking for outliers.")
+
+            # Fractional factorial recommendations
+            if "alias_structure" in results:
+                resolution = results["alias_structure"].get("resolution", "")
+                if resolution in ["III", "3"]:
+                    recommendations.append("Resolution III design: Main effects are confounded with two-factor interactions. Exercise caution when interpreting main effects. Consider augmenting with a foldover design.")
+                elif resolution in ["IV", "4"]:
+                    recommendations.append("Resolution IV design: Main effects are clear, but two-factor interactions are confounded with each other. If interactions are important, consider augmenting the design.")
+
+        # General recommendations
+        recommendations.append("Examine residual plots to verify model assumptions (normality, constant variance, independence).")
+        recommendations.append("Validate significant effects through confirmation runs or follow-up experiments.")
+        recommendations.append("Consider center points to test for curvature if using a two-level design.")
+
+        pdf.add_recommendations(recommendations)
+
+        # Build PDF
+        pdf_bytes = pdf.build()
+
+        # Return PDF as downloadable file
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=factorial_report_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            }
+        )
+
+    except Exception as e:
+        import traceback
+        error_details = f"Error generating PDF: {str(e)}\nTraceback: {traceback.format_exc()}"
+        print(error_details)  # Print to console for debugging
+        raise HTTPException(status_code=500, detail=f"Error generating PDF: {str(e)}")
