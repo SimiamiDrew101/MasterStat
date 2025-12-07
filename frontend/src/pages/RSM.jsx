@@ -1418,6 +1418,31 @@ const RSM = () => {
                       showKDE={true}
                     />
                   )}
+
+                  {/* Correlation Heatmap */}
+                  {modelResult.diagnostics.factor_values && modelResult.diagnostics.observed_values && (
+                    <CorrelationHeatmap
+                      data={{
+                        ...modelResult.diagnostics.factor_values,
+                        [responseName]: modelResult.diagnostics.observed_values
+                      }}
+                      title="Factor and Response Correlation Matrix"
+                      method="pearson"
+                    />
+                  )}
+
+                  {/* Scatter Matrix */}
+                  {modelResult.diagnostics.factor_values && modelResult.diagnostics.observed_values && (
+                    <ScatterMatrix
+                      data={{
+                        ...modelResult.diagnostics.factor_values,
+                        [responseName]: modelResult.diagnostics.observed_values
+                      }}
+                      title="Pairwise Factor and Response Relationships"
+                      showDiagonal={true}
+                      diagonalType="histogram"
+                    />
+                  )}
                 </div>
               </div>
             </div>

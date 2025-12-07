@@ -542,6 +542,10 @@ async def full_factorial_analysis(request: FactorialDesignRequest):
             standardized_residuals
         )
 
+        # Add factor values and observed values for correlation/scatter analysis
+        diagnostic_plots["factor_values"] = df[request.factors].to_dict('list')
+        diagnostic_plots["observed_values"] = df[request.response].tolist()
+
         # Prepare data for Pareto chart (absolute effects)
         effect_magnitudes = []
         for name, value in effects.items():

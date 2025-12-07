@@ -1962,6 +1962,31 @@ const FactorialDesigns = () => {
                   showKDE={true}
                 />
               )}
+
+              {/* Correlation Heatmap */}
+              {result.diagnostic_plots.factor_values && result.diagnostic_plots.observed_values && (
+                <CorrelationHeatmap
+                  data={{
+                    ...result.diagnostic_plots.factor_values,
+                    [result.response_name || 'Response']: result.diagnostic_plots.observed_values
+                  }}
+                  title="Factor and Response Correlation Matrix"
+                  method="pearson"
+                />
+              )}
+
+              {/* Scatter Matrix */}
+              {result.diagnostic_plots.factor_values && result.diagnostic_plots.observed_values && (
+                <ScatterMatrix
+                  data={{
+                    ...result.diagnostic_plots.factor_values,
+                    [result.response_name || 'Response']: result.diagnostic_plots.observed_values
+                  }}
+                  title="Pairwise Factor and Response Relationships"
+                  showDiagonal={true}
+                  diagonalType="histogram"
+                />
+              )}
             </div>
           </div>
         </div>
