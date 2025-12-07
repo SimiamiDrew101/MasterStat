@@ -7,7 +7,8 @@ const ResidualAnalysis = ({ diagnostics, responseName }) => {
 
   const {
     residuals,
-    fitted_values,
+    fitted,
+    fitted_values = fitted, // Support both field names for backwards compatibility
     standardized_residuals,
     studentized_residuals,
     leverage,
