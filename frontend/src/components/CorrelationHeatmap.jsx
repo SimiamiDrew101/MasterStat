@@ -6,6 +6,8 @@ const CorrelationHeatmap = ({
   correlationMatrix,
   pValues = null,
   variableNames = null,
+  data = null,  // Raw data as {var1: [values], var2: [values], ...}
+  method = 'pearson',  // Correlation method when using raw data
   title = 'Correlation Matrix',
   showValues = true,
   colorscale = 'RdBu'
@@ -13,20 +15,68 @@ const CorrelationHeatmap = ({
   const [displayValues, setDisplayValues] = useState(showValues)
   const [selectedColorscale, setSelectedColorscale] = useState(colorscale)
 
+  // Calculate correlation matrix from raw data if provided
+  const calculatedCorrelation = useMemo(() => {
+    if (!data || Object.keys(data).length === 0) return null
+
+    const varNames = Object.keys(data)
+    const n = varNames.length
+    const matrix = []
+
+    // Calculate correlation for each pair
+    for (let i = 0; i < n; i++) {
+      const row = []
+      for (let j = 0; j < n; j++) {
+        if (i === j) {
+          row.push(1.0)
+        } else {
+          const x = data[varNames[i]]
+          const y = data[varNames[j]]
+
+          // Calculate Pearson correlation
+          const meanX = x.reduce((a, b) => a + b, 0) / x.length
+          const meanY = y.reduce((a, b) => a + b, 0) / y.length
+
+          let numerator = 0
+          let denomX = 0
+          let denomY = 0
+
+          for (let k = 0; k < x.length; k++) {
+            const dx = x[k] - meanX
+            const dy = y[k] - meanY
+            numerator += dx * dy
+            denomX += dx * dx
+            denomY += dy * dy
+          }
+
+          const corr = numerator / Math.sqrt(denomX * denomY)
+          row.push(isNaN(corr) ? 0 : corr)
+        }
+      }
+      matrix.push(row)
+    }
+
+    return { matrix, varNames }
+  }, [data, method])
+
+  // Use calculated or provided correlation matrix
+  const finalCorrelationMatrix = correlationMatrix || calculatedCorrelation?.matrix
+  const finalVariableNames = variableNames || calculatedCorrelation?.varNames
+
   // Process correlation matrix
   const { matrix, labels, annotations } = useMemo(() => {
-    if (!correlationMatrix || correlationMatrix.length === 0) {
+    if (!finalCorrelationMatrix || finalCorrelationMatrix.length === 0) {
       return { matrix: [], labels: [], annotations: [] }
     }
 
     // Extract variable names (use provided names or default)
-    const names = variableNames || correlationMatrix.map((_, i) => `Var${i + 1}`)
+    const names = finalVariableNames || finalCorrelationMatrix.map((_, i) => `Var${i + 1}`)
 
     // Prepare annotations with correlation coefficients and p-values
     const annot = []
-    for (let i = 0; i < correlationMatrix.length; i++) {
-      for (let j = 0; j < correlationMatrix[i].length; j++) {
-        const corr = correlationMatrix[i][j]
+    for (let i = 0; i < finalCorrelationMatrix.length; i++) {
+      for (let j = 0; j < finalCorrelationMatrix[i].length; j++) {
+        const corr = finalCorrelationMatrix[i][j]
         let text = corr.toFixed(3)
 
         // Add significance stars if p-values are provided
@@ -51,13 +101,13 @@ const CorrelationHeatmap = ({
     }
 
     return {
-      matrix: correlationMatrix,
+      matrix: finalCorrelationMatrix,
       labels: names,
       annotations: annot
     }
-  }, [correlationMatrix, variableNames, pValues, displayValues])
+  }, [finalCorrelationMatrix, finalVariableNames, pValues, displayValues])
 
-  if (!correlationMatrix || correlationMatrix.length === 0) {
+  if (!finalCorrelationMatrix || finalCorrelationMatrix.length === 0) {
     return (
       <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
         <div className="flex items-center gap-3 mb-4">
