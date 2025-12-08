@@ -9,6 +9,7 @@ import DiagnosticPlots from '../components/DiagnosticPlots'
 import Histogram from '../components/Histogram'
 import CorrelationHeatmap from '../components/CorrelationHeatmap'
 import ScatterMatrix from '../components/ScatterMatrix'
+import { parseTableData } from '../utils/clipboardParser'
 import { Beaker, Plus, Trash2, Download, Copy, FileJson, FileDown } from 'lucide-react'
 import { exportToCSVWithMetadata, copyToClipboard, exportResultsToJSON } from '../utils/exportDesign'
 
@@ -399,6 +400,47 @@ const FactorialDesigns = () => {
   // Handle cell click to select all text
   const handleCellClick = (e) => {
     e.target.select()
+  }
+
+  // Handle paste for main table
+  const handlePaste = async (e) => {
+    e.preventDefault()
+
+    try {
+      const text = e.clipboardData?.getData('text') ||
+                   await navigator.clipboard.readText()
+
+      if (!text) return
+
+      const result = parseTableData(text, {
+        expectHeaders: false,
+        expectNumeric: false
+      })
+
+      if (!result.success) {
+        console.error('Paste error:', result.error)
+        return
+      }
+
+      // Check if pasted data matches expected columns
+      if (result.columnCount !== numCols) {
+        console.warn(`Pasted data has ${result.columnCount} columns, but ${numCols} columns are expected`)
+
+        // If fewer columns, pad with empty strings
+        const paddedData = result.data.map(row => {
+          while (row.length < numCols) {
+            row.push('')
+          }
+          return row.slice(0, numCols)
+        })
+
+        setTableData(paddedData)
+      } else {
+        setTableData(result.data)
+      }
+    } catch (error) {
+      console.error('Failed to paste data:', error)
+    }
   }
 
   const addRow = () => {
@@ -799,7 +841,10 @@ const FactorialDesigns = () => {
               </button>
             </div>
 
-            <div className="overflow-x-auto bg-slate-700/30 rounded-lg border-2 border-slate-600">
+            <div
+              className="overflow-x-auto bg-slate-700/30 rounded-lg border-2 border-slate-600"
+              onPaste={handlePaste}
+            >
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-slate-700/70">
@@ -869,7 +914,7 @@ const FactorialDesigns = () => {
                 {' '}Response values must be numbers. {tableData.length > 0 && `Current: ${tableData.length} runs.`}
               </p>
               <p className="text-purple-400 text-xs">
-                <strong>Excel-like navigation:</strong> Use Arrow keys to move, Enter to go down, Tab to move right, Click to select all.
+                <strong>Excel-like navigation:</strong> Use Arrow keys to move, Enter to go down, Tab to move right, Click to select all. Paste data from Excel (Ctrl+V / Cmd+V).
               </p>
             </div>
           </div>

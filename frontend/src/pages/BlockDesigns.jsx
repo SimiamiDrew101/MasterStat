@@ -8,6 +8,7 @@ import AncovaResults from '../components/AncovaResults'
 import MissingDataPanel from '../components/MissingDataPanel'
 import CrossoverResults from '../components/CrossoverResults'
 import IncompleteBlockResults from '../components/IncompleteBlockResults'
+import { parseTableData } from '../utils/clipboardParser'
 import { Grid, Plus, Trash2, Shuffle, Activity, Grid3x3 } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -202,6 +203,49 @@ const BlockDesigns = () => {
   const removeRow = (rowIndex) => {
     if (tableData.length > 1) {
       setTableData(tableData.filter((_, idx) => idx !== rowIndex))
+    }
+  }
+
+  // Handle paste for table
+  const handlePaste = async (e) => {
+    e.preventDefault()
+
+    try {
+      const text = e.clipboardData?.getData('text') ||
+                   await navigator.clipboard.readText()
+
+      if (!text) return
+
+      const result = parseTableData(text, {
+        expectHeaders: false,
+        expectNumeric: false
+      })
+
+      if (!result.success) {
+        console.error('Paste error:', result.error)
+        return
+      }
+
+      const expectedCols = tableData[0]?.length || (designType === 'graeco' ? 5 : 4)
+
+      // Check if pasted data matches expected columns
+      if (result.columnCount !== expectedCols) {
+        console.warn(`Pasted data has ${result.columnCount} columns, but ${expectedCols} columns are expected`)
+
+        // If fewer columns, pad with empty strings
+        const paddedData = result.data.map(row => {
+          while (row.length < expectedCols) {
+            row.push('')
+          }
+          return row.slice(0, expectedCols)
+        })
+
+        setTableData(paddedData)
+      } else {
+        setTableData(result.data)
+      }
+    } catch (error) {
+      console.error('Failed to paste data:', error)
     }
   }
 
@@ -914,7 +958,10 @@ const BlockDesigns = () => {
               </div>
             </div>
 
-            <div className="overflow-x-auto bg-slate-700/30 rounded-lg border-2 border-slate-600">
+            <div
+              className="overflow-x-auto bg-slate-700/30 rounded-lg border-2 border-slate-600"
+              onPaste={handlePaste}
+            >
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-slate-700/70">
@@ -992,7 +1039,7 @@ const BlockDesigns = () => {
                 }
               </p>
               <p className="text-pink-400 text-xs">
-                <strong>Excel-like navigation:</strong> Use Arrow keys, Enter, Tab. Click to select all.
+                <strong>Excel-like navigation:</strong> Use Arrow keys, Enter, Tab. Click to select all. Paste data from Excel (Ctrl+V / Cmd+V).
               </p>
             </div>
           </div>

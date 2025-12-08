@@ -16,6 +16,7 @@ import FileUploadZone from '../components/FileUploadZone'
 import Histogram from '../components/Histogram'
 import CorrelationHeatmap from '../components/CorrelationHeatmap'
 import ScatterMatrix from '../components/ScatterMatrix'
+import { parseTableData } from '../utils/clipboardParser'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -792,6 +793,49 @@ const RSM = () => {
     }
   }
 
+  // Handle paste for table
+  const handlePaste = async (e) => {
+    e.preventDefault()
+
+    try {
+      const text = e.clipboardData?.getData('text') ||
+                   await navigator.clipboard.readText()
+
+      if (!text) return
+
+      const result = parseTableData(text, {
+        expectHeaders: false,
+        expectNumeric: false
+      })
+
+      if (!result.success) {
+        console.error('Paste error:', result.error)
+        return
+      }
+
+      const expectedCols = factorNames.length + 1 // factors + response
+
+      // Check if pasted data matches expected columns
+      if (result.columnCount !== expectedCols) {
+        console.warn(`Pasted data has ${result.columnCount} columns, but ${expectedCols} columns are expected`)
+
+        // If fewer columns, pad with empty strings
+        const paddedData = result.data.map(row => {
+          while (row.length < expectedCols) {
+            row.push('')
+          }
+          return row.slice(0, expectedCols)
+        })
+
+        setTableData(paddedData)
+      } else {
+        setTableData(result.data)
+      }
+    } catch (error) {
+      console.error('Failed to paste data:', error)
+    }
+  }
+
   // Fill test data for demonstration
   const fillTestData = () => {
     const newData = tableData.map(row => {
@@ -1078,7 +1122,10 @@ const RSM = () => {
                   </div>
                 </div>
 
-                <div className="overflow-x-auto bg-slate-700/30 rounded-lg border-2 border-slate-600">
+                <div
+                  className="overflow-x-auto bg-slate-700/30 rounded-lg border-2 border-slate-600"
+                  onPaste={handlePaste}
+                >
                   <table className="w-full border-collapse">
                     <thead>
                       <tr className="bg-slate-700/70">
@@ -1140,7 +1187,7 @@ const RSM = () => {
                 </div>
 
                 <p className="text-gray-400 text-xs mt-2">
-                  Enter response values for each run. Factor levels from the design cannot be modified.
+                  Enter response values for each run. Factor levels from the design cannot be modified. You can paste data from Excel (Ctrl+V / Cmd+V).
                 </p>
 
                 {multiResponseMode ? (

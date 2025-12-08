@@ -10,6 +10,7 @@ import FileUploadZone from '../components/FileUploadZone'
 import Histogram from '../components/Histogram'
 import CorrelationHeatmap from '../components/CorrelationHeatmap'
 import ScatterMatrix from '../components/ScatterMatrix'
+import { parseTableData } from '../utils/clipboardParser'
 import { TrendingUp, FileDown } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -266,6 +267,88 @@ const ANOVA = () => {
     if (input) {
       input.focus()
       input.select()
+    }
+  }
+
+  // Handle paste for One-Way ANOVA table
+  const handleOneWayPaste = async (e) => {
+    e.preventDefault()
+
+    try {
+      const text = e.clipboardData?.getData('text') ||
+                   await navigator.clipboard.readText()
+
+      if (!text) return
+
+      const result = parseTableData(text, {
+        expectHeaders: false,
+        expectNumeric: false
+      })
+
+      if (!result.success) {
+        console.error('Paste error:', result.error)
+        return
+      }
+
+      // Check if pasted data matches expected columns
+      if (result.columnCount !== groups.length) {
+        console.warn(`Pasted data has ${result.columnCount} columns, but ${groups.length} groups are expected. Adjusting...`)
+
+        // If pasted data has more columns, adjust groups
+        if (result.columnCount > groups.length) {
+          const additionalGroups = result.columnCount - groups.length
+          for (let i = 0; i < additionalGroups; i++) {
+            const newGroupName = `Group ${String.fromCharCode(65 + groups.length + i)}`
+            setGroups(prev => [...prev, { name: newGroupName, values: '' }])
+          }
+        }
+      }
+
+      // Update table data
+      setOneWayTableData(result.data)
+    } catch (error) {
+      console.error('Failed to paste data:', error)
+    }
+  }
+
+  // Handle paste for Two-Way ANOVA table
+  const handleTwoWayPaste = async (e) => {
+    e.preventDefault()
+
+    try {
+      const text = e.clipboardData?.getData('text') ||
+                   await navigator.clipboard.readText()
+
+      if (!text) return
+
+      const result = parseTableData(text, {
+        expectHeaders: false,
+        expectNumeric: false
+      })
+
+      if (!result.success) {
+        console.error('Paste error:', result.error)
+        return
+      }
+
+      // Check if pasted data has 3 columns (Factor A, Factor B, Response)
+      if (result.columnCount !== 3) {
+        console.warn(`Pasted data has ${result.columnCount} columns, but 3 columns are expected (Factor A, Factor B, Response)`)
+
+        // If fewer columns, pad with empty strings
+        const paddedData = result.data.map(row => {
+          while (row.length < 3) {
+            row.push('')
+          }
+          return row.slice(0, 3)
+        })
+
+        setTwoWayTableData(paddedData)
+      } else {
+        setTwoWayTableData(result.data)
+      }
+    } catch (error) {
+      console.error('Failed to paste data:', error)
     }
   }
 
@@ -650,7 +733,10 @@ const ANOVA = () => {
               </div>
 
               {/* Excel-like table */}
-              <div className="overflow-auto max-h-96 border border-slate-600 rounded-lg">
+              <div
+                className="overflow-auto max-h-96 border border-slate-600 rounded-lg"
+                onPaste={handleOneWayPaste}
+              >
                 <table className="w-full border-collapse">
                   <thead className="sticky top-0 bg-slate-700/50 z-10">
                     <tr>
@@ -683,7 +769,7 @@ const ANOVA = () => {
                 </table>
               </div>
               <p className="text-gray-400 text-xs mt-2">
-                Use arrow keys, Tab, or Enter to navigate between cells. New rows are added automatically.
+                Use arrow keys, Tab, or Enter to navigate between cells. New rows are added automatically. You can also paste data from Excel (Ctrl+V / Cmd+V).
               </p>
             </div>
           </div>
@@ -1122,7 +1208,10 @@ const ANOVA = () => {
             </div>
 
             {/* Excel-like table */}
-            <div className="overflow-auto max-h-96 border border-slate-600 rounded-lg">
+            <div
+              className="overflow-auto max-h-96 border border-slate-600 rounded-lg"
+              onPaste={handleTwoWayPaste}
+            >
               <table className="w-full border-collapse">
                 <thead className="sticky top-0 bg-slate-700/50 z-10">
                   <tr>
@@ -1159,7 +1248,7 @@ const ANOVA = () => {
               </table>
             </div>
             <p className="text-gray-400 text-xs mt-2">
-              Use arrow keys, Tab, or Enter to navigate between cells. New rows are added automatically.
+              Use arrow keys, Tab, or Enter to navigate between cells. New rows are added automatically. You can also paste data from Excel (Ctrl+V / Cmd+V).
             </p>
           </div>
 

@@ -17,6 +17,7 @@ import BLUPsPlot from '../components/BLUPsPlot'
 import RandomEffectsQQPlot from '../components/RandomEffectsQQPlot'
 import GrowthCurvePlot from '../components/GrowthCurvePlot'
 import GrowthCurveResults from '../components/GrowthCurveResults'
+import { parseTableData } from '../utils/clipboardParser'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -100,6 +101,43 @@ const MixedModels = () => {
     // Auto-add row if typing in last row
     if (rowIndex === tableData.length - 1 && value.trim() !== '') {
       setTableData([...newData, Array(numColumns).fill('')])
+    }
+  }
+
+  // Handle paste from clipboard
+  const handlePaste = async (e) => {
+    e.preventDefault()
+
+    try {
+      const text = e.clipboardData?.getData('text') ||
+                   await navigator.clipboard.readText()
+
+      if (!text) return
+
+      const result = parseTableData(text, {
+        expectHeaders: false,
+        expectNumeric: false
+      })
+
+      if (!result.success) {
+        console.error('Paste error:', result.error)
+        return
+      }
+
+      if (result.columnCount !== numColumns) {
+        console.warn(`Pasted data has ${result.columnCount} columns, but ${numColumns} columns are expected`)
+
+        const paddedData = result.data.map(row => {
+          while (row.length < numColumns) row.push('')
+          return row.slice(0, numColumns)
+        })
+
+        setTableData(paddedData)
+      } else {
+        setTableData(result.data)
+      }
+    } catch (error) {
+      console.error('Failed to paste data:', error)
     }
   }
 
@@ -915,7 +953,10 @@ const MixedModels = () => {
               Load Example Data
             </button>
           </div>
-          <div className="overflow-x-auto bg-slate-900/50 rounded-lg border border-slate-600">
+          <div
+            className="overflow-x-auto bg-slate-900/50 rounded-lg border border-slate-600"
+            onPaste={handlePaste}
+          >
             <table className="w-full">
               <thead>
                 <tr className="bg-slate-700/50">
@@ -989,7 +1030,7 @@ const MixedModels = () => {
             </table>
           </div>
           <p className="text-gray-400 text-xs mt-2">
-            Enter data directly in the table. Rows will be added automatically as you type.
+            Enter data directly in the table or paste from Excel (Ctrl+V / Cmd+V). Rows will be added automatically as you type.
           </p>
         </div>
 
