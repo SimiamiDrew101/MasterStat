@@ -12,6 +12,7 @@ import MixtureDesign from './pages/MixtureDesign'
 import RobustDesign from './pages/RobustDesign'
 import BayesianDOE from './pages/BayesianDOE'
 import ExperimentPlanning from './pages/ExperimentPlanning'
+import DataPreprocessing from './pages/DataPreprocessing'
 import { Menu, X, BarChart3 } from 'lucide-react'
 
 function App() {
@@ -21,6 +22,7 @@ function App() {
     { path: '/', label: 'Home', icon: '🏠' },
     { path: '/experiment-wizard', label: 'Experiment Wizard', icon: '✨' },
     { path: '/planning', label: 'Experiment Planning', icon: '🎯' },
+    { path: '/preprocessing', label: 'Data Preprocessing', icon: '🔧' },
     { path: '/hypothesis', label: 'Hypothesis Testing', icon: '📊' },
     { path: '/anova', label: 'ANOVA', icon: '📈' },
     { path: '/factorial', label: 'Factorial Designs', icon: '🔬' },
@@ -82,6 +84,7 @@ function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/experiment-wizard" element={<ExperimentWizardPage />} />
                 <Route path="/planning" element={<ExperimentPlanning />} />
+                <Route path="/preprocessing" element={<DataPreprocessing />} />
                 <Route path="/hypothesis" element={<HypothesisTesting />} />
                 <Route path="/anova" element={<ANOVA />} />
                 <Route path="/factorial" element={<FactorialDesigns />} />
