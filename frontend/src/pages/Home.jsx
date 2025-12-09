@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee } from 'lucide-react'
+import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee, Wand2 } from 'lucide-react'
 
 const Home = () => {
   const features = [
@@ -9,6 +9,13 @@ const Home = () => {
       description: 'Step-by-step guidance to design the perfect experiment',
       path: '/experiment-wizard',
       color: 'from-purple-400 to-purple-600'
+    },
+    {
+      icon: <Wand2 className="w-12 h-12" />,
+      title: 'Data Preprocessing',
+      description: 'Transform, clean, impute missing values, and detect outliers',
+      path: '/preprocessing',
+      color: 'from-fuchsia-400 to-pink-600'
     },
     {
       icon: <Target className="w-12 h-12" />,
