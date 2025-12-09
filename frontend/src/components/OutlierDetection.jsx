@@ -153,7 +153,7 @@ const OutlierDetection = ({
         mode: 'markers',
         name: 'Inliers',
         marker: {
-          color: '#3b82f6',
+          color: '#06b6d4',
           size: 8,
           opacity: 0.7
         }
@@ -169,10 +169,10 @@ const OutlierDetection = ({
         mode: 'markers',
         name: 'Outliers',
         marker: {
-          color: '#ef4444',
+          color: '#f59e0b',
           size: 10,
           symbol: 'x',
-          line: { color: '#dc2626', width: 2 }
+          line: { color: '#d97706', width: 2 }
         }
       })
     }
@@ -192,7 +192,7 @@ const OutlierDetection = ({
         y: inlierData,
         type: 'box',
         name: 'Inliers',
-        marker: { color: '#3b82f6' },
+        marker: { color: '#06b6d4' },
         boxmean: 'sd'
       },
       {
@@ -201,7 +201,7 @@ const OutlierDetection = ({
         mode: 'markers',
         name: 'Outliers',
         marker: {
-          color: '#ef4444',
+          color: '#f59e0b',
           size: 10,
           symbol: 'x'
         }

@@ -529,7 +529,7 @@ const DataTransformationPanel = ({
                 </div>
               )}
               <Plot
-                data={[createHistogramTrace(originalData, 'Original', '#6366f1')]}
+                data={[createHistogramTrace(originalData, 'Original', '#818cf8')]}
                 layout={{
                   ...getPlotlyConfig().layout,
                   xaxis: { title: columnName, color: '#cbd5e1' },
@@ -570,7 +570,7 @@ const DataTransformationPanel = ({
                     </div>
                   </div>
                   <Plot
-                    data={[createHistogramTrace(transformedData.values, 'Transformed', '#10b981')]}
+                    data={[createHistogramTrace(transformedData.values, 'Transformed', '#22d3ee')]}
                     layout={{
                       ...getPlotlyConfig().layout,
                       xaxis: { title: `${columnName} (Transformed)`, color: '#cbd5e1' },
