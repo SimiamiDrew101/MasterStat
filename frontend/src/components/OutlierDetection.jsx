@@ -382,6 +382,8 @@ const OutlierDetection = ({
                   config={{
                     ...getPlotlyConfig().config,
                     modeBarButtonsToAdd: [],
+                    displayModeBar: false,
+                    renderer: 'svg'
                   }}
                   style={{ width: '100%' }}
                   onClick={(data) => {
@@ -409,7 +411,11 @@ const OutlierDetection = ({
                     height: 350,
                     margin: { l: 50, r: 20, t: 20, b: 50 }
                   }}
-                  config={getPlotlyConfig().config}
+                  config={{
+                    ...getPlotlyConfig().config,
+                    displayModeBar: false,
+                    renderer: 'svg'
+                  }}
                   style={{ width: '100%' }}
                 />
               </div>

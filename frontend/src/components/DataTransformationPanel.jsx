@@ -538,7 +538,11 @@ const DataTransformationPanel = ({
                   height: 300,
                   margin: { l: 50, r: 20, t: 20, b: 50 }
                 }}
-                config={getPlotlyConfig().config}
+                config={{
+                  ...getPlotlyConfig().config,
+                  displayModeBar: false,
+                  renderer: 'svg'
+                }}
                 style={{ width: '100%' }}
               />
             </div>
@@ -575,7 +579,11 @@ const DataTransformationPanel = ({
                       height: 300,
                       margin: { l: 50, r: 20, t: 20, b: 50 }
                     }}
-                    config={getPlotlyConfig().config}
+                    config={{
+                      ...getPlotlyConfig().config,
+                      displayModeBar: false,
+                      renderer: 'svg'
+                    }}
                     style={{ width: '100%' }}
                   />
                 </>
