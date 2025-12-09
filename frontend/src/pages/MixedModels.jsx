@@ -17,6 +17,7 @@ import BLUPsPlot from '../components/BLUPsPlot'
 import RandomEffectsQQPlot from '../components/RandomEffectsQQPlot'
 import GrowthCurvePlot from '../components/GrowthCurvePlot'
 import GrowthCurveResults from '../components/GrowthCurveResults'
+import QuickPreprocessPanel from '../components/QuickPreprocessPanel'
 import { parseTableData } from '../utils/clipboardParser'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -941,6 +942,9 @@ const MixedModels = () => {
             />
           </div>
         </div>
+
+        {/* Quick Preprocessing Panel */}
+        <QuickPreprocessPanel className="mb-4" />
 
         {/* Excel-like Table */}
         <div className="mb-4">

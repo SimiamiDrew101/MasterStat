@@ -9,6 +9,7 @@ import DiagnosticPlots from '../components/DiagnosticPlots'
 import Histogram from '../components/Histogram'
 import CorrelationHeatmap from '../components/CorrelationHeatmap'
 import ScatterMatrix from '../components/ScatterMatrix'
+import QuickPreprocessPanel from '../components/QuickPreprocessPanel'
 import { parseTableData } from '../utils/clipboardParser'
 import { Beaker, Plus, Trash2, Download, Copy, FileJson, FileDown } from 'lucide-react'
 import { exportToCSVWithMetadata, copyToClipboard, exportResultsToJSON } from '../utils/exportDesign'
@@ -824,6 +825,9 @@ const FactorialDesigns = () => {
             />
           </div>
 
+
+          {/* Quick Preprocessing Panel */}
+          <QuickPreprocessPanel className="mb-4" />
 
           {/* Data Input Table */}
           <div>

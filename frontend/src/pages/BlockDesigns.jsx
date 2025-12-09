@@ -8,6 +8,7 @@ import AncovaResults from '../components/AncovaResults'
 import MissingDataPanel from '../components/MissingDataPanel'
 import CrossoverResults from '../components/CrossoverResults'
 import IncompleteBlockResults from '../components/IncompleteBlockResults'
+import QuickPreprocessPanel from '../components/QuickPreprocessPanel'
 import { parseTableData } from '../utils/clipboardParser'
 import { Grid, Plus, Trash2, Shuffle, Activity, Grid3x3 } from 'lucide-react'
 
@@ -931,6 +932,9 @@ const BlockDesigns = () => {
               squareSize={squareSize}
             />
           )}
+
+          {/* Quick Preprocessing Panel */}
+          <QuickPreprocessPanel className="mb-4" />
 
           {/* Data Table */}
           <div>
