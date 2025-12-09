@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import Plot from 'react-plotly.js'
-import { RefreshCw, Undo2, Check, Info } from 'lucide-react'
+import { RefreshCw, Undo2, Check, Info, Zap } from 'lucide-react'
 import { getPlotlyConfig } from '../utils/plotlyConfig'
+import axios from 'axios'
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const DataTransformationPanel = ({
   data,
@@ -17,6 +20,9 @@ const DataTransformationPanel = ({
   const [scalingMethod, setScalingMethod] = useState('none')
   const [customCenter, setCustomCenter] = useState('')
   const [customScale, setCustomScale] = useState('')
+  const [useBackend, setUseBackend] = useState(false)
+  const [backendLoading, setBackendLoading] = useState(false)
+  const [backendInfo, setBackendInfo] = useState(null)
 
   // Transformation options
   const transforms = [
@@ -54,9 +60,13 @@ const DataTransformationPanel = ({
   // Apply transformation when selection changes
   useEffect(() => {
     if (originalData.length > 0) {
-      applyTransformation()
+      if (useBackend && selectedTransform !== 'none') {
+        applyBackendTransformation()
+      } else {
+        applyTransformation()
+      }
     }
-  }, [selectedTransform, centeringMethod, scalingMethod, customCenter, customScale, originalData])
+  }, [selectedTransform, centeringMethod, scalingMethod, customCenter, customScale, originalData, useBackend])
 
   // Calculate statistics
   const calculateStats = (values) => {
@@ -76,6 +86,47 @@ const DataTransformationPanel = ({
     const q3 = sorted[Math.floor(n * 0.75)]
 
     return { mean, std, variance, min, max, q1, median, q3, n }
+  }
+
+  // Call backend API for transformation
+  const applyBackendTransformation = async () => {
+    if (!originalData || originalData.length === 0) return
+
+    setBackendLoading(true)
+    setBackendInfo(null)
+
+    try {
+      const response = await axios.post(`${API_URL}/api/preprocessing/transform`, {
+        data: originalData,
+        transform_type: selectedTransform,
+        centering: centeringMethod,
+        scaling: scalingMethod,
+        custom_center: customCenter ? parseFloat(customCenter) : null,
+        custom_scale: customScale ? parseFloat(customScale) : null
+      })
+
+      setTransformedData({
+        values: response.data.transformed_data,
+        isValid: true,
+        errorMessage: '',
+        transform: selectedTransform,
+        centering: centeringMethod,
+        scaling: scalingMethod
+      })
+      setBackendInfo(response.data.parameters)
+    } catch (error) {
+      setTransformedData({
+        values: originalData,
+        isValid: false,
+        errorMessage: error.response?.data?.detail || 'Backend transformation failed',
+        transform: selectedTransform,
+        centering: centeringMethod,
+        scaling: scalingMethod
+      })
+      setBackendInfo(null)
+    } finally {
+      setBackendLoading(false)
+    }
   }
 
   // Apply transformation
@@ -297,7 +348,21 @@ const DataTransformationPanel = ({
         <div className="space-y-4">
           {/* Main Transform */}
           <div>
-            <label className="block text-gray-200 font-medium mb-2">Transform Type</label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="block text-gray-200 font-medium">Transform Type</label>
+              <button
+                onClick={() => setUseBackend(!useBackend)}
+                className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs transition ${
+                  useBackend
+                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                    : 'bg-slate-700 hover:bg-slate-600 text-gray-300'
+                }`}
+                title={useBackend ? 'Using backend API (optimal calculations)' : 'Using client-side (instant preview)'}
+              >
+                <Zap className="w-3 h-3" />
+                {useBackend ? 'Backend (Optimal)' : 'Client (Fast)'}
+              </button>
+            </div>
             <select
               value={selectedTransform}
               onChange={(e) => setSelectedTransform(e.target.value)}
@@ -360,6 +425,48 @@ const DataTransformationPanel = ({
               )}
             </div>
           </div>
+
+          {/* Loading State */}
+          {backendLoading && (
+            <div className="bg-indigo-900/20 border border-indigo-700/50 rounded-lg p-4">
+              <div className="flex items-center gap-3">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-400"></div>
+                <p className="text-indigo-200">Processing transformation on backend...</p>
+              </div>
+            </div>
+          )}
+
+          {/* Backend Info */}
+          {useBackend && backendInfo && !backendLoading && (
+            <div className="bg-indigo-900/20 border border-indigo-700/50 rounded-lg p-4">
+              <div className="flex items-start gap-2">
+                <Zap className="w-5 h-5 text-indigo-400 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-indigo-200 font-semibold mb-2">Backend Transformation Applied</p>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {backendInfo.boxcox_lambda !== undefined && (
+                      <div className="col-span-2">
+                        <span className="text-gray-400">Box-Cox λ (optimal):</span>{' '}
+                        <span className="text-indigo-300 font-mono">{backendInfo.boxcox_lambda.toFixed(4)}</span>
+                      </div>
+                    )}
+                    {backendInfo.center_value !== undefined && backendInfo.center_value !== null && (
+                      <div>
+                        <span className="text-gray-400">Center:</span>{' '}
+                        <span className="text-indigo-300 font-mono">{backendInfo.center_value.toFixed(4)}</span>
+                      </div>
+                    )}
+                    {backendInfo.scale_value !== undefined && backendInfo.scale_value !== null && (
+                      <div>
+                        <span className="text-gray-400">Scale:</span>{' '}
+                        <span className="text-indigo-300 font-mono">{backendInfo.scale_value.toFixed(4)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Error Message */}
           {transformedData && !transformedData.isValid && (
