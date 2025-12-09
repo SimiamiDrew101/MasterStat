@@ -13,6 +13,7 @@ import CrossValidationResults from '../components/CrossValidationResults'
 import MultiResponseManager from '../components/MultiResponseManager'
 import MultiResponseContourOverlay from '../components/MultiResponseContourOverlay'
 import FileUploadZone from '../components/FileUploadZone'
+import QuickPreprocessPanel from '../components/QuickPreprocessPanel'
 import Histogram from '../components/Histogram'
 import CorrelationHeatmap from '../components/CorrelationHeatmap'
 import ScatterMatrix from '../components/ScatterMatrix'
@@ -1091,6 +1092,9 @@ const RSM = () => {
                 expectedColumns={[...factorNames, 'response']}
               />
             </div>
+
+            {/* Quick Preprocessing Panel */}
+            <QuickPreprocessPanel className="mb-4" />
 
             {/* Data Entry Table */}
             {tableData.length > 0 && (

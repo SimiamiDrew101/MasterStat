@@ -7,6 +7,7 @@ import InfluenceDiagnostics from '../components/InfluenceDiagnostics'
 import DiagnosticPlots from '../components/DiagnosticPlots'
 import ContrastsPanel from '../components/ContrastsPanel'
 import FileUploadZone from '../components/FileUploadZone'
+import QuickPreprocessPanel from '../components/QuickPreprocessPanel'
 import Histogram from '../components/Histogram'
 import CorrelationHeatmap from '../components/CorrelationHeatmap'
 import ScatterMatrix from '../components/ScatterMatrix'
@@ -687,6 +688,9 @@ const ANOVA = () => {
               />
             </div>
 
+            {/* Quick Preprocessing Panel */}
+            <QuickPreprocessPanel className="mb-4" />
+
             <div className="space-y-4">
               <div className="flex items-center justify-between mb-2">
                 <label className="text-gray-100 font-medium">Data Entry (Excel-like navigation with arrow keys)</label>
@@ -1191,6 +1195,9 @@ const ANOVA = () => {
               expectedColumns={[factorA || 'Factor A', factorB || 'Factor B', 'response']}
             />
           </div>
+
+          {/* Quick Preprocessing Panel */}
+          <QuickPreprocessPanel className="mb-4" />
 
           {/* Data Entry */}
           <div>
