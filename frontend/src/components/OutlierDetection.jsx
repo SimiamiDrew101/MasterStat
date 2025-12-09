@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import Plot from 'react-plotly.js'
 import { AlertTriangle, Eye, EyeOff, Trash2, Check, X } from 'lucide-react'
-import { getPlotlyConfig } from '../utils/plotlyConfig'
+import { getPlotlyConfig, getPlotlyLayout } from '../utils/plotlyConfig'
 import axios from 'axios'
 
 const OutlierDetection = ({
@@ -371,16 +371,26 @@ const OutlierDetection = ({
                 <Plot
                   data={createScatterPlot()}
                   layout={{
-                    ...getPlotlyConfig().layout,
-                    xaxis: { title: 'Index', color: '#cbd5e1' },
-                    yaxis: { title: columnName, color: '#cbd5e1' },
+                    ...getPlotlyLayout(''),
+                    xaxis: {
+                      title: 'Index',
+                      color: '#cbd5e1',
+                      gridcolor: 'rgba(51, 65, 85, 0.5)',
+                      zerolinecolor: 'rgba(71, 85, 105, 0.7)'
+                    },
+                    yaxis: {
+                      title: columnName,
+                      color: '#cbd5e1',
+                      gridcolor: 'rgba(51, 65, 85, 0.5)',
+                      zerolinecolor: 'rgba(71, 85, 105, 0.7)'
+                    },
                     showlegend: true,
-                    legend: { x: 0.01, y: 0.99, bgcolor: 'rgba(0,0,0,0.3)' },
+                    legend: { x: 0.01, y: 0.99, bgcolor: 'rgba(15, 23, 42, 0.8)', font: { color: '#e2e8f0' } },
                     height: 350,
                     margin: { l: 50, r: 20, t: 20, b: 50 }
                   }}
                   config={{
-                    ...getPlotlyConfig().config,
+                    ...getPlotlyConfig(),
                     modeBarButtonsToAdd: [],
                     displayModeBar: false,
                     renderer: 'svg'
@@ -404,15 +414,20 @@ const OutlierDetection = ({
                 <Plot
                   data={createBoxPlot()}
                   layout={{
-                    ...getPlotlyConfig().layout,
-                    yaxis: { title: columnName, color: '#cbd5e1' },
+                    ...getPlotlyLayout(''),
+                    yaxis: {
+                      title: columnName,
+                      color: '#cbd5e1',
+                      gridcolor: 'rgba(51, 65, 85, 0.5)',
+                      zerolinecolor: 'rgba(71, 85, 105, 0.7)'
+                    },
                     showlegend: true,
-                    legend: { x: 0.01, y: 0.99, bgcolor: 'rgba(0,0,0,0.3)' },
+                    legend: { x: 0.01, y: 0.99, bgcolor: 'rgba(15, 23, 42, 0.8)', font: { color: '#e2e8f0' } },
                     height: 350,
                     margin: { l: 50, r: 20, t: 20, b: 50 }
                   }}
                   config={{
-                    ...getPlotlyConfig().config,
+                    ...getPlotlyConfig(),
                     displayModeBar: false,
                     renderer: 'svg'
                   }}

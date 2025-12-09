@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import Plot from 'react-plotly.js'
 import { RefreshCw, Undo2, Check, Info, Zap } from 'lucide-react'
-import { getPlotlyConfig } from '../utils/plotlyConfig'
+import { getPlotlyConfig, getPlotlyLayout } from '../utils/plotlyConfig'
 import axios from 'axios'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
@@ -531,15 +531,25 @@ const DataTransformationPanel = ({
               <Plot
                 data={[createHistogramTrace(originalData, 'Original', '#818cf8')]}
                 layout={{
-                  ...getPlotlyConfig().layout,
-                  xaxis: { title: columnName, color: '#cbd5e1' },
-                  yaxis: { title: 'Frequency', color: '#cbd5e1' },
+                  ...getPlotlyLayout(''),
+                  xaxis: {
+                    title: columnName,
+                    color: '#cbd5e1',
+                    gridcolor: 'rgba(51, 65, 85, 0.5)',
+                    zerolinecolor: 'rgba(71, 85, 105, 0.7)'
+                  },
+                  yaxis: {
+                    title: 'Frequency',
+                    color: '#cbd5e1',
+                    gridcolor: 'rgba(51, 65, 85, 0.5)',
+                    zerolinecolor: 'rgba(71, 85, 105, 0.7)'
+                  },
                   showlegend: false,
                   height: 300,
                   margin: { l: 50, r: 20, t: 20, b: 50 }
                 }}
                 config={{
-                  ...getPlotlyConfig().config,
+                  ...getPlotlyConfig(),
                   displayModeBar: false,
                   renderer: 'svg'
                 }}
@@ -572,15 +582,25 @@ const DataTransformationPanel = ({
                   <Plot
                     data={[createHistogramTrace(transformedData.values, 'Transformed', '#22d3ee')]}
                     layout={{
-                      ...getPlotlyConfig().layout,
-                      xaxis: { title: `${columnName} (Transformed)`, color: '#cbd5e1' },
-                      yaxis: { title: 'Frequency', color: '#cbd5e1' },
+                      ...getPlotlyLayout(''),
+                      xaxis: {
+                        title: `${columnName} (Transformed)`,
+                        color: '#cbd5e1',
+                        gridcolor: 'rgba(51, 65, 85, 0.5)',
+                        zerolinecolor: 'rgba(71, 85, 105, 0.7)'
+                      },
+                      yaxis: {
+                        title: 'Frequency',
+                        color: '#cbd5e1',
+                        gridcolor: 'rgba(51, 65, 85, 0.5)',
+                        zerolinecolor: 'rgba(71, 85, 105, 0.7)'
+                      },
                       showlegend: false,
                       height: 300,
                       margin: { l: 50, r: 20, t: 20, b: 50 }
                     }}
                     config={{
-                      ...getPlotlyConfig().config,
+                      ...getPlotlyConfig(),
                       displayModeBar: false,
                       renderer: 'svg'
                     }}
