@@ -90,6 +90,54 @@ const ANOVA = () => {
     }
   }, [groups.length])
 
+  // Handle preprocessing data update for One-Way ANOVA
+  const handleOneWayPreprocessUpdate = (columnIndex, processedValues, info) => {
+    const newTableData = [...oneWayTableData]
+
+    // Fill the column with processed values
+    processedValues.forEach((value, rowIndex) => {
+      if (rowIndex < newTableData.length) {
+        newTableData[rowIndex][columnIndex] = value.toString()
+      } else {
+        // Add new rows if needed
+        const newRow = Array(groups.length).fill('')
+        newRow[columnIndex] = value.toString()
+        newTableData.push(newRow)
+      }
+    })
+
+    // Clear remaining cells in the column if processed data is shorter
+    for (let i = processedValues.length; i < newTableData.length; i++) {
+      newTableData[i][columnIndex] = ''
+    }
+
+    setOneWayTableData(newTableData)
+  }
+
+  // Handle preprocessing data update for Two-Way ANOVA
+  const handleTwoWayPreprocessUpdate = (columnIndex, processedValues, info) => {
+    const newTableData = [...twoWayTableData]
+
+    // Fill the column with processed values
+    processedValues.forEach((value, rowIndex) => {
+      if (rowIndex < newTableData.length) {
+        newTableData[rowIndex][columnIndex] = value.toString()
+      } else {
+        // Add new rows if needed
+        const newRow = Array(3).fill('')
+        newRow[columnIndex] = value.toString()
+        newTableData.push(newRow)
+      }
+    })
+
+    // Clear remaining cells in the column if processed data is shorter
+    for (let i = processedValues.length; i < newTableData.length; i++) {
+      newTableData[i][columnIndex] = ''
+    }
+
+    setTwoWayTableData(newTableData)
+  }
+
   const parseSample = (text) => {
     return text.split(/[,\s]+/).filter(x => x).map(x => parseFloat(x))
   }
@@ -689,7 +737,12 @@ const ANOVA = () => {
             </div>
 
             {/* Quick Preprocessing Panel */}
-            <QuickPreprocessPanel className="mb-4" />
+            <QuickPreprocessPanel
+              tableData={oneWayTableData}
+              columnNames={groups.map(g => g.name)}
+              onDataUpdate={handleOneWayPreprocessUpdate}
+              className="mb-4"
+            />
 
             <div className="space-y-4">
               <div className="flex items-center justify-between mb-2">
@@ -1197,7 +1250,12 @@ const ANOVA = () => {
           </div>
 
           {/* Quick Preprocessing Panel */}
-          <QuickPreprocessPanel className="mb-4" />
+          <QuickPreprocessPanel
+            tableData={twoWayTableData}
+            columnNames={[factorA || 'Factor A', factorB || 'Factor B', responseName || 'Response']}
+            onDataUpdate={handleTwoWayPreprocessUpdate}
+            className="mb-4"
+          />
 
           {/* Data Entry */}
           <div>

@@ -1,42 +1,55 @@
-import { useState } from 'react'
-import { Wand2, AlertTriangle, ChevronDown, ChevronUp, Copy } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Wand2, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react'
 import DataTransformationPanel from './DataTransformationPanel'
 import OutlierDetection from './OutlierDetection'
 
-const QuickPreprocessPanel = ({ className = '' }) => {
+const QuickPreprocessPanel = ({
+  tableData = [],
+  columnNames = [],
+  onDataUpdate,
+  className = ''
+}) => {
   const [isExpanded, setIsExpanded] = useState(false)
   const [activeMode, setActiveMode] = useState(null) // 'transform' or 'outlier'
+  const [selectedColumn, setSelectedColumn] = useState(0)
   const [rawData, setRawData] = useState([])
   const [processedData, setProcessedData] = useState([])
-  const [columnName, setColumnName] = useState('Column')
-  const [dataInput, setDataInput] = useState('')
 
-  // Load data from textarea
-  const loadData = () => {
-    const lines = dataInput.trim().split('\n')
-    const values = lines
-      .map(line => {
-        const cleaned = line.trim().replace(/,/g, '')
-        return parseFloat(cleaned)
-      })
-      .filter(v => !isNaN(v))
+  // Extract column data when selection changes
+  useEffect(() => {
+    if (tableData.length > 0 && selectedColumn >= 0 && selectedColumn < columnNames.length) {
+      const columnData = tableData
+        .map(row => row[selectedColumn])
+        .filter(val => val !== null && val !== undefined && val !== '' && !isNaN(parseFloat(val)))
+        .map(val => parseFloat(val))
 
-    if (values.length > 0) {
-      setRawData(values)
-      setProcessedData(values)
+      setRawData(columnData)
+      setProcessedData(columnData)
       setActiveMode(null)
     }
-  }
+  }, [tableData, selectedColumn, columnNames])
 
   // Handle transformation apply
   const handleTransformApply = (transformedValues, transformInfo) => {
     setProcessedData(transformedValues)
+
+    // Update the table data with transformed values
+    if (onDataUpdate) {
+      onDataUpdate(selectedColumn, transformedValues, transformInfo)
+    }
+
     setActiveMode(null)
   }
 
   // Handle transformation reset
   const handleTransformReset = () => {
     setProcessedData(rawData)
+
+    // Reset the table data to original
+    if (onDataUpdate) {
+      onDataUpdate(selectedColumn, rawData, { transform: 'none' })
+    }
+
     setActiveMode(null)
   }
 
@@ -44,16 +57,17 @@ const QuickPreprocessPanel = ({ className = '' }) => {
   const handleOutlierApply = (cleanedValues, outlierInfo) => {
     setProcessedData(cleanedValues)
     setRawData(cleanedValues) // Update raw data to cleaned version
+
+    // Update the table data with cleaned values
+    if (onDataUpdate) {
+      onDataUpdate(selectedColumn, cleanedValues, outlierInfo)
+    }
+
     setActiveMode(null)
   }
 
-  // Copy to clipboard
-  const copyToClipboard = () => {
-    const text = processedData.join('\n')
-    navigator.clipboard.writeText(text)
-      .then(() => alert('Processed data copied to clipboard! Paste it back into your table.'))
-      .catch(err => console.error('Copy failed:', err))
-  }
+  const hasData = rawData.length > 0
+  const columnName = columnNames[selectedColumn] || 'Column'
 
   return (
     <div className={`bg-slate-800/30 backdrop-blur-lg rounded-2xl border border-slate-700/50 ${className}`}>
@@ -82,77 +96,68 @@ const QuickPreprocessPanel = ({ className = '' }) => {
           {/* Instructions */}
           <div className="bg-indigo-900/20 border border-indigo-700/50 rounded-lg p-3">
             <p className="text-sm text-indigo-200">
-              <strong>How to use:</strong> Copy a column from your data table, paste it below, apply transformations or outlier detection, then copy the result back to your table.
+              <strong>How to use:</strong> Select a column from your data table below, then apply transformations or outlier detection. Changes will be applied directly to the table.
             </p>
           </div>
 
-          {/* Data Input */}
+          {/* Column Selection */}
           {!activeMode && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Input Area */}
+            <div className="space-y-4">
               <div>
                 <label className="block text-gray-200 font-medium mb-2">
-                  Paste Column Data (one value per line)
+                  Select Column to Preprocess
                 </label>
-                <textarea
-                  value={dataInput}
-                  onChange={(e) => setDataInput(e.target.value)}
-                  placeholder="23&#10;28&#10;25&#10;30&#10;27&#10;...&#10;&#10;Paste column data here (Ctrl+V / Cmd+V)"
-                  className="w-full h-48 px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono text-sm"
-                />
-                <div className="flex gap-2 mt-2">
-                  <input
-                    type="text"
-                    value={columnName}
-                    onChange={(e) => setColumnName(e.target.value)}
-                    placeholder="Column name"
-                    className="flex-1 px-3 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
-                  />
-                  <button
-                    onClick={loadData}
-                    disabled={!dataInput.trim()}
-                    className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition"
-                  >
-                    Load Data
-                  </button>
-                </div>
+                <select
+                  value={selectedColumn}
+                  onChange={(e) => setSelectedColumn(parseInt(e.target.value))}
+                  className="w-full px-4 py-2 rounded-lg bg-slate-700/50 text-gray-100 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  disabled={columnNames.length === 0}
+                >
+                  {columnNames.length > 0 ? (
+                    columnNames.map((name, idx) => (
+                      <option key={idx} value={idx}>
+                        {name} ({tableData.filter(row => row[idx] !== null && row[idx] !== undefined && row[idx] !== '' && !isNaN(parseFloat(row[idx]))).length} values)
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">No columns available</option>
+                  )}
+                </select>
               </div>
 
-              {/* Data Summary */}
-              <div>
-                <label className="block text-gray-200 font-medium mb-2">
-                  Processed Data ({processedData.length} values)
-                </label>
-                <div className="bg-slate-700/30 rounded-lg p-4 h-48 overflow-y-auto">
-                  {processedData.length > 0 ? (
+              {/* Data Preview */}
+              {hasData && (
+                <div className="bg-slate-700/30 rounded-lg p-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="text-gray-200 font-medium">
+                      Current Data Preview ({rawData.length} values)
+                    </label>
+                  </div>
+                  <div className="max-h-32 overflow-y-auto">
                     <div className="font-mono text-sm text-gray-300">
-                      {processedData.slice(0, 20).map((v, i) => (
+                      {rawData.slice(0, 10).map((v, i) => (
                         <div key={i}>{typeof v === 'number' ? v.toFixed(4) : v}</div>
                       ))}
-                      {processedData.length > 20 && (
-                        <div className="text-gray-500 mt-2">... and {processedData.length - 20} more</div>
+                      {rawData.length > 10 && (
+                        <div className="text-gray-500 mt-2">... and {rawData.length - 10} more</div>
                       )}
                     </div>
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-gray-500">
-                      No data loaded
-                    </div>
-                  )}
+                  </div>
                 </div>
-                <button
-                  onClick={copyToClipboard}
-                  disabled={processedData.length === 0}
-                  className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-lg transition"
-                >
-                  <Copy className="w-4 h-4" />
-                  Copy Processed Data
-                </button>
-              </div>
+              )}
+
+              {!hasData && (
+                <div className="bg-amber-900/20 border border-amber-700/50 rounded-lg p-4">
+                  <p className="text-amber-200 text-sm">
+                    No numeric data found in the selected column. Please enter data in your table first.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
           {/* Action Buttons */}
-          {!activeMode && rawData.length > 0 && (
+          {!activeMode && hasData && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <button
                 onClick={() => setActiveMode('transform')}
@@ -175,7 +180,7 @@ const QuickPreprocessPanel = ({ className = '' }) => {
           )}
 
           {/* Transformation Panel */}
-          {activeMode === 'transform' && rawData.length > 0 && (
+          {activeMode === 'transform' && hasData && (
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-lg font-semibold text-gray-100">Transform: {columnName}</h4>
@@ -196,7 +201,7 @@ const QuickPreprocessPanel = ({ className = '' }) => {
           )}
 
           {/* Outlier Detection Panel */}
-          {activeMode === 'outlier' && rawData.length > 0 && (
+          {activeMode === 'outlier' && hasData && (
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-lg font-semibold text-gray-100">Outlier Detection: {columnName}</h4>

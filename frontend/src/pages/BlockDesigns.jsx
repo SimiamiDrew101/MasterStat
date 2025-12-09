@@ -141,6 +141,31 @@ const BlockDesigns = () => {
     setTableData(newData)
   }
 
+  // Handle preprocessing data update
+  const handlePreprocessUpdate = (columnIndex, processedValues, info) => {
+    const newTableData = [...tableData]
+
+    // Fill the column with processed values
+    processedValues.forEach((value, rowIndex) => {
+      if (rowIndex < newTableData.length) {
+        newTableData[rowIndex][columnIndex] = value.toString()
+      } else {
+        // Add new rows if needed
+        const numCols = getHeaders().length
+        const newRow = Array(numCols).fill('')
+        newRow[columnIndex] = value.toString()
+        newTableData.push(newRow)
+      }
+    })
+
+    // Clear remaining cells in the column if processed data is shorter
+    for (let i = processedValues.length; i < newTableData.length; i++) {
+      newTableData[i][columnIndex] = ''
+    }
+
+    setTableData(newTableData)
+  }
+
   // Excel-like keyboard navigation
   const handleKeyDown = (e, rowIndex, colIndex) => {
     const maxRow = tableData.length - 1
@@ -934,7 +959,12 @@ const BlockDesigns = () => {
           )}
 
           {/* Quick Preprocessing Panel */}
-          <QuickPreprocessPanel className="mb-4" />
+          <QuickPreprocessPanel
+            tableData={tableData}
+            columnNames={getHeaders()}
+            onDataUpdate={handlePreprocessUpdate}
+            className="mb-4"
+          />
 
           {/* Data Table */}
           <div>

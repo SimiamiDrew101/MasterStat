@@ -776,6 +776,31 @@ const RSM = () => {
     setError(null)
   }
 
+  // Handle preprocessing data update
+  const handlePreprocessUpdate = (columnIndex, processedValues, info) => {
+    const newTableData = [...tableData]
+    const totalColumns = factorNames.length + responseNames.length
+
+    // Fill the column with processed values
+    processedValues.forEach((value, rowIndex) => {
+      if (rowIndex < newTableData.length) {
+        newTableData[rowIndex][columnIndex] = value.toString()
+      } else {
+        // Add new rows if needed
+        const newRow = Array(totalColumns).fill('')
+        newRow[columnIndex] = value.toString()
+        newTableData.push(newRow)
+      }
+    })
+
+    // Clear remaining cells in the column if processed data is shorter
+    for (let i = processedValues.length; i < newTableData.length; i++) {
+      newTableData[i][columnIndex] = ''
+    }
+
+    setTableData(newTableData)
+  }
+
   // Table editing
   const handleCellChange = (rowIndex, colIndex, value) => {
     const newData = [...tableData]
@@ -1094,7 +1119,12 @@ const RSM = () => {
             </div>
 
             {/* Quick Preprocessing Panel */}
-            <QuickPreprocessPanel className="mb-4" />
+            <QuickPreprocessPanel
+              tableData={tableData}
+              columnNames={[...factorNames, ...responseNames]}
+              onDataUpdate={handlePreprocessUpdate}
+              className="mb-4"
+            />
 
             {/* Data Entry Table */}
             {tableData.length > 0 && (

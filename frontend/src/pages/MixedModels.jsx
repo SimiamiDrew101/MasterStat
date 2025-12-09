@@ -944,7 +944,39 @@ const MixedModels = () => {
         </div>
 
         {/* Quick Preprocessing Panel */}
-        <QuickPreprocessPanel className="mb-4" />
+        <QuickPreprocessPanel
+          tableData={tableData}
+          columnNames={
+            analysisType === 'mixed-anova' ? [...factorNames, responseName] :
+            analysisType === 'split-plot' ? (includeBlocks ? [blockName, ...factorNames, responseName] : [...factorNames, responseName]) :
+            analysisType === 'nested' ? [...factorNames, responseName] :
+            analysisType === 'repeated-measures' ? [subjectName, withinFactorName, responseName] :
+            analysisType === 'growth-curve' ? [growthSubjectID, growthTimeVar, responseName] : []
+          }
+          onDataUpdate={(columnIndex, processedValues, info) => {
+            const newTableData = [...tableData]
+
+            // Fill the column with processed values
+            processedValues.forEach((value, rowIndex) => {
+              if (rowIndex < newTableData.length) {
+                newTableData[rowIndex][columnIndex] = value.toString()
+              } else {
+                // Add new rows if needed
+                const newRow = Array(numColumns).fill('')
+                newRow[columnIndex] = value.toString()
+                newTableData.push(newRow)
+              }
+            })
+
+            // Clear remaining cells in the column if processed data is shorter
+            for (let i = processedValues.length; i < newTableData.length; i++) {
+              newTableData[i][columnIndex] = ''
+            }
+
+            setTableData(newTableData)
+          }}
+          className="mb-4"
+        />
 
         {/* Excel-like Table */}
         <div className="mb-4">
