@@ -2,6 +2,7 @@ import { useState } from 'react'
 import axios from 'axios'
 import { Network, TrendingUp, Plus, Trash2, Settings, BarChart2, Layers, Lightbulb } from 'lucide-react'
 import Plot from 'react-plotly.js'
+import PosteriorPlots from '../components/PosteriorPlots'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -286,6 +287,17 @@ const BayesianDOE = () => {
         >
           3. Sequential Design
         </button>
+        <button
+          onClick={() => setActiveTab('model-comparison')}
+          className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+            activeTab === 'model-comparison'
+              ? 'bg-purple-600 text-white'
+              : 'bg-slate-700/50 text-gray-300 hover:bg-slate-700'
+          }`}
+          disabled={!tableData || tableData.length === 0}
+        >
+          4. Model Comparison
+        </button>
       </div>
 
       {/* Error Display */}
@@ -341,9 +353,37 @@ const BayesianDOE = () => {
 
           {/* Prior Specifications */}
           <div className="bg-gradient-to-r from-indigo-900/30 to-blue-900/30 backdrop-blur-lg rounded-2xl p-6 border border-indigo-700/50">
-            <div className="flex items-center gap-2 mb-6">
-              <Lightbulb className="w-6 h-6 text-indigo-400" />
-              <h3 className="text-2xl font-bold text-gray-100">Prior Distributions</h3>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2">
+                <Lightbulb className="w-6 h-6 text-indigo-400" />
+                <h3 className="text-2xl font-bold text-gray-100">Prior Distributions</h3>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const weaklyInformative = { Intercept: { dist_type: 'normal', params: { loc: 0, scale: 10 } } }
+                    factorNames.forEach(factor => {
+                      weaklyInformative[factor] = { dist_type: 'normal', params: { loc: 0, scale: 5 } }
+                    })
+                    setPriors(weaklyInformative)
+                  }}
+                  className="px-4 py-2 bg-indigo-600/50 hover:bg-indigo-600 text-white text-sm rounded-lg transition-colors border border-indigo-500/50"
+                >
+                  Weakly Informative
+                </button>
+                <button
+                  onClick={() => {
+                    const uninformative = { Intercept: { dist_type: 'normal', params: { loc: 0, scale: 100 } } }
+                    factorNames.forEach(factor => {
+                      uninformative[factor] = { dist_type: 'uniform', params: { low: -100, high: 100 } }
+                    })
+                    setPriors(uninformative)
+                  }}
+                  className="px-4 py-2 bg-slate-600/50 hover:bg-slate-600 text-white text-sm rounded-lg transition-colors border border-slate-500/50"
+                >
+                  Uninformative
+                </button>
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -697,6 +737,17 @@ const BayesianDOE = () => {
               </div>
             </div>
           )}
+
+          {/* Posterior Analysis & Diagnostics */}
+          {analysisResult.posterior_samples && analysisResult.convergence_diagnostics && (
+            <PosteriorPlots
+              posteriorSamples={analysisResult.posterior_samples}
+              posteriorSummary={analysisResult.posterior_summary}
+              priors={priors}
+              convergenceDiagnostics={analysisResult.convergence_diagnostics}
+              responseName={responseName}
+            />
+          )}
         </div>
       )}
 
@@ -947,6 +998,164 @@ const BayesianDOE = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Tab: Model Comparison */}
+      {activeTab === 'model-comparison' && (
+        <div className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
+          <div className="flex items-center gap-2 mb-6">
+            <Layers className="w-6 h-6 text-amber-400" />
+            <h3 className="text-2xl font-bold text-gray-100">Bayesian Model Comparison</h3>
+          </div>
+
+          {/* Model Comparison Interface */}
+          <div className="space-y-6">
+            {/* Compare Models Button */}
+            <div className="bg-slate-700/50 rounded-lg p-6">
+              <h4 className="text-lg font-semibold text-gray-100 mb-4">Compare Model Specifications</h4>
+              <p className="text-gray-300 text-sm mb-4">
+                Compare different model specifications using Bayesian Information Criterion (BIC) and Bayes Factors.
+                Lower BIC indicates better model fit with parsimony.
+              </p>
+
+              <button
+                onClick={async () => {
+                  try {
+                    setLoading(true)
+                    setError(null)
+
+                    // Generate interaction terms
+                    const generateInteractionTerms = (factors) => {
+                      const interactions = []
+                      for (let i = 0; i < factors.length; i++) {
+                        for (let j = i + 1; j < factors.length; j++) {
+                          interactions.push(`${factors[i]}:${factors[j]}`)
+                        }
+                      }
+                      return interactions
+                    }
+
+                    // Define models to compare
+                    const models = [
+                      ['Intercept', ...factorNames, ...generateInteractionTerms(factorNames)],  // Full model
+                      ['Intercept', ...factorNames],  // Main effects only
+                      ['Intercept']  // Null model
+                    ]
+
+                    const response = await axios.post(`${API_URL}/api/bayesian-doe/model-comparison`, {
+                      data: tableData,
+                      factors: factorNames,
+                      response: responseName,
+                      models,
+                      priors
+                    })
+
+                    setComparisonResult(response.data)
+                  } catch (err) {
+                    setError(err.response?.data?.detail || err.message)
+                  } finally {
+                    setLoading(false)
+                  }
+                }}
+                disabled={loading || !tableData || tableData.length === 0}
+                className="w-full bg-amber-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Comparing Models...' : 'Run Model Comparison'}
+              </button>
+            </div>
+
+            {/* Comparison Results */}
+            {comparisonResult && (
+              <div className="bg-slate-700/30 rounded-lg p-6">
+                <h4 className="text-lg font-semibold text-gray-100 mb-4">Model Comparison Results</h4>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-600">
+                        <th className="text-left py-3 px-4 text-gray-300">Model</th>
+                        <th className="text-left py-3 px-4 text-gray-300">Terms</th>
+                        <th className="text-right py-3 px-4 text-gray-300">Parameters</th>
+                        <th className="text-right py-3 px-4 text-gray-300">R²</th>
+                        <th className="text-right py-3 px-4 text-gray-300">BIC</th>
+                        <th className="text-right py-3 px-4 text-gray-300">AIC</th>
+                        <th className="text-right py-3 px-4 text-gray-300">BF vs Model 1</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {comparisonResult.models.map((model, idx) => {
+                        const isBest = model.model_id === comparisonResult.best_model.model_id
+                        return (
+                          <tr
+                            key={idx}
+                            className={`border-b border-slate-700/50 ${
+                              isBest ? 'bg-green-900/20' : ''
+                            }`}
+                          >
+                            <td className="py-3 px-4 text-gray-200 font-semibold">
+                              {isBest && '★ '}Model {model.model_id}
+                            </td>
+                            <td className="py-3 px-4 text-gray-300 text-xs">
+                              {model.terms.join(', ').substring(0, 40)}
+                              {model.terms.join(', ').length > 40 ? '...' : ''}
+                            </td>
+                            <td className="text-right py-3 px-4 text-gray-300 font-mono">
+                              {model.n_parameters}
+                            </td>
+                            <td className="text-right py-3 px-4 text-gray-300 font-mono">
+                              {model.r_squared.toFixed(4)}
+                            </td>
+                            <td className={`text-right py-3 px-4 font-mono ${
+                              isBest ? 'text-green-400 font-bold' : 'text-gray-300'
+                            }`}>
+                              {model.bic.toFixed(2)}
+                            </td>
+                            <td className="text-right py-3 px-4 text-gray-300 font-mono">
+                              {model.aic.toFixed(2)}
+                            </td>
+                            <td className="text-right py-3 px-4 text-gray-300 text-xs">
+                              {model.bayes_factor_vs_model1 !== undefined ? (
+                                <span>
+                                  {model.bayes_factor_vs_model1.toFixed(2)}
+                                  <br />
+                                  <span className="text-gray-400">({model.bf_interpretation})</span>
+                                </span>
+                              ) : (
+                                '-'
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Best Model Recommendation */}
+                <div className="mt-6 bg-green-900/20 border border-green-700/30 rounded-lg p-4">
+                  <h5 className="font-semibold text-green-300 mb-2">Recommended Model</h5>
+                  <p className="text-gray-300 text-sm">
+                    {comparisonResult.recommendation}
+                  </p>
+                  <p className="text-gray-400 text-xs mt-2">
+                    Model {comparisonResult.best_model.model_id} includes: {comparisonResult.best_model.terms.join(', ')}
+                  </p>
+                </div>
+
+                {/* Interpretation Guide */}
+                <div className="mt-4 bg-blue-900/20 border border-blue-700/30 rounded-lg p-4">
+                  <h5 className="font-semibold text-blue-300 mb-2">Interpretation</h5>
+                  <ul className="text-gray-300 text-xs space-y-1">
+                    <li>• <strong>BIC (lower is better):</strong> Balances fit and complexity, penalizes extra parameters</li>
+                    <li>• <strong>Bayes Factor &gt;10:</strong> Strong evidence for model over Model 1</li>
+                    <li>• <strong>Bayes Factor 3-10:</strong> Moderate evidence</li>
+                    <li>• <strong>Bayes Factor &lt;3:</strong> Weak evidence</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

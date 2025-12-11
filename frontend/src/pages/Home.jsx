@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee, Wand2 } from 'lucide-react'
+import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee, Wand2, FileText } from 'lucide-react'
 
 const Home = () => {
   const features = [
@@ -16,6 +16,13 @@ const Home = () => {
       description: 'Transform, clean, impute missing values, and detect outliers',
       path: '/preprocessing',
       color: 'from-fuchsia-400 to-pink-600'
+    },
+    {
+      icon: <FileText className="w-12 h-12" />,
+      title: 'Protocol Generator',
+      description: 'Create randomized, blinded experimental protocols with PDF export',
+      path: '/protocol-generator',
+      color: 'from-emerald-400 to-teal-600'
     },
     {
       icon: <Target className="w-12 h-12" />,

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import hypothesis_testing, anova, factorial, block_designs, mixed_models, rsm, power_analysis, bayesian_doe, import_data, stats, preprocessing, imputation
+from app.api import hypothesis_testing, anova, factorial, block_designs, mixed_models, rsm, power_analysis, bayesian_doe, import_data, stats, preprocessing, imputation, protocol
 
 app = FastAPI(
     title="MasterStat - Statistical Analysis Tool",
@@ -30,6 +30,7 @@ app.include_router(rsm.router, prefix="/api/rsm", tags=["Response Surface Method
 app.include_router(bayesian_doe.router, prefix="/api/bayesian-doe", tags=["Bayesian DOE"])
 app.include_router(preprocessing.router, prefix="/api/preprocessing", tags=["Data Preprocessing"])
 app.include_router(imputation.router, prefix="/api/imputation", tags=["Missing Data Imputation"])
+app.include_router(protocol.router, prefix="/api/protocol", tags=["Experimental Protocols"])
 
 @app.get("/")
 async def root():

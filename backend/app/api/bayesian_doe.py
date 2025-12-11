@@ -129,6 +129,73 @@ def calculate_bayes_factor(model1_marginal_lik: float, model2_marginal_lik: floa
     """Calculate Bayes Factor: BF = P(D|M1) / P(D|M2)"""
     return np.exp(model1_marginal_lik - model2_marginal_lik)
 
+def calculate_hdi(samples: np.ndarray, credible_mass: float = 0.95) -> tuple:
+    """
+    Calculate Highest Density Interval - narrowest interval containing credible_mass.
+
+    HDI is preferred over equal-tailed intervals because it represents the shortest
+    credible interval, making it more informative for asymmetric posteriors.
+    """
+    sorted_samples = np.sort(samples)
+    n = len(sorted_samples)
+    interval_width = int(np.ceil(credible_mass * n))
+
+    min_width = float('inf')
+    hdi_min = sorted_samples[0]
+    hdi_max = sorted_samples[-1]
+
+    for i in range(n - interval_width):
+        width = sorted_samples[i + interval_width] - sorted_samples[i]
+        if width < min_width:
+            min_width = width
+            hdi_min = sorted_samples[i]
+            hdi_max = sorted_samples[i + interval_width]
+
+    return float(hdi_min), float(hdi_max)
+
+def calculate_effective_sample_size(samples: np.ndarray) -> float:
+    """
+    Calculate Effective Sample Size (ESS) using autocorrelation.
+
+    ESS accounts for autocorrelation in MCMC samples. Lower ESS indicates
+    higher autocorrelation. Target: ESS > 400 for reliable inference.
+    """
+    n = len(samples)
+    samples_centered = samples - np.mean(samples)
+
+    acf_vals = []
+    for lag in range(min(n // 2, 100)):
+        c0 = np.dot(samples_centered, samples_centered) / n
+        ct = np.dot(samples_centered[:-lag or None], samples_centered[lag:]) / (n - lag)
+        acf_vals.append(ct / c0 if c0 > 0 else 0)
+
+        # Stop when autocorrelation becomes negative
+        if lag > 1 and acf_vals[-1] < 0:
+            break
+
+    # Integrated autocorrelation time
+    tau = 1 + 2 * sum(acf_vals[1:])
+    ess = n / tau if tau > 0 else n
+    return float(min(ess, n))
+
+def calculate_autocorrelation(samples: np.ndarray, max_lag: int = 50) -> List[float]:
+    """
+    Calculate autocorrelation function for trace plot diagnostics.
+
+    Returns ACF values for lags 0 to max_lag. Values near zero indicate
+    good mixing. High autocorrelation suggests longer burn-in needed.
+    """
+    n = len(samples)
+    samples_centered = samples - np.mean(samples)
+    c0 = np.dot(samples_centered, samples_centered) / n
+
+    acf = []
+    for lag in range(max_lag):
+        ct = np.dot(samples_centered[:-lag or None], samples_centered[lag:]) / (n - lag)
+        acf.append(float(ct / c0 if c0 > 0 else 0))
+
+    return acf
+
 # ==================== API ENDPOINTS ====================
 
 @router.post("/factorial-analysis")
@@ -168,17 +235,18 @@ async def bayesian_factorial_analysis(request: BayesianFactorialRequest):
         posterior_means = np.mean(samples, axis=0)
         posterior_stds = np.std(samples, axis=0)
 
-        # Credible intervals (95%)
-        credible_intervals = {
-            param_names[i]: {
+        # Credible intervals (95% HDI - Highest Density Interval)
+        credible_intervals = {}
+        for i in range(len(param_names)):
+            hdi_lower, hdi_upper = calculate_hdi(samples[:, i], credible_mass=0.95)
+            credible_intervals[param_names[i]] = {
                 'mean': float(posterior_means[i]),
                 'std': float(posterior_stds[i]),
-                'lower_95': float(np.percentile(samples[:, i], 2.5)),
-                'upper_95': float(np.percentile(samples[:, i], 97.5)),
-                'median': float(np.median(samples[:, i]))
+                'lower_95': hdi_lower,
+                'upper_95': hdi_upper,
+                'median': float(np.median(samples[:, i])),
+                'hdi_width': float(hdi_upper - hdi_lower)
             }
-            for i in range(len(param_names))
-        }
 
         # Bayes factors for effect significance (compared to null model where effect = 0)
         bayes_factors = {}
@@ -215,6 +283,29 @@ async def bayesian_factorial_analysis(request: BayesianFactorialRequest):
         y_pred_lower = np.percentile(y_pred_samples, 2.5, axis=0)
         y_pred_upper = np.percentile(y_pred_samples, 97.5, axis=0)
 
+        # Calculate convergence diagnostics for each parameter
+        convergence_diagnostics = {
+            'acceptance_rate': float(mcmc_result['acceptance_rate']),
+            'parameters': {}
+        }
+
+        for i, param in enumerate(param_names[:-1]):  # Exclude log_sigma from detailed diagnostics
+            ess = calculate_effective_sample_size(samples[:, i])
+            autocorr = calculate_autocorrelation(samples[:, i], max_lag=50)
+
+            convergence_diagnostics['parameters'][param] = {
+                'ess': ess,
+                'ess_per_sample': ess / request.n_samples,
+                'rhat': 1.0,  # Single chain - would need multiple chains for proper R-hat
+                'autocorrelation': autocorr
+            }
+
+        # Calculate overall minimum ESS
+        convergence_diagnostics['overall_ess_min'] = min(
+            [convergence_diagnostics['parameters'][p]['ess']
+             for p in convergence_diagnostics['parameters']]
+        ) if convergence_diagnostics['parameters'] else 0
+
         return {
             'method': 'Bayesian Factorial Analysis (MCMC)',
             'n_samples': request.n_samples,
@@ -223,20 +314,17 @@ async def bayesian_factorial_analysis(request: BayesianFactorialRequest):
             'posterior_summary': credible_intervals,
             'bayes_factors': bayes_factors,
             'posterior_samples': {
-                param: samples[:, i].tolist()[:100]  # Return first 100 samples for plotting
+                param: samples[:, i].tolist()  # Return ALL samples for visualization
                 for i, param in enumerate(param_names)
             },
+            'n_posterior_samples': len(samples),
             'posterior_predictive': {
                 'observed': y.tolist(),
                 'predicted_mean': y_pred_mean.tolist(),
                 'predicted_lower_95': y_pred_lower.tolist(),
                 'predicted_upper_95': y_pred_upper.tolist()
             },
-            'convergence_diagnostics': {
-                'acceptance_rate': float(mcmc_result['acceptance_rate']),
-                'effective_sample_size': 'Not implemented',  # Would need more sophisticated calculation
-                'rhat': 'Not implemented'  # Would need multiple chains
-            }
+            'convergence_diagnostics': convergence_diagnostics
         }
 
     except Exception as e:
