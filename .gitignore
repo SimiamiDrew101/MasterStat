@@ -10,6 +10,12 @@ PHASE*.md
 overlay.md
 subject_list.md
 roadmap.md
+Further_improvements.md
+FEATURE_*.md
+*_SUMMARY.md
+*_GUIDE.md
+*_COMPLETE.md
+*_IMPLEMENTATION.md
 
 # Test files and artifacts (exclude from repo)
 test_*.py
