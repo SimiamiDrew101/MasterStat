@@ -3,7 +3,7 @@ import axios from 'axios'
 import { LineChart, TrendingUp, Download } from 'lucide-react'
 import { exportSvgToPng } from '../utils/exportChart'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 const PowerCurveChart = ({
   calculatorType,

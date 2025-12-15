@@ -19,6 +19,15 @@ FEATURE_*.md
 EXCEL_TABLE_IMPLEMENTATION.md
 SVG_EXPORT_IMPLEMENTATION.md
 
+# Debug and Fix Documentation (exclude from repo)
+ELECTRON_*.md
+OUTLIER_*.md
+PREPROCESSING_FIX.md
+CORS_FIX.md
+*_DEBUG_*.md
+*_FIX*.md
+*_TEST_REPORT.md
+
 # Test files and artifacts (exclude from repo)
 test_*.py
 test_*.json
@@ -57,10 +66,18 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 .vite/
+package-electron.json
 
 # Build outputs
 frontend/dist/
 frontend/build/
+dist/
+out/
+*.app/
+*.dmg
+*.exe
+*.AppImage
+*.snap
 
 # Environment
 .env
@@ -77,6 +94,7 @@ frontend/build/
 
 # Claude Code (only ignore chat history and personal settings, not commands/hooks)
 .claude/chats/
+.claude/plans/
 .claude/settings.local.json
 .claude/*roadmap*.md
 
@@ -87,6 +105,8 @@ Thumbs.db
 # Logs
 *.log
 logs/
+electron*.log
+backend*.log
 
 # Temporary files
 *.tmp

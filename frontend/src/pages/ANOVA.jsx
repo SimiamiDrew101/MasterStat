@@ -14,7 +14,7 @@ import ScatterMatrix from '../components/ScatterMatrix'
 import { parseTableData } from '../utils/clipboardParser'
 import { TrendingUp, FileDown } from 'lucide-react'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 const ANOVA = () => {
   const [activeTab, setActiveTab] = useState('one-way')

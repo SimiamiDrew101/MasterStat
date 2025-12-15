@@ -4,7 +4,7 @@ import { RefreshCw, Undo2, Check, Info, Zap } from 'lucide-react'
 import { getPlotlyConfig, getPlotlyLayout } from '../utils/plotlyConfig'
 import axios from 'axios'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 const DataTransformationPanel = ({
   data,

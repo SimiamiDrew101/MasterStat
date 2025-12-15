@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Database, AlertCircle, Info, Sparkles, Settings } from 'lucide-react'
 import axios from 'axios'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 /**
  * ImputationSelector - Component for selecting and configuring missing data imputation methods

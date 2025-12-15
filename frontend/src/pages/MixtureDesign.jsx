@@ -3,7 +3,7 @@ import axios from 'axios'
 import { Droplet, Plus, Trash2, Target } from 'lucide-react'
 import ResultCard from '../components/ResultCard'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 const MixtureDesign = () => {
   // Design configuration

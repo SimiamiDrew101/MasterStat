@@ -4,7 +4,7 @@ import { GitCompare, TrendingUp, BarChart3, AlertCircle, CheckCircle2 } from 'lu
 import { getPlotlyConfig, getPlotlyLayout } from '../utils/plotlyConfig'
 import axios from 'axios'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 /**
  * ImputationComparison - Component for comparing multiple imputation methods

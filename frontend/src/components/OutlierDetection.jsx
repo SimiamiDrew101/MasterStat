@@ -55,38 +55,53 @@ const OutlierDetection = ({
     }
   ]
 
-  // Run detection when method or params change
-  useEffect(() => {
-    if (data && data.length > 0) {
-      detectOutliers()
-    }
-  }, [selectedMethod, detectionParams, data])
-
   // Detect outliers using backend API
   const detectOutliers = async () => {
-    if (!data || data.length === 0) return
+    if (!data || data.length === 0) {
+      console.log('OutlierDetection: No data to process')
+      return
+    }
 
+    console.log('OutlierDetection: Detecting outliers with method:', selectedMethod, 'data length:', data.length)
     setLoading(true)
     setError(null)
 
     try {
-      const response = await axios.post('http://localhost:8000/api/preprocessing/detect-outliers', {
+      const response = await axios.post('/api/preprocessing/detect-outliers', {
         data: data,
         method: selectedMethod,
         threshold: detectionParams.threshold,
         contamination: detectionParams.contamination
       })
 
+      console.log('OutlierDetection: Detection successful', response.data)
       setOutlierResults(response.data)
       // Initialize manual selection with detected outliers
       setManualSelection(new Set(response.data.outlier_indices))
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to detect outliers')
+      const errorMsg = err.response?.data?.detail || err.message || 'Failed to detect outliers'
+      setError(errorMsg)
       console.error('Outlier detection error:', err)
+      console.error('Error details:', errorMsg)
     } finally {
       setLoading(false)
     }
   }
+
+  // Run detection when method or params change
+  useEffect(() => {
+    console.log('OutlierDetection: useEffect triggered', {
+      hasData: !!data,
+      dataLength: data?.length,
+      method: selectedMethod,
+      threshold: detectionParams.threshold,
+      contamination: detectionParams.contamination
+    })
+
+    if (data && data.length > 0) {
+      detectOutliers()
+    }
+  }, [selectedMethod, detectionParams.threshold, detectionParams.contamination, data])
 
   // Toggle manual selection
   const togglePoint = (index) => {

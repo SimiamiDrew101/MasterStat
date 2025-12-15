@@ -14,7 +14,7 @@ import { parseTableData } from '../utils/clipboardParser'
 import { Beaker, Plus, Trash2, Download, Copy, FileJson, FileDown } from 'lucide-react'
 import { exportToCSVWithMetadata, copyToClipboard, exportResultsToJSON } from '../utils/exportDesign'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 // Fractional factorial designs implementation
 const FactorialDesigns = () => {

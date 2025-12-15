@@ -52,7 +52,7 @@ const DataPreprocessing = () => {
       setRawData(columnData)
       setProcessedData(columnData)
     }
-  }, [selectedColumn])
+  }, [selectedColumn, tableData])
 
   // Handle table data changes
   const handleTableDataChange = (newTableData) => {

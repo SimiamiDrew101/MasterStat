@@ -4,7 +4,7 @@ import { Network, TrendingUp, Plus, Trash2, Settings, BarChart2, Layers, Lightbu
 import Plot from 'react-plotly.js'
 import PosteriorPlots from '../components/PosteriorPlots'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 const BayesianDOE = () => {
   // Bayesian Design of Experiments Component

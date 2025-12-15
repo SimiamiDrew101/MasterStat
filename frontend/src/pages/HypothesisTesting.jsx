@@ -6,7 +6,7 @@ import AssumptionsPanel from '../components/AssumptionsPanel'
 import EffectSizeCard from '../components/EffectSizeCard'
 import { Calculator, AlertCircle } from 'lucide-react'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 const HypothesisTesting = () => {
   const [activeTab, setActiveTab] = useState('t-test') // 't-test', 'f-test', 'z-test'

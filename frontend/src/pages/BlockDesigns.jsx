@@ -12,7 +12,7 @@ import QuickPreprocessPanel from '../components/QuickPreprocessPanel'
 import { parseTableData } from '../utils/clipboardParser'
 import { Grid, Plus, Trash2, Shuffle, Activity, Grid3x3 } from 'lucide-react'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 const BlockDesigns = () => {
   const [designType, setDesignType] = useState('rcbd')

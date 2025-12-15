@@ -78,6 +78,32 @@ Free, open-source web application for researchers, engineers, and data scientist
 
 **See [QUICKSTART.md](QUICKSTART.md) for detailed instructions**
 
+### Electron Desktop App (NEW - Standalone Application)
+
+Run MasterStat as a native desktop application without Docker or manual setup:
+
+```bash
+git clone https://github.com/SimiamiDrew101/MasterStat.git
+cd MasterStat
+npm install
+npm run electron
+```
+
+**Benefits:**
+- 🚀 **One-click launch** - Backend and frontend start automatically
+- 💻 **Native desktop experience** - Runs as a standalone application
+- 🔒 **Offline capable** - No browser required, all processing local
+- 🎯 **Self-contained** - Python backend bundled and managed internally
+- ⚡ **Fast startup** - Optimized for desktop performance
+
+**Requirements:**
+- Node.js 16+ ([Download](https://nodejs.org/))
+- Python 3.11+ ([Download](https://python.org/downloads/))
+
+The Electron app automatically starts the Python backend on `http://127.0.0.1:8000` and displays the interface in a native window.
+
+---
+
 ### Docker (Recommended - Full Features)
 
 ```bash
@@ -113,12 +139,64 @@ npm run dev
 
 ### Prerequisites
 
+**For Electron Desktop App:**
+- Python 3.11+ ([Download](https://www.python.org/downloads/))
+- Node.js v16+ ([Download](https://nodejs.org/))
+
 **For Docker (recommended):**
 - [Docker Desktop](https://www.docker.com/products/docker-desktop)
 
 **For local development:**
 - Python 3.11+ ([Download](https://www.python.org/downloads/))
 - Node.js v16+ ([Download](https://nodejs.org/))
+
+### Electron Desktop App Setup
+
+The Electron desktop app provides a native application experience:
+
+```bash
+# Clone repository
+git clone https://github.com/SimiamiDrew101/MasterStat.git
+cd MasterStat
+
+# Install dependencies (root directory)
+npm install
+
+# Install Python backend dependencies
+cd backend
+pip install -r requirements.txt
+cd ..
+
+# Launch Electron app
+npm run electron
+```
+
+The application will open in a native desktop window with the backend running on `http://127.0.0.1:8000`.
+
+**Features:**
+- Automatic backend startup and shutdown
+- Native desktop window with menu bar
+- Integrated Python backend management
+- Offline-capable (no internet required)
+- Automatic updates support (future feature)
+
+**Troubleshooting:**
+
+```bash
+# Port conflicts - close other instances first
+pkill -f electron
+pkill -f uvicorn
+
+# Missing dependencies
+cd backend && pip install -r requirements.txt
+cd .. && npm install
+
+# Check logs
+tail -f electron*.log
+tail -f backend*.log
+```
+
+---
 
 ### Docker Setup
 
@@ -240,6 +318,12 @@ Hover over any statistical term for context-sensitive help with examples.
 - jsPDF for PDF generation
 - xlsx for Excel workbooks
 
+**Desktop App:**
+- Electron 28.1.0 for native desktop application
+- Cross-platform support (macOS, Windows, Linux)
+- Integrated backend process management
+- Native menu bar and window controls
+
 **Backend:**
 - FastAPI (Python 3.11)
 - scipy, statsmodels for statistical computing
@@ -269,6 +353,11 @@ backend/app/
 ├── api/               # 13 FastAPI endpoint modules
 ├── models/            # Statistical models
 └── utils/             # Report generation, helpers
+
+electron/
+├── main.js            # Electron main process
+├── preload.js         # Preload script for security
+└── icon.png           # Application icon
 ```
 
 **Project Statistics:**

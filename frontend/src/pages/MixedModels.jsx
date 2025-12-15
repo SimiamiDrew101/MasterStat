@@ -20,7 +20,7 @@ import GrowthCurveResults from '../components/GrowthCurveResults'
 import QuickPreprocessPanel from '../components/QuickPreprocessPanel'
 import { parseTableData } from '../utils/clipboardParser'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 const MixedModels = () => {
   const [analysisType, setAnalysisType] = useState('mixed-anova')
