@@ -14,6 +14,10 @@ import BayesianDOE from './pages/BayesianDOE'
 import ExperimentPlanning from './pages/ExperimentPlanning'
 import DataPreprocessing from './pages/DataPreprocessing'
 import ProtocolGeneratorPage from './pages/ProtocolGeneratorPage'
+import PredictionProfiler from './pages/PredictionProfiler'
+import OptimalDesigns from './pages/OptimalDesigns'
+import NonlinearRegression from './pages/NonlinearRegression'
+import QualityControl from './pages/QualityControl'
 import { Menu, X, BarChart3 } from 'lucide-react'
 
 function App() {
@@ -31,6 +35,10 @@ function App() {
     { path: '/blocks', label: 'Block Designs', icon: '🧱' },
     { path: '/mixed', label: 'Mixed Models', icon: '🔀' },
     { path: '/rsm', label: 'Response Surface', icon: '🗻' },
+    { path: '/prediction-profiler', label: 'Prediction Profiler', icon: '🎯' },
+    { path: '/optimal-designs', label: 'Optimal Designs', icon: '✨' },
+    { path: '/nonlinear-regression', label: 'Nonlinear Regression', icon: '📉' },
+    { path: '/quality-control', label: 'Quality Control', icon: '🎯' },
     { path: '/mixture', label: 'Mixture Designs', icon: '💧' },
     { path: '/robust', label: 'Robust Design', icon: '🛡️' },
     { path: '/bayesian-doe', label: 'Bayesian DOE', icon: '🎲' },
@@ -94,6 +102,10 @@ function App() {
                 <Route path="/blocks" element={<BlockDesigns />} />
                 <Route path="/mixed" element={<MixedModels />} />
                 <Route path="/rsm" element={<RSM />} />
+                <Route path="/prediction-profiler" element={<PredictionProfiler />} />
+                <Route path="/optimal-designs" element={<OptimalDesigns />} />
+                <Route path="/nonlinear-regression" element={<NonlinearRegression />} />
+                <Route path="/quality-control" element={<QualityControl />} />
                 <Route path="/mixture" element={<MixtureDesign />} />
                 <Route path="/robust" element={<RobustDesign />} />
                 <Route path="/bayesian-doe" element={<BayesianDOE />} />

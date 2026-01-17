@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
-import { Mountain, Plus, Trash2, Target, TrendingUp, Sparkles, FileDown } from 'lucide-react'
+import { Mountain, Plus, Trash2, Target, TrendingUp, Sparkles, FileDown, Sliders } from 'lucide-react'
 import ResultCard from '../components/ResultCard'
 import ResponseSurface3D from '../components/ResponseSurface3D'
 import ContourPlot from '../components/ContourPlot'
@@ -18,10 +19,13 @@ import Histogram from '../components/Histogram'
 import CorrelationHeatmap from '../components/CorrelationHeatmap'
 import ScatterMatrix from '../components/ScatterMatrix'
 import { parseTableData } from '../utils/clipboardParser'
+import { convertRSMToProfilerModel, inferFactorRanges, saveModelToSession } from '../utils/modelConverter'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
 
 const RSM = () => {
+  const navigate = useNavigate()
+
   // Design configuration
   const [designType, setDesignType] = useState('ccd')  // 'ccd' or 'box-behnken'
   const [ccdType, setCCDType] = useState('face-centered')  // 'face-centered', 'rotatable', 'inscribed'
@@ -90,6 +94,31 @@ const RSM = () => {
   useEffect(() => {
     console.log('surfaceData state changed:', surfaceData ? `${surfaceData.length} points` : 'null')
   }, [surfaceData])
+
+  // Open model in Prediction Profiler
+  const handleOpenInProfiler = () => {
+    try {
+      // Infer factor ranges from table data
+      const factorRanges = inferFactorRanges(tableData, factorNames)
+
+      // Convert RSM model to Profiler format
+      const profilerModel = convertRSMToProfilerModel(
+        modelResult,
+        factorNames,
+        responseName,
+        factorRanges
+      )
+
+      // Save to session storage
+      saveModelToSession(profilerModel, 'profiler_model')
+
+      // Navigate to Prediction Profiler
+      navigate('/prediction-profiler')
+    } catch (err) {
+      console.error('Failed to open in profiler:', err)
+      setError('Failed to export model to Prediction Profiler: ' + err.message)
+    }
+  }
 
   // Generate design
   const handleGenerateDesign = async () => {
@@ -1326,6 +1355,21 @@ const RSM = () => {
                 <p className="text-purple-200 text-sm">RMSE</p>
                 <p className="text-2xl font-bold text-purple-100">{modelResult.rmse}</p>
               </div>
+            </div>
+
+            {/* Open in Profiler Button */}
+            <div className="mt-6">
+              <button
+                onClick={handleOpenInProfiler}
+                className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 rounded-lg font-semibold text-white transition-all duration-200 flex items-center justify-center space-x-2"
+              >
+                <Sliders size={20} />
+                <span>Open in Prediction Profiler</span>
+                <TrendingUp size={16} />
+              </button>
+              <p className="text-gray-400 text-sm mt-2 text-center">
+                Explore predictions interactively with factor sliders and optimization
+              </p>
             </div>
 
             {/* Coefficients Table */}
