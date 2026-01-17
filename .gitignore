@@ -72,12 +72,17 @@ package-electron.json
 frontend/dist/
 frontend/build/
 dist/
+dist-electron/
 out/
 *.app/
 *.dmg
 *.exe
 *.AppImage
 *.snap
+*.deb
+*.rpm
+*.zip
+*.blockmap
 
 # Environment
 .env

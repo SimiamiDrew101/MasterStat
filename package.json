@@ -4,7 +4,10 @@
   "version": "1.0.0",
   "description": "Professional-grade statistical analysis and Design of Experiments platform",
   "main": "electron/main.js",
-  "author": "MasterStat Contributors",
+  "author": {
+    "name": "MasterStat Contributors",
+    "email": "masterstat@example.com"
+  },
   "license": "CC-BY-4.0",
   "repository": {
     "type": "git",
