@@ -1607,3 +1607,92 @@ async def export_anova_pdf(request: ANOVAPDFRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating PDF: {str(e)}")
+
+
+# ============================================================================
+# MODEL VALIDATION (Tier 2 Feature 2)
+# ============================================================================
+
+class ValidationRequest(BaseModel):
+    data: List[Dict[str, Any]] = Field(..., description="Experimental data")
+    factors: List[str] = Field(..., description="Factor variable names")
+    response: str = Field(..., description="Response variable name")
+    k_folds: int = Field(5, description="Number of folds for cross-validation")
+    alpha: float = Field(0.05, description="Significance level for adequacy tests")
+
+@router.post("/validate-model")
+async def validate_anova_model(request: ValidationRequest):
+    """
+    Comprehensive model validation for ANOVA models.
+
+    Includes:
+    - PRESS statistic and R²_prediction
+    - K-fold cross-validation
+    - Model adequacy tests (normality, homoscedasticity, autocorrelation)
+    - Validation metrics (R², AIC, BIC, RMSE, MAE)
+
+    Returns complete validation report with diagnostics and recommendations.
+    """
+    try:
+        from app.utils.model_validation import (
+            calculate_press_statistic,
+            k_fold_cross_validation,
+            calculate_validation_metrics,
+            assess_model_adequacy,
+            full_model_validation
+        )
+
+        df = pd.DataFrame(request.data)
+
+        # Build ANOVA formula
+        # For one-way: response ~ C(factor)
+        # For multi-way: response ~ C(factor1) + C(factor2) + C(factor1):C(factor2)
+        if len(request.factors) == 1:
+            formula = f"{request.response} ~ C({request.factors[0]})"
+        else:
+            # Main effects
+            main_effects = " + ".join([f"C({f})" for f in request.factors])
+
+            # Interactions (all two-way)
+            interactions = []
+            for i in range(len(request.factors)):
+                for j in range(i+1, len(request.factors)):
+                    interactions.append(f"C({request.factors[i]}):C({request.factors[j]})")
+
+            if interactions:
+                formula = f"{request.response} ~ {main_effects} + {' + '.join(interactions)}"
+            else:
+                formula = f"{request.response} ~ {main_effects}"
+
+        # Fit model
+        model = ols(formula, data=df).fit()
+
+        # Get comprehensive validation
+        validation_report = full_model_validation(
+            model=model,
+            data=df,
+            formula=formula,
+            response=request.response,
+            k_folds=request.k_folds,
+            alpha=request.alpha
+        )
+
+        # Add model summary info
+        validation_report["model_info"] = {
+            "formula": formula,
+            "n_observations": len(df),
+            "n_factors": len(request.factors),
+            "factors": request.factors,
+            "response": request.response,
+            "r2": round(float(model.rsquared), 4),
+            "r2_adjusted": round(float(model.rsquared_adj), 4),
+            "f_statistic": round(float(model.fvalue), 4),
+            "f_pvalue": round(float(model.f_pvalue), 6)
+        }
+
+        return validation_report
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")

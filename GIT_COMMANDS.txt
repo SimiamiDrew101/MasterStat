@@ -1,0 +1,49 @@
+# Git Commands to Commit Electron App
+
+## Step 1: Review Changes
+git status
+
+## Step 2: Add All Changes
+git add electron/
+git add package.json package-lock.json
+git add .gitignore README.md QUICKSTART.md
+git add backend/app/main.py
+git add frontend/src/
+
+## Step 3: Verify What Will Be Committed
+git status
+
+## Step 4: Commit
+git commit -m "feat: Add Electron desktop app and fix critical bugs
+
+- Add Electron 28.1.0 desktop application with automatic backend management
+- Fix outlier detection by adding tableData dependency to useEffect
+- Replace hardcoded API URLs with relative paths in 17 components
+- Add CORS support for Electron origins (127.0.0.1:8000)
+- Enable backend static file serving for Electron app
+- Update README with Electron installation and usage instructions
+- Update .gitignore to exclude debug docs, logs, and build artifacts
+
+New Features:
+- One-click desktop app launch with npm run electron
+- Native window with integrated backend lifecycle management
+- Cross-platform support (macOS, Windows, Linux)
+- Offline-capable, no internet required
+
+Bug Fixes:
+- Outlier detection now works when loading example data
+- All modules work in Electron app (API calls fixed)
+- CORS errors resolved for Electron environment"
+
+## Step 5: Push to GitHub
+git push origin main
+
+## Alternative: Add All Tracked Changes
+git add -A
+git commit -m "feat: Add Electron desktop app and fix critical bugs"
+git push origin main
+
+## Verify on GitHub
+# Go to: https://github.com/SimiamiDrew101/MasterStat
+# Check that electron/ folder appears
+# Check README shows Electron instructions
