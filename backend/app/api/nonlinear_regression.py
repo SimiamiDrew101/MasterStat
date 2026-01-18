@@ -475,3 +475,177 @@ async def predict_from_model(request: PredictRequest):
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ============================================================================
+# MODEL VALIDATION (Tier 2 Feature 2)
+# ============================================================================
+
+class NonlinearValidationRequest(BaseModel):
+    x_data: List[float] = Field(..., description="Independent variable data")
+    y_data: List[float] = Field(..., description="Observed response data")
+    y_predicted: List[float] = Field(..., description="Predicted values from fitted model")
+    model_name: str = Field(..., description="Name of nonlinear model")
+    parameters: Dict[str, float] = Field(..., description="Fitted parameter values")
+    k_folds: int = Field(5, description="Number of folds for cross-validation")
+    alpha: float = Field(0.05, description="Significance level for adequacy tests")
+
+@router.post("/validate-model")
+async def validate_nonlinear_model(request: NonlinearValidationRequest):
+    """
+    Validation for nonlinear regression models.
+
+    Note: Uses residual-based validation metrics suitable for nonlinear models.
+
+    Includes:
+    - Residual analysis (normality, patterns)
+    - Prediction metrics (R², RMSE, MAE, MAPE)
+    - Model adequacy assessment
+    - Diagnostic plots data
+
+    Returns validation report with diagnostics and recommendations.
+    """
+    try:
+        from scipy import stats as scipy_stats
+        from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
+
+        y_obs = np.array(request.y_data)
+        y_pred = np.array(request.y_predicted)
+        x_data = np.array(request.x_data)
+
+        # Calculate residuals
+        residuals = y_obs - y_pred
+
+        # Basic metrics
+        n = len(y_obs)
+        k = len(request.parameters)  # Number of parameters
+
+        r2 = float(r2_score(y_obs, y_pred))
+        rmse = float(np.sqrt(mean_squared_error(y_obs, y_pred)))
+        mae = float(mean_absolute_error(y_obs, y_pred))
+
+        # MAPE (Mean Absolute Percentage Error)
+        mape = float(np.mean(np.abs((y_obs - y_pred) / y_obs)) * 100) if np.all(y_obs != 0) else None
+
+        # Adjusted R²
+        r2_adj = 1 - (1 - r2) * (n - 1) / (n - k - 1) if n > k + 1 else None
+
+        # Residual standard error
+        rse = float(np.std(residuals, ddof=k))
+
+        # Normality test (Shapiro-Wilk)
+        shapiro_stat, shapiro_p = scipy_stats.shapiro(residuals)
+        normality_pass = shapiro_p > request.alpha
+
+        # Runs test for randomness of residuals
+        median_resid = np.median(residuals)
+        runs = 1 + np.sum(np.abs(np.diff(residuals > median_resid)))
+        n_above = np.sum(residuals > median_resid)
+        n_below = n - n_above
+        expected_runs = 1 + (2 * n_above * n_below) / n
+        randomness_ok = abs(runs - expected_runs) < 2 * np.sqrt(expected_runs)
+
+        # Outlier detection (standardized residuals)
+        std_residuals = residuals / np.std(residuals)
+        outliers = np.abs(std_residuals) > 3
+        n_outliers = int(np.sum(outliers))
+
+        # Adequacy score (0-100)
+        score = 0
+        if r2 > 0.9:
+            score += 40
+        elif r2 > 0.7:
+            score += 30
+        elif r2 > 0.5:
+            score += 20
+
+        if normality_pass:
+            score += 25
+        elif shapiro_p > 0.01:
+            score += 12
+
+        if randomness_ok:
+            score += 20
+        else:
+            score += 10
+
+        if n_outliers == 0:
+            score += 15
+        elif n_outliers <= 2:
+            score += 7
+
+        # Interpretation
+        if score >= 80:
+            overall = "Excellent model fit - assumptions satisfied"
+        elif score >= 60:
+            overall = "Good model fit - minor violations"
+        elif score >= 40:
+            overall = "Adequate model fit - some assumption violations"
+        else:
+            overall = "Poor model fit - major assumption violations"
+
+        # Recommendations
+        recommendations = []
+        if r2 < 0.7:
+            recommendations.append(f"Low R² ({r2:.3f}). Consider alternative model forms or transformations.")
+        if not normality_pass:
+            recommendations.append("Non-normal residuals detected. Check for outliers or model misspecification.")
+        if not randomness_ok:
+            recommendations.append("Residuals show patterns. Model may be missing important features or terms.")
+        if n_outliers > 0:
+            recommendations.append(f"Found {n_outliers} outliers. Investigate these observations.")
+        if not recommendations:
+            recommendations.append("All diagnostic checks passed. Model assumptions satisfied.")
+
+        return {
+            "model_info": {
+                "model_name": request.model_name,
+                "n_observations": n,
+                "n_parameters": k,
+                "parameters": request.parameters,
+                "model_type": "nonlinear_regression"
+            },
+            "metrics": {
+                "r2": round(r2, 4),
+                "r2_adjusted": round(r2_adj, 4) if r2_adj is not None else None,
+                "rmse": round(rmse, 4),
+                "mae": round(mae, 4),
+                "mape": round(mape, 2) if mape is not None else None,
+                "residual_std_error": round(rse, 4)
+            },
+            "adequacy": {
+                "adequacy_score": score,
+                "overall_assessment": overall,
+                "tests": {
+                    "normality": {
+                        "test": "Shapiro-Wilk",
+                        "statistic": round(float(shapiro_stat), 4),
+                        "p_value": round(float(shapiro_p), 4),
+                        "pass": normality_pass,
+                        "interpretation": "Normal" if normality_pass else "Non-normal"
+                    },
+                    "randomness": {
+                        "test": "Runs Test",
+                        "runs": int(runs),
+                        "expected_runs": round(float(expected_runs), 2),
+                        "pass": randomness_ok,
+                        "interpretation": "Random" if randomness_ok else "Patterns detected"
+                    }
+                },
+                "diagnostics": {
+                    "n_outliers": n_outliers,
+                    "outlier_threshold": 3.0
+                },
+                "recommendations": recommendations
+            },
+            "residuals": {
+                "values": residuals.tolist(),
+                "standardized": std_residuals.tolist(),
+                "x_values": x_data.tolist()
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")

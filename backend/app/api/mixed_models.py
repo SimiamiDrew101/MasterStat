@@ -2455,3 +2455,75 @@ def generate_growth_curve_interpretation(fixed_effects, random_effects, icc, pol
                 )
 
     return " ".join(interpretation)
+
+
+# ============================================================================
+# MODEL VALIDATION (Tier 2 Feature 2)
+# ============================================================================
+
+class ValidationRequest(BaseModel):
+    data: List[Dict[str, Any]] = Field(..., description="Experimental data")
+    fixed_effects: List[str] = Field(..., description="Fixed effect variable names")
+    response: str = Field(..., description="Response variable name")
+    k_folds: int = Field(5, description="Number of folds for cross-validation")
+    alpha: float = Field(0.05, description="Significance level for adequacy tests")
+
+@router.post("/validate-model")
+async def validate_mixed_model(request: ValidationRequest):
+    """
+    Comprehensive model validation for mixed models (marginal fixed effects).
+
+    Note: Validation uses the marginal model (fixed effects only) for compatibility
+    with standard validation metrics.
+
+    Includes:
+    - PRESS statistic and R²_prediction
+    - K-fold cross-validation
+    - Model adequacy tests (normality, homoscedasticity, autocorrelation)
+    - Validation metrics (R², AIC, BIC, RMSE, MAE)
+
+    Returns complete validation report with diagnostics and recommendations.
+    """
+    try:
+        from app.utils.model_validation import full_model_validation
+
+        df = pd.DataFrame(request.data)
+
+        # Build formula for fixed effects only (for validation)
+        linear_terms = " + ".join(request.fixed_effects)
+        formula = f"{request.response} ~ {linear_terms}"
+
+        # Fit OLS model (marginal model for validation)
+        model = ols(formula, data=df).fit()
+
+        # Get comprehensive validation
+        validation_report = full_model_validation(
+            model=model,
+            data=df,
+            formula=formula,
+            response=request.response,
+            k_folds=request.k_folds,
+            alpha=request.alpha
+        )
+
+        # Add model summary info
+        validation_report["model_info"] = {
+            "formula": formula,
+            "model_type": "marginal_fixed_effects",
+            "note": "Validation performed on marginal (fixed effects only) model",
+            "n_observations": len(df),
+            "n_fixed_effects": len(request.fixed_effects),
+            "fixed_effects": request.fixed_effects,
+            "response": request.response,
+            "r2": round(float(model.rsquared), 4),
+            "r2_adjusted": round(float(model.rsquared_adj), 4),
+            "f_statistic": round(float(model.fvalue), 4),
+            "f_pvalue": round(float(model.f_pvalue), 6)
+        }
+
+        return validation_report
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
