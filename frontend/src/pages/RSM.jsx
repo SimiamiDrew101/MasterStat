@@ -2457,17 +2457,17 @@ const RSM = () => {
       )}
 
       {/* Multi-Response Model Results (Phase 2 Feature 3) */}
-      {activeTab === 'model' && multiModelResults && (
+      {activeTab === 'model' && multiModelResults && multiModelResults.models && (
         <div className="space-y-6">
           {/* Multi-Response Models Summary */}
           <div className="bg-gradient-to-r from-indigo-900/30 to-purple-900/30 backdrop-blur-lg rounded-2xl p-6 border border-indigo-700/50">
             <h3 className="text-2xl font-bold text-gray-100 mb-4">Multi-Response Surface Models</h3>
             <p className="text-gray-300 mb-6">
-              Fitted {Object.keys(multiModelResults.models).length} independent second-order polynomial models for multiple responses.
+              Fitted {Object.keys(multiModelResults.models || {}).length} independent second-order polynomial models for multiple responses.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Object.entries(multiModelResults.models).map(([respName, model]) => (
+              {Object.entries(multiModelResults.models || {}).map(([respName, model]) => (
                 <div key={respName} className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
                   <h4 className="text-lg font-semibold text-gray-100 mb-3">{respName}</h4>
                   <div className="space-y-2">
@@ -2490,7 +2490,7 @@ const RSM = () => {
           </div>
 
           {/* Individual Model Details */}
-          {Object.entries(multiModelResults.models).map(([respName, model]) => (
+          {Object.entries(multiModelResults.models || {}).map(([respName, model]) => (
             <div key={respName} className="bg-slate-800/50 backdrop-blur-lg rounded-2xl p-6 border border-slate-700/50">
               <h3 className="text-2xl font-bold text-gray-100 mb-4">Model for {respName}</h3>
 
@@ -2650,7 +2650,7 @@ const RSM = () => {
           <div className="bg-gradient-to-r from-indigo-900/30 to-purple-900/30 backdrop-blur-lg rounded-2xl p-6 border border-indigo-700/50">
             <h3 className="text-2xl font-bold text-gray-100 mb-4">Multi-Response Surface Models</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-              {Object.entries(multiModelResults.models).map(([respName, model]) => (
+              {Object.entries(multiModelResults.models || {}).map(([respName, model]) => (
                 <div key={respName} className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
                   <h4 className="text-lg font-semibold text-gray-100 mb-2">{respName}</h4>
                   <div className="space-y-1 text-sm">
