@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "axios": "^1.6.5",
+    "dexie": "^4.2.1",
     "jspdf": "^3.0.4",
     "jspdf-autotable": "^5.0.2",
     "lucide-react": "^0.309.0",

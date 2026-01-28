@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
-import { Mountain, Plus, Trash2, Target, TrendingUp, Sparkles, FileDown, Sliders } from 'lucide-react'
+import { Mountain, Plus, Trash2, Target, TrendingUp, Sparkles, FileDown, Sliders, Save, FolderOpen } from 'lucide-react'
+import { useSession } from '../contexts/SessionContext'
 import ResultCard from '../components/ResultCard'
 import ResponseSurface3D from '../components/ResponseSurface3D'
 import ContourPlot from '../components/ContourPlot'
@@ -26,6 +27,12 @@ const API_URL = import.meta.env.VITE_API_URL || ''
 
 const RSM = () => {
   const navigate = useNavigate()
+  const { saveCurrentSession, currentSession, isSessionLoaded } = useSession()
+
+  // Session save state
+  const [saveSessionName, setSaveSessionName] = useState('')
+  const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
 
   // Design configuration
   const [designType, setDesignType] = useState('ccd')  // 'ccd' or 'box-behnken'
@@ -852,6 +859,48 @@ const RSM = () => {
     setError(null)
   }
 
+  // Handle save session
+  const handleSaveSession = async () => {
+    if (!saveSessionName.trim()) {
+      setError('Please enter a session name')
+      return
+    }
+
+    try {
+      await saveCurrentSession(saveSessionName.trim(), {
+        analysis_type: 'RSM',
+        data: {
+          designType,
+          ccdType,
+          numFactors,
+          numCenterPoints,
+          factorNames,
+          responseName,
+          responseNames,
+          tableData,
+          alpha
+        },
+        results: {
+          modelResult,
+          canonicalResult,
+          optimizationResult,
+          steepestAscentResult,
+          ridgeAnalysisResult,
+          desirabilityResult,
+          multiResponseModels,
+          desirabilitySpecs
+        }
+      })
+
+      setSaveSuccess(true)
+      setShowSaveDialog(false)
+      setSaveSessionName('')
+      setTimeout(() => setSaveSuccess(false), 3000)
+    } catch (err) {
+      setError(`Failed to save session: ${err.message}`)
+    }
+  }
+
   // Handle preprocessing data update
   const handlePreprocessUpdate = (columnIndex, processedValues, info) => {
     const newTableData = [...tableData]
@@ -978,14 +1027,67 @@ const RSM = () => {
     <div className="space-y-6">
       {/* Header */}
       <div className="bg-gradient-to-r from-orange-900/30 to-red-900/30 backdrop-blur-lg rounded-2xl p-8 border border-orange-700/50">
-        <div className="flex items-center space-x-3 mb-4">
-          <Mountain className="w-10 h-10 text-orange-400" />
-          <h2 className="text-4xl font-bold text-gray-100">Response Surface Methodology</h2>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-3">
+            <Mountain className="w-10 h-10 text-orange-400" />
+            <h2 className="text-4xl font-bold text-gray-100">Response Surface Methodology</h2>
+          </div>
+          <div className="flex items-center gap-3">
+            {saveSuccess && (
+              <span className="text-green-400 text-sm">Session saved!</span>
+            )}
+            <button
+              onClick={() => setShowSaveDialog(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
+              title="Save current session"
+            >
+              <Save className="w-4 h-4" />
+              Save Session
+            </button>
+          </div>
         </div>
         <p className="text-gray-300 text-lg">
           Design experiments, fit second-order models, and optimize responses using Central Composite and Box-Behnken designs.
         </p>
       </div>
+
+      {/* Save Session Dialog */}
+      {showSaveDialog && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 rounded-2xl border border-slate-700 shadow-2xl w-full max-w-md p-6">
+            <h3 className="text-xl font-bold text-gray-100 mb-4">Save Session</h3>
+            <input
+              type="text"
+              value={saveSessionName}
+              onChange={(e) => setSaveSessionName(e.target.value)}
+              placeholder="Enter session name..."
+              className="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-lg text-gray-100 placeholder-gray-500 focus:outline-none focus:border-indigo-500 mb-4"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSaveSession()
+                if (e.key === 'Escape') setShowSaveDialog(false)
+              }}
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={handleSaveSession}
+                className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => {
+                  setShowSaveDialog(false)
+                  setSaveSessionName('')
+                }}
+                className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-gray-200 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Tab Navigation */}
       <div className="flex space-x-2 bg-slate-800/50 p-2 rounded-lg">
