@@ -2396,35 +2396,47 @@ const RSM = () => {
                 </div>
               </div>
 
-              <h4 className="text-gray-100 font-semibold mb-3">Optimal Factor Settings:</h4>
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                {Object.entries(desirabilityResult.optimal_point).map(([factor, value]) => (
-                  <div key={factor} className="bg-slate-700/50 rounded-lg p-4">
-                    <p className="text-gray-400 text-sm">{factor}</p>
-                    <p className="text-2xl font-bold text-gray-100">{typeof value === 'number' ? value.toFixed(4) : value}</p>
+              {desirabilityResult.optimal_point && (
+                <>
+                  <h4 className="text-gray-100 font-semibold mb-3">Optimal Factor Settings:</h4>
+                  <div className="grid grid-cols-3 gap-4 mb-6">
+                    {Object.entries(desirabilityResult.optimal_point).map(([factor, value]) => (
+                      <div key={factor} className="bg-slate-700/50 rounded-lg p-4">
+                        <p className="text-gray-400 text-sm">{factor}</p>
+                        <p className="text-2xl font-bold text-gray-100">{typeof value === 'number' ? value.toFixed(4) : value}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              )}
 
-              <h4 className="text-gray-100 font-semibold mb-3">Predicted Responses:</h4>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-                {Object.entries(desirabilityResult.predicted_responses).map(([response, value]) => (
-                  <div key={response} className="bg-slate-700/50 rounded-lg p-3">
-                    <p className="text-gray-400 text-xs">{response}</p>
-                    <p className="text-xl font-bold text-pink-200">{typeof value === 'number' ? value.toFixed(4) : value}</p>
+              {desirabilityResult.predicted_responses && (
+                <>
+                  <h4 className="text-gray-100 font-semibold mb-3">Predicted Responses:</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                    {Object.entries(desirabilityResult.predicted_responses).map(([response, value]) => (
+                      <div key={response} className="bg-slate-700/50 rounded-lg p-3">
+                        <p className="text-gray-400 text-xs">{response}</p>
+                        <p className="text-xl font-bold text-pink-200">{typeof value === 'number' ? value.toFixed(4) : value}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              )}
 
-              <h4 className="text-gray-100 font-semibold mb-3">Individual Desirabilities:</h4>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {Object.entries(desirabilityResult.individual_desirabilities).map(([response, value]) => (
-                  <div key={response} className="bg-slate-700/50 rounded-lg p-3">
-                    <p className="text-gray-400 text-xs">{response}</p>
-                    <p className="text-xl font-bold text-purple-200">{typeof value === 'number' ? value.toFixed(4) : value}</p>
+              {desirabilityResult.individual_desirabilities && (
+                <>
+                  <h4 className="text-gray-100 font-semibold mb-3">Individual Desirabilities:</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {Object.entries(desirabilityResult.individual_desirabilities).map(([response, value]) => (
+                      <div key={response} className="bg-slate-700/50 rounded-lg p-3">
+                        <p className="text-gray-400 text-xs">{response}</p>
+                        <p className="text-xl font-bold text-purple-200">{typeof value === 'number' ? value.toFixed(4) : value}</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              )}
 
               {desirabilityResult.compositing_method && (
                 <div className="mb-4 bg-slate-700/50 rounded-lg p-3 inline-block">
