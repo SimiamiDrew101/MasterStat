@@ -13,6 +13,7 @@ import AdvancedDiagnostics from '../components/AdvancedDiagnostics'
 import CrossValidationResults from '../components/CrossValidationResults'
 import MultiResponseManager from '../components/MultiResponseManager'
 import MultiResponseContourOverlay from '../components/MultiResponseContourOverlay'
+import OverlayContourPlot from '../components/OverlayContourPlot'
 import FileUploadZone from '../components/FileUploadZone'
 import QuickPreprocessPanel from '../components/QuickPreprocessPanel'
 import Histogram from '../components/Histogram'
@@ -70,6 +71,9 @@ const RSM = () => {
   const [multiResponseModels, setMultiResponseModels] = useState([]) // Array of {name, coefficients}
   const [desirabilitySpecs, setDesirabilitySpecs] = useState([])
   const [desirabilityResult, setDesirabilityResult] = useState(null)
+  const [desirabilityMethod, setDesirabilityMethod] = useState('weighted_geometric_mean')
+  const [overlayContourData, setOverlayContourData] = useState(null)
+  const [showOverlayContour, setShowOverlayContour] = useState(false)
 
   // UI state
   const [loading, setLoading] = useState(false)
@@ -776,12 +780,55 @@ const RSM = () => {
 
       const response = await axios.post(`${API_URL}/api/rsm/desirability-optimization`, {
         responses: desirabilitySpecs,
-        factors: factorNames
+        factors: factorNames,
+        method: desirabilityMethod
       })
 
       setDesirabilityResult(response.data)
     } catch (err) {
       setError(err.response?.data?.detail || err.message || 'Desirability optimization failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Feature 3: Multi-Response Overlay Contour
+  const handleOverlayContour = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      if (desirabilitySpecs.length < 2) {
+        throw new Error('Need at least 2 responses for overlay contour')
+      }
+
+      if (factorNames.length < 2) {
+        throw new Error('Need at least 2 factors for contour plot')
+      }
+
+      // Prepare response data with constraints
+      const responses = desirabilitySpecs.map(spec => ({
+        name: spec.response_name,
+        coefficients: spec.coefficients,
+        goal: spec.goal,
+        target: spec.target,
+        lower_limit: spec.lower_bound,
+        upper_limit: spec.upper_bound
+      }))
+
+      const response = await axios.post(`${API_URL}/api/rsm/multi-response-contour`, {
+        responses: responses,
+        factors: [factorNames[0], factorNames[1]],
+        x_range: [-2, 2],
+        y_range: [-2, 2],
+        grid_resolution: 30,
+        show_feasible_region: true
+      })
+
+      setOverlayContourData(response.data)
+      setShowOverlayContour(true)
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'Overlay contour generation failed')
     } finally {
       setLoading(false)
     }
@@ -2290,13 +2337,42 @@ const RSM = () => {
                   ))}
                 </div>
 
-                <button
-                  onClick={handleDesirabilityOptimization}
-                  disabled={loading || desirabilitySpecs.length === 0}
-                  className="w-full mt-4 bg-gradient-to-r from-pink-600 to-rose-600 text-white font-bold py-3 px-6 rounded-lg hover:from-pink-700 hover:to-rose-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loading ? 'Optimizing...' : 'Optimize Composite Desirability'}
-                </button>
+                {/* Desirability Method Selector */}
+                <div className="mt-4 bg-slate-700/30 rounded-lg p-4">
+                  <label className="block text-gray-100 font-semibold mb-2">Compositing Method</label>
+                  <select
+                    value={desirabilityMethod}
+                    onChange={(e) => setDesirabilityMethod(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-800 text-gray-100 rounded-lg border border-slate-600 focus:border-pink-500 focus:outline-none"
+                  >
+                    <option value="weighted_geometric_mean">Weighted Geometric Mean (Recommended)</option>
+                    <option value="minimum">Minimum (Conservative)</option>
+                    <option value="weighted_sum">Weighted Sum (Linear)</option>
+                  </select>
+                  <p className="text-gray-400 text-xs mt-2">
+                    {desirabilityMethod === 'weighted_geometric_mean' && 'Balanced trade-offs between responses. Returns 0 if any response is completely undesirable.'}
+                    {desirabilityMethod === 'minimum' && 'Most conservative - all constraints must be fully satisfied. Sweet spot must meet all criteria.'}
+                    {desirabilityMethod === 'weighted_sum' && 'Linear combination allows high values in one response to compensate for low values in another.'}
+                  </p>
+                </div>
+
+                <div className="flex gap-3 mt-4">
+                  <button
+                    onClick={handleDesirabilityOptimization}
+                    disabled={loading || desirabilitySpecs.length === 0}
+                    className="flex-1 bg-gradient-to-r from-pink-600 to-rose-600 text-white font-bold py-3 px-6 rounded-lg hover:from-pink-700 hover:to-rose-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? 'Optimizing...' : 'Optimize Composite Desirability'}
+                  </button>
+                  <button
+                    onClick={handleOverlayContour}
+                    disabled={loading || desirabilitySpecs.length < 2 || factorNames.length < 2}
+                    className="px-6 py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={desirabilitySpecs.length < 2 ? 'Need at least 2 responses' : 'View overlay contour plot'}
+                  >
+                    View Overlay Contours
+                  </button>
+                </div>
               </div>
             )}
 
@@ -2350,10 +2426,17 @@ const RSM = () => {
                 ))}
               </div>
 
+              {desirabilityResult.compositing_method && (
+                <div className="mb-4 bg-slate-700/50 rounded-lg p-3 inline-block">
+                  <p className="text-gray-400 text-xs">Compositing Method</p>
+                  <p className="text-lg font-semibold text-indigo-300">{desirabilityResult.compositing_method}</p>
+                </div>
+              )}
+
               <div className="mt-6 bg-slate-700/30 rounded-lg p-4">
                 <p className="text-gray-300 text-sm">
-                  <strong>Interpretation:</strong> The composite desirability is the weighted geometric mean of individual desirabilities.
-                  Values closer to 1 indicate the optimal point achieves desirable levels across all responses.
+                  <strong>Interpretation:</strong> {desirabilityResult.interpretation ||
+                    'The composite desirability represents the best compromise among all responses. Values closer to 1 indicate the optimal point achieves desirable levels across all responses.'}
                 </p>
               </div>
             </div>
@@ -2648,6 +2731,15 @@ const RSM = () => {
             />
           )}
         </div>
+      )}
+
+      {/* Overlay Contour Plot Modal */}
+      {showOverlayContour && overlayContourData && (
+        <OverlayContourPlot
+          contourData={overlayContourData}
+          onClose={() => setShowOverlayContour(false)}
+          sweetSpot={overlayContourData.sweet_spot}
+        />
       )}
     </div>
   )

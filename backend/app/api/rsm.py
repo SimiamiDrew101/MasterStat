@@ -1080,6 +1080,7 @@ class DesirabilityRequest(BaseModel):
     responses: List[DesirabilitySpec] = Field(..., description="List of response specifications")
     factors: List[str] = Field(..., description="Factor names")
     constraints: Optional[Dict[str, List[float]]] = Field(None, description="Factor constraints {factor: [min, max]}")
+    method: str = Field("weighted_geometric_mean", description="Compositing method: 'weighted_geometric_mean', 'minimum', 'weighted_sum'")
 
 
 class DesignAugmentationRequest(BaseModel):
@@ -1344,7 +1345,7 @@ async def desirability_optimization(request: DesirabilityRequest):
 
             return 0.0
 
-        # Composite desirability function (geometric mean with weights)
+        # Composite desirability function (multiple methods)
         def composite_desirability(x):
             desirabilities = []
             weights = []
@@ -1354,16 +1355,37 @@ async def desirability_optimization(request: DesirabilityRequest):
                 desirabilities.append(d)
                 weights.append(spec.weight)
 
-            # Weighted geometric mean
-            if any(d == 0 for d in desirabilities):
-                return 0.0
+            if request.method == "weighted_geometric_mean":
+                # Weighted geometric mean (default, most common)
+                if any(d == 0 for d in desirabilities):
+                    return 0.0
 
-            total_weight = sum(weights)
-            D = 1.0
-            for d, w in zip(desirabilities, weights):
-                D *= d ** (w / total_weight)
+                total_weight = sum(weights)
+                D = 1.0
+                for d, w in zip(desirabilities, weights):
+                    D *= d ** (w / total_weight)
+                return D
 
-            return D
+            elif request.method == "minimum":
+                # Minimum desirability (conservative, all criteria must be met)
+                return min(desirabilities)
+
+            elif request.method == "weighted_sum":
+                # Weighted arithmetic mean (linear, less conservative than geometric)
+                total_weight = sum(weights)
+                if total_weight == 0:
+                    return 0.0
+                return sum(d * w for d, w in zip(desirabilities, weights)) / total_weight
+
+            else:
+                # Default to weighted geometric mean
+                if any(d == 0 for d in desirabilities):
+                    return 0.0
+                total_weight = sum(weights)
+                D = 1.0
+                for d, w in zip(desirabilities, weights):
+                    D *= d ** (w / total_weight)
+                return D
 
         # Optimize (maximize composite desirability)
         objective = lambda x: -composite_desirability(x)
@@ -1394,21 +1416,172 @@ async def desirability_optimization(request: DesirabilityRequest):
 
         composite_d = composite_desirability(optimal_x)
 
+        # Method descriptions
+        method_names = {
+            "weighted_geometric_mean": "Weighted Geometric Mean (balanced trade-offs)",
+            "minimum": "Minimum Desirability (all criteria must be met)",
+            "weighted_sum": "Weighted Sum (linear combination)"
+        }
+
         return {
             "optimal_point": optimal_point,
             "composite_desirability": round(float(composite_d), 4),
             "individual_results": individual_results,
             "success": result.success,
+            "compositing_method": method_names.get(request.method, request.method),
             "method": "Desirability Function Optimization",
             "interpretation": (
                 f"Composite desirability = {round(float(composite_d), 4)} "
                 f"(0 = unacceptable, 1 = ideal). "
-                "This represents the best compromise among all {len(request.responses)} responses."
+                f"This represents the best compromise among all {len(request.responses)} responses "
+                f"using {method_names.get(request.method, request.method)}."
             )
         }
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# ============================================================================
+# MULTI-RESPONSE CONTOUR OVERLAY (Tier 2 Feature 3)
+# ============================================================================
+
+class MultiResponseContourRequest(BaseModel):
+    responses: List[Dict[str, Any]] = Field(..., description="List of response models with coefficients")
+    factors: List[str] = Field(..., description="Exactly 2 factors for contour plot")
+    x_range: Optional[List[float]] = Field(None, description="[min, max] for first factor")
+    y_range: Optional[List[float]] = Field(None, description="[min, max] for second factor")
+    grid_resolution: int = Field(30, description="Grid points per axis")
+    show_feasible_region: bool = Field(True, description="Highlight feasible region where all constraints are met")
+
+@router.post("/multi-response-contour")
+async def multi_response_contour(request: MultiResponseContourRequest):
+    """
+    Generate overlaid contour plots for multiple responses.
+
+    Shows contours for each response on the same plot, allowing visualization
+    of trade-offs and identification of the sweet spot (feasible region where
+    all response criteria are satisfied).
+
+    Returns:
+    - Grid data for each response
+    - Feasible region coordinates
+    - Sweet spot identification
+    - Pareto frontier approximation
+    """
+    try:
+        if len(request.factors) != 2:
+            raise HTTPException(
+                status_code=400,
+                detail="Multi-response contour requires exactly 2 factors"
+            )
+
+        # Set up grid
+        x_range = request.x_range or [-2, 2]
+        y_range = request.y_range or [-2, 2]
+        x = np.linspace(x_range[0], x_range[1], request.grid_resolution)
+        y = np.linspace(y_range[0], y_range[1], request.grid_resolution)
+        X, Y = np.meshgrid(x, y)
+
+        # Prediction function
+        def predict_at_point(x_val, y_val, coefficients):
+            pred = coefficients.get('Intercept', 0.0)
+            pred += coefficients.get(request.factors[0], 0.0) * x_val
+            pred += coefficients.get(request.factors[1], 0.0) * y_val
+            pred += coefficients.get(f"I({request.factors[0]}**2)", 0.0) * x_val**2
+            pred += coefficients.get(f"I({request.factors[1]}**2)", 0.0) * y_val**2
+            pred += coefficients.get(f"{request.factors[0]}:{request.factors[1]}", 0.0) * x_val * y_val
+            return pred
+
+        # Calculate predictions for each response
+        contour_data = []
+        for resp in request.responses:
+            Z = np.zeros_like(X)
+            for i in range(request.grid_resolution):
+                for j in range(request.grid_resolution):
+                    Z[i, j] = predict_at_point(X[i, j], Y[i, j], resp['coefficients'])
+
+            contour_data.append({
+                "response_name": resp['name'],
+                "Z": Z.tolist(),
+                "min_value": float(Z.min()),
+                "max_value": float(Z.max()),
+                "goal": resp.get('goal', 'maximize'),
+                "target": resp.get('target'),
+                "lower_limit": resp.get('lower_limit'),
+                "upper_limit": resp.get('upper_limit')
+            })
+
+        # Calculate feasible region if constraints provided
+        feasible_region = None
+        sweet_spot = None
+
+        if request.show_feasible_region:
+            feasible_mask = np.ones_like(X, dtype=bool)
+
+            for resp_data, resp in zip(contour_data, request.responses):
+                Z_array = np.array(resp_data['Z'])
+                goal = resp.get('goal', 'maximize')
+
+                if goal == 'maximize' and resp.get('lower_limit') is not None:
+                    feasible_mask &= (Z_array >= resp['lower_limit'])
+                elif goal == 'minimize' and resp.get('upper_limit') is not None:
+                    feasible_mask &= (Z_array <= resp['upper_limit'])
+                elif goal == 'target':
+                    if resp.get('lower_limit') is not None and resp.get('upper_limit') is not None:
+                        feasible_mask &= ((Z_array >= resp['lower_limit']) &
+                                         (Z_array <= resp['upper_limit']))
+
+            # Extract feasible region points
+            feasible_points = []
+            for i in range(request.grid_resolution):
+                for j in range(request.grid_resolution):
+                    if feasible_mask[i, j]:
+                        feasible_points.append({
+                            "x": float(X[i, j]),
+                            "y": float(Y[i, j])
+                        })
+
+            if feasible_points:
+                feasible_region = feasible_points
+
+                # Find sweet spot (center of feasible region)
+                x_coords = [p['x'] for p in feasible_points]
+                y_coords = [p['y'] for p in feasible_points]
+                sweet_spot = {
+                    "x": float(np.mean(x_coords)),
+                    "y": float(np.mean(y_coords)),
+                    request.factors[0]: float(np.mean(x_coords)),
+                    request.factors[1]: float(np.mean(y_coords))
+                }
+
+        return {
+            "grid": {
+                "x": x.tolist(),
+                "y": y.tolist(),
+                "X": X.tolist(),
+                "Y": Y.tolist()
+            },
+            "factors": request.factors,
+            "contours": contour_data,
+            "feasible_region": feasible_region,
+            "sweet_spot": sweet_spot,
+            "n_responses": len(request.responses),
+            "interpretation": {
+                "feasible_points": len(feasible_region) if feasible_region else 0,
+                "has_sweet_spot": sweet_spot is not None,
+                "recommendation": (
+                    f"Sweet spot identified at {request.factors[0]}={sweet_spot[request.factors[0]]:.2f}, "
+                    f"{request.factors[1]}={sweet_spot[request.factors[1]]:.2f}" if sweet_spot
+                    else "No feasible region found - constraints may be too strict or conflicting"
+                )
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Multi-response contour failed: {str(e)}")
 
 
 @router.post("/design-augmentation")
