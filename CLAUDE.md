@@ -1,15 +1,70 @@
-# MasterStat - Project Context
+# MasterStat - Project Context for Claude Code
 
-## Overview
+**Last Updated:** 2026-01-28
+**Status:** Tier 2 Complete - All 4 Features Implemented
 
-**MasterStat** is a professional statistical analysis desktop application designed as a JMP alternative. It provides comprehensive Design of Experiments (DOE), statistical analysis, and optimization capabilities through an intuitive interface.
+---
+
+## Quick Start for New Sessions
+
+```bash
+# 1. Start backend
+cd /Users/nj/Desktop/MasterStat/backend
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# 2. Start frontend (new terminal)
+cd /Users/nj/Desktop/MasterStat/frontend
+npm run dev
+
+# 3. Access app
+# Frontend: http://localhost:5173
+# Backend API: http://localhost:8000/docs
+```
+
+---
+
+## Project Overview
+
+**MasterStat** is a professional statistical analysis desktop application (JMP alternative) providing:
+- Design of Experiments (DOE): CCD, Box-Behnken, DSD, Plackett-Burman, Factorial
+- Statistical Analysis: ANOVA, RSM, Mixed Models, Nonlinear Regression
+- Multi-Response Optimization with desirability functions
+- Session persistence with IndexedDB
+- Cross-platform desktop builds (macOS, Windows, Linux)
 
 **Tech Stack:**
-- **Backend:** Python 3.11+ / FastAPI 0.109.0 / Uvicorn
-- **Frontend:** React 18.2 / Vite 5.0 / TailwindCSS 3.4
-- **Desktop:** Electron 28.1.0 (cross-platform)
-- **Visualization:** Plotly.js 3.3, Recharts 2.10
-- **Statistics:** SciPy, statsmodels, NumPy, pandas, scikit-learn, pyDOE2
+| Layer | Technologies |
+|-------|-------------|
+| Backend | Python 3.11+ / FastAPI 0.109 / Uvicorn |
+| Frontend | React 18.2 / Vite 5.0 / TailwindCSS 3.4 |
+| Desktop | Electron 28.1 (cross-platform) |
+| Visualization | Plotly.js 3.3 / Recharts 2.10 |
+| Statistics | SciPy / statsmodels / NumPy / pandas / pyDOE2 |
+| Persistence | IndexedDB via Dexie.js 4.2 |
+
+---
+
+## Current Implementation Status
+
+### Tier 1: COMPLETE
+All core statistical analysis features working.
+
+### Tier 2: 100% COMPLETE (as of 2026-01-28)
+
+| Feature | Status | Key Files |
+|---------|--------|-----------|
+| **Feature 1: Experiment Wizard** | COMPLETE | `rsm.py` (DSD, PB, confounding), `DesignPreviewVisualization.jsx`, `PowerCurvePlot.jsx`, `ConfoundingDiagram.jsx` |
+| **Feature 2: Model Validation** | COMPLETE | `model_validation.py`, `ModelValidation.jsx`, validation endpoints in all analysis modules |
+| **Feature 3: Multi-Response Optimization** | COMPLETE | `rsm.py` (desirability methods, overlay contours), `OverlayContourPlot.jsx`, RSM.jsx enhancements |
+| **Feature 4: Session Management** | COMPLETE | `sessionManager.js`, `SessionContext.jsx`, `SessionHistory.jsx`, App.jsx integration |
+
+### Electron Builds: COMPLETE (2026-01-28)
+
+| Platform | Packages | Location |
+|----------|----------|----------|
+| macOS | DMG + ZIP (arm64 & x64) | `dist-electron/MasterStat-1.0.0*.dmg` |
+| Windows | NSIS installer + Portable | `dist-electron/MasterStat*.exe` |
+| Linux | AppImage + deb (arm64) | `dist-electron/MasterStat*.AppImage`, `*.deb` |
 
 ---
 
@@ -17,213 +72,95 @@
 
 ```
 MasterStat/
-├── backend/                    # Python/FastAPI statistical engine
+├── backend/                      # Python/FastAPI statistical engine
 │   ├── app/
-│   │   ├── api/               # API route modules (14 modules)
-│   │   ├── models/            # Data models
-│   │   ├── utils/             # Utilities (validation, reports)
-│   │   └── main.py            # FastAPI app entry
+│   │   ├── api/                 # 14 API modules (rsm.py, anova.py, etc.)
+│   │   ├── utils/               # model_validation.py, report_generator.py
+│   │   └── main.py              # FastAPI entry point
 │   └── requirements.txt
-├── frontend/                   # React/Vite web interface
+├── frontend/                     # React/Vite web interface
 │   ├── src/
-│   │   ├── pages/             # 14+ page components
-│   │   ├── components/        # 87+ reusable components
-│   │   └── utils/             # 15+ utility functions
-│   ├── package.json
-│   └── vite.config.js
-├── electron/                   # Electron desktop wrapper
-│   ├── main.js                # Main process
-│   └── preload.js             # Security layer
-├── build/                      # Build resources (icons)
-├── dist/                       # Production builds
-├── TIER2_STATUS.md            # Detailed implementation status
-└── package.json               # Root npm config
+│   │   ├── pages/               # 18 page components
+│   │   ├── components/          # 90+ reusable components
+│   │   ├── contexts/            # SessionContext.jsx
+│   │   └── utils/               # sessionManager.js, smartValidation.js, etc.
+│   └── package.json
+├── electron/                     # Electron desktop wrapper
+│   ├── main.js                  # Main process (starts backend, creates window)
+│   └── preload.js               # Security layer
+├── build/                        # Build resources (icons, entitlements)
+├── dist-electron/                # Built installers for all platforms
+├── CLAUDE.md                     # This file
+├── TIER2_STATUS.md              # Detailed implementation notes
+└── package.json                  # Root Electron/build config
 ```
 
 ---
 
-## Backend API Reference
+## Key Files Reference
 
-### API Modules (`/backend/app/api/`)
+### Backend - Most Important Files
 
-| Module | Lines | Purpose |
-|--------|-------|---------|
-| `rsm.py` | 4,605 | Response Surface Methodology, CCD, Box-Behnken, desirability optimization |
-| `mixed_models.py` | 2,529 | Split-plot, nested designs, random effects ANOVA |
-| `factorial.py` | 2,219 | Full/fractional factorial, Plackett-Burman, DSD |
-| `power_analysis.py` | 1,721 | Sample size calculation, power curves |
-| `anova.py` | 1,698 | One-way/two-way ANOVA, post-hoc tests (Tukey, Dunnett) |
-| `block_designs.py` | 1,584 | RCBD, Latin squares, incomplete blocks |
-| `quality_control.py` | 639 | Control charts (X-bar, R, S, P, C), process capability |
-| `hypothesis_testing.py` | 692 | t-tests, F-tests, Z-tests, chi-square, non-parametric |
-| `nonlinear_regression.py` | 651 | Curve fitting, growth models, convergence analysis |
-| `imputation.py` | 562 | Missing data: mean, median, interpolation, MICE |
-| `bayesian_doe.py` | 542 | MCMC, convergence diagnostics, posterior optimization |
-| `preprocessing.py` | 497 | Data cleaning, transformation, outlier detection |
-| `protocol.py` | 444 | Randomization, blinding, PDF protocol export |
-| `import_data.py` | 306 | CSV/Excel file parsing |
+| File | Lines | Purpose |
+|------|-------|---------|
+| `backend/app/api/rsm.py` | 4,600+ | RSM, CCD, Box-Behnken, DSD, desirability optimization, overlay contours |
+| `backend/app/api/anova.py` | 1,700+ | ANOVA analysis with validation |
+| `backend/app/api/factorial.py` | 2,200+ | Factorial designs with validation |
+| `backend/app/api/mixed_models.py` | 2,500+ | Split-plot, nested, random effects |
+| `backend/app/utils/model_validation.py` | 456 | PRESS, k-fold CV, adequacy scoring |
 
-### Utility Modules (`/backend/app/utils/`)
+### Frontend - Most Important Files
 
-| Module | Purpose |
-|--------|---------|
-| `model_validation.py` | PRESS statistic, k-fold CV, adequacy assessment (Tier 2) |
-| `report_generator.py` | PDF report generation (ReportLab) |
-
-### Key Endpoints by Feature
-
-**Design of Experiments:**
-- `POST /api/rsm/ccd/generate` - Central Composite Design
-- `POST /api/rsm/box-behnken/generate` - Box-Behnken Design
-- `POST /api/rsm/dsd/generate` - Definitive Screening Design
-- `POST /api/rsm/plackett-burman/generate` - Plackett-Burman screening
-- `POST /api/factorial/generate` - Factorial designs
-
-**Analysis:**
-- `POST /api/anova/analyze` - ANOVA analysis
-- `POST /api/rsm/fit-model` - RSM model fitting
-- `POST /api/mixed-models/analyze` - Mixed model analysis
-- `POST /api/rsm/desirability-optimization` - Multi-response optimization
-
-**Validation (Tier 2):**
-- `POST /api/anova/validate-model` - ANOVA validation
-- `POST /api/factorial/validate-model` - Factorial validation
-- `POST /api/mixed-models/validate-model` - Mixed model validation
-- `POST /api/nonlinear-regression/validate-model` - Nonlinear validation
-- `POST /api/rsm/confounding-analysis` - Alias structure analysis
-- `POST /api/rsm/multi-response-contour` - Overlay contour plots
-
----
-
-## Frontend Reference
-
-### Pages (`/frontend/src/pages/`)
-
-| Page | Purpose |
+| File | Purpose |
 |------|---------|
-| `Home.jsx` | Landing page with feature cards |
-| `ExperimentWizardPage.jsx` | Guided experiment design workflow |
-| `ExperimentPlanning.jsx` | Sample size and power analysis |
-| `DataPreprocessing.jsx` | Data cleaning, transformation, imputation |
-| `HypothesisTesting.jsx` | Statistical testing interface |
-| `ANOVA.jsx` | ANOVA analysis |
-| `FactorialDesigns.jsx` | Factorial experiment design |
-| `BlockDesigns.jsx` | Block design generation |
-| `MixedModels.jsx` | Mixed model analysis |
-| `RSM.jsx` | Response Surface Methodology (largest: 121KB) |
-| `MixtureDesign.jsx` | Mixture experiment design |
-| `RobustDesign.jsx` | Taguchi methods |
-| `BayesianDOE.jsx` | Bayesian experimental design |
-| `PredictionProfiler.jsx` | Model prediction profiling |
-| `OptimalDesigns.jsx` | Optimal design generation |
-| `NonlinearRegression.jsx` | Curve fitting |
-| `QualityControl.jsx` | Control charts and capability |
-| `ProtocolGeneratorPage.jsx` | Protocol PDF generation |
-
-### Key Components (`/frontend/src/components/`)
-
-**Visualization:**
-- `ResponseSurface3D.jsx` - 3D surface plots
-- `ContourPlot.jsx` - 2D contour plots
-- `MainEffectsPlot.jsx`, `InteractionPlot.jsx` - Effect plots
-- `CubePlot.jsx`, `HalfNormalPlot.jsx` - Design visualization
-- `DiagnosticPlots.jsx`, `ResidualPlots.jsx` - Model diagnostics
-- `CorrelationHeatmap.jsx`, `ScatterMatrix.jsx` - Exploratory plots
-
-**Tier 2 Components (NEW):**
-- `DesignPreviewVisualization.jsx` - Interactive design preview (318 lines)
-- `PowerCurvePlot.jsx` - Statistical power curves (228 lines)
-- `ConfoundingDiagram.jsx` - Alias structure display (292 lines)
-- `ModelValidation.jsx` - Model adequacy assessment (685 lines)
-
-**Data Management:**
-- `FileUploadZone.jsx` - File import
-- `ExcelTable.jsx` - Excel-like data editing
-- `ColumnPreprocessor.jsx` - Column transformation
-- `OutlierDetection.jsx` - Outlier detection UI
-- `MissingDataPanel.jsx` - Imputation options
-
-**Analysis:**
-- `ExperimentWizard.jsx` - Step-by-step design guidance
-- `ProtocolGenerator.jsx` - PDF protocol generation
-- `MultiResponseManager.jsx` - Multi-response optimization
-
-### Utilities (`/frontend/src/utils/`)
-
-| Utility | Purpose |
-|---------|---------|
-| `smartValidation.js` | Input validation with business logic |
-| `doeGlossary.js` | 50+ statistical terms with definitions |
-| `designExport.js` | Export designs to various formats |
-| `fileParser.js` | CSV/Excel parsing |
-| `clipboardParser.js` | Clipboard data import |
-| `plotlyConfig.js` | Plotly dark theme configuration |
-| `randomization.js` | Randomization algorithms |
+| `frontend/src/pages/RSM.jsx` | Main RSM page (largest: ~3000 lines) |
+| `frontend/src/components/OverlayContourPlot.jsx` | Multi-response contour visualization |
+| `frontend/src/components/ModelValidation.jsx` | Validation results display |
+| `frontend/src/components/SessionHistory.jsx` | Session browser UI |
+| `frontend/src/contexts/SessionContext.jsx` | Global session state management |
+| `frontend/src/utils/sessionManager.js` | IndexedDB operations via Dexie.js |
+| `frontend/src/App.jsx` | App entry, routing, SessionProvider wrapper |
 
 ---
 
-## Development Commands
+## API Endpoints - Key Features
 
-### Backend
-```bash
-cd /Users/nj/Desktop/MasterStat/backend
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+### Design Generation
+```
+POST /api/rsm/ccd/generate          # Central Composite Design
+POST /api/rsm/box-behnken/generate  # Box-Behnken Design
+POST /api/rsm/dsd/generate          # Definitive Screening Design
+POST /api/rsm/plackett-burman/generate  # Plackett-Burman screening
+POST /api/factorial/generate        # Factorial designs
 ```
 
-### Frontend
-```bash
-cd /Users/nj/Desktop/MasterStat/frontend
-npm install          # Install dependencies
-npm run dev          # Development server (localhost:5173)
-npm run build        # Production build
+### Analysis
+```
+POST /api/anova/analyze             # ANOVA analysis
+POST /api/rsm/fit-model             # RSM model fitting
+POST /api/mixed-models/analyze      # Mixed model analysis
 ```
 
-### Electron (Desktop App)
-```bash
-cd /Users/nj/Desktop/MasterStat
-npm run electron     # Run desktop app
-npm run dist         # Build distributables
+### Multi-Response Optimization (Feature 3)
+```
+POST /api/rsm/desirability-optimization  # Composite desirability (3 methods)
+POST /api/rsm/multi-response-contour     # Overlay contour data
 ```
 
-### Cross-Platform Builds
-```bash
-npm run build:mac    # macOS (DMG + ZIP)
-npm run build:win    # Windows (NSIS installer)
-npm run build:linux  # Linux (AppImage + deb + rpm)
+### Model Validation (Feature 2)
 ```
-
-### Testing Endpoints
-```bash
-curl -X POST http://localhost:8000/api/rsm/dsd/generate \
-  -H "Content-Type: application/json" \
-  -d '{"n_factors": 3, "factor_names": ["A", "B", "C"], "center_points": 3}'
+POST /api/anova/validate-model
+POST /api/factorial/validate-model
+POST /api/mixed-models/validate-model
+POST /api/nonlinear-regression/validate-model
+POST /api/rsm/confounding-analysis
 ```
 
 ---
 
-## Implementation Status
+## Code Patterns
 
-### Tier 1: COMPLETE
-Core statistical analysis features including RSM, ANOVA, Factorial, Mixed Models, Quality Control, Prediction Profiler, Optimal Designs, Nonlinear Regression.
-
-### Tier 2: 60% COMPLETE (Target: 80-90% JMP Parity)
-
-| Feature | Status | Details |
-|---------|--------|---------|
-| **Feature 1: Experiment Wizard** | 100% COMPLETE | DSD, Plackett-Burman, confounding analysis, design preview, power curves |
-| **Feature 2: Model Validation** | 100% COMPLETE | PRESS statistic, k-fold CV, adequacy score, diagnostic tests |
-| **Feature 3: Multi-Response Optimization** | 50% COMPLETE | Backend done (compositing methods, overlay contours), frontend pending |
-| **Feature 4: Session Management** | 0% NOT STARTED | IndexedDB persistence, save/load sessions, export/import |
-
-**See `TIER2_STATUS.md` for detailed implementation notes, code locations, and next steps.**
-
----
-
-## Code Patterns & Conventions
-
-### Backend Patterns
-
-**FastAPI Endpoint:**
+### Backend - FastAPI Endpoint
 ```python
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -242,70 +179,64 @@ async def endpoint_function(request: RequestModel):
         raise HTTPException(status_code=500, detail=str(e))
 ```
 
-**Model Validation Pattern:**
-```python
-from app.utils.model_validation import full_model_validation
-validation = full_model_validation(model, df, response_var, k_folds=5)
-```
-
-### Frontend Patterns
-
-**React Component:**
+### Frontend - React Component with API Call
 ```jsx
-import React, { useState, useEffect } from 'react';
-import { Icon } from 'lucide-react';
+import React, { useState } from 'react';
+import axios from 'axios';
 
-const ComponentName = ({ prop1, onCallback }) => {
-  const [state, setState] = useState(null);
+const Component = () => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
 
-  useEffect(() => {
-    // Side effects
-  }, [dependencies]);
+  const handleSubmit = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.post(`${API_URL}/api/endpoint`, data);
+      setResult(response.data);
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="bg-slate-800 text-slate-100 p-6 rounded-lg">
-      {/* JSX */}
+    <div className="bg-slate-800 text-gray-100 p-6 rounded-lg">
+      {/* Dark mode styling */}
     </div>
   );
 };
-
-export default ComponentName;
 ```
 
-**API Call Pattern:**
+### Session Management Pattern
 ```jsx
-const fetchData = async () => {
-  setLoading(true);
-  try {
-    const response = await fetch('http://localhost:8000/api/endpoint', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestData)
+import { useSession } from '../contexts/SessionContext';
+
+const AnalysisPage = () => {
+  const { saveCurrentSession, currentSession } = useSession();
+
+  const handleSave = async () => {
+    await saveCurrentSession('Session Name', {
+      analysis_type: 'RSM',
+      data: { factors, responses, originalData },
+      results: { modelFit, optimization }
     });
-    const data = await response.json();
-    setResult(data);
-  } catch (err) {
-    setError(err.message);
-  } finally {
-    setLoading(false);
-  }
+  };
 };
 ```
 
-**Tailwind Dark Mode Classes:**
+### Tailwind Dark Mode Classes
 ```jsx
-// Container
-className="bg-slate-800 text-slate-100 p-6 rounded-lg"
-// Card
-className="bg-slate-700 border border-slate-600 p-4"
-// Input
-className="bg-slate-900 text-slate-100 border border-slate-600 rounded px-3 py-2"
-// Button
-className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-// Status: green (success), yellow (warning), red (error), blue (info)
+// Container: bg-slate-800 text-gray-100 p-6 rounded-lg
+// Card: bg-slate-700/50 border border-slate-600 p-4
+// Input: bg-slate-900 text-gray-100 border border-slate-600 rounded px-3 py-2
+// Button: bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg
+// Success: bg-green-600, Warning: bg-yellow-600, Error: bg-red-600
 ```
 
-**Plotly Dark Theme:**
+### Plotly Dark Theme
 ```javascript
 const layout = {
   paper_bgcolor: '#1e293b',
@@ -316,49 +247,124 @@ const layout = {
 
 ---
 
-## Key File Locations
+## Development Commands
 
-### Critical Backend Files
-- `/backend/app/api/rsm.py` - RSM, optimization, multi-response (4,605 lines)
-- `/backend/app/api/anova.py` - ANOVA analysis (1,698 lines)
-- `/backend/app/api/factorial.py` - Factorial designs (2,219 lines)
-- `/backend/app/utils/model_validation.py` - Validation utilities (456 lines)
-- `/backend/app/main.py` - FastAPI app entry point
+### Daily Development
+```bash
+# Backend
+cd /Users/nj/Desktop/MasterStat/backend
+python -m uvicorn app.main:app --reload --port 8000
 
-### Critical Frontend Files
-- `/frontend/src/pages/RSM.jsx` - RSM page (largest, 121KB)
-- `/frontend/src/pages/ANOVA.jsx` - ANOVA page
-- `/frontend/src/pages/FactorialDesigns.jsx` - Factorial page
-- `/frontend/src/components/ModelValidation.jsx` - Validation UI (685 lines)
-- `/frontend/src/App.jsx` - App entry and routing
+# Frontend
+cd /Users/nj/Desktop/MasterStat/frontend
+npm run dev
 
-### Configuration
-- `/frontend/package.json` - Frontend dependencies
-- `/backend/requirements.txt` - Backend dependencies
-- `/package.json` - Root Electron config
-- `/frontend/tailwind.config.js` - Tailwind configuration
+# Test endpoint
+curl -X POST http://localhost:8000/api/rsm/dsd/generate \
+  -H "Content-Type: application/json" \
+  -d '{"n_factors": 3, "factor_names": ["A", "B", "C"]}'
+```
 
-### Status Documents
-- `/TIER2_STATUS.md` - Detailed Tier 2 implementation status
-- `/CLAUDE.md` - This file (project context)
+### Building Electron Apps
+```bash
+cd /Users/nj/Desktop/MasterStat
+
+# Build all platforms
+npm run dist
+
+# Platform-specific
+npm run build:mac      # macOS DMG + ZIP
+npm run build:win      # Windows NSIS + Portable
+npm run build:linux    # Linux AppImage + deb
+```
+
+### Git Workflow
+```bash
+git status
+git add .
+git commit -m "feat: Description"
+git push origin main
+```
 
 ---
 
 ## Ports & URLs
 
-| Service | URL | Purpose |
-|---------|-----|---------|
-| Backend | `http://localhost:8000` | FastAPI statistical engine |
-| Frontend (dev) | `http://localhost:5173` | Vite dev server |
-| API Docs | `http://localhost:8000/docs` | Swagger UI |
-| Health Check | `http://localhost:8000/health` | Backend status |
+| Service | URL |
+|---------|-----|
+| Backend API | http://localhost:8000 |
+| Frontend Dev | http://localhost:5173 |
+| Swagger Docs | http://localhost:8000/docs |
+| Health Check | http://localhost:8000/health |
 
 ---
 
-## Quick Start for New Sessions
+## Potential Next Steps (Future Development)
 
-1. **Read this file** for full project context
-2. **Check `TIER2_STATUS.md`** for current implementation progress
-3. **Start backend:** `cd backend && python -m uvicorn app.main:app --reload`
-4. **Start frontend:** `cd frontend && npm run dev`
-5. **Continue with pending features** (Feature 3 frontend, Feature 4 complete)
+### Tier 3 Features (Not Started)
+1. **Advanced Visualization** - 3D contour animations, VR/AR support
+2. **Collaboration** - Multi-user sessions, cloud sync
+3. **Machine Learning Integration** - AutoML for model selection
+4. **Report Templates** - Customizable PDF/Word reports
+5. **API Extensions** - REST API for external tool integration
+
+### Technical Improvements
+1. **Performance** - Code splitting, lazy loading large components
+2. **Testing** - Unit tests, integration tests, E2E tests
+3. **CI/CD** - Automated builds, GitHub Actions
+4. **Documentation** - User manual, API documentation
+
+### Known Limitations
+- Mixed models validation uses marginal fixed effects (not full conditional residuals)
+- Multi-response contour limited to 2 factors
+- IndexedDB has browser quota limits (~50MB+, sufficient for most use)
+- Linux builds are arm64 only (x64 would need separate build environment)
+
+---
+
+## Troubleshooting
+
+### Backend won't start
+```bash
+# Check if port 8000 is in use
+lsof -i :8000
+# Kill process if needed
+kill -9 <PID>
+```
+
+### Frontend build errors
+```bash
+cd frontend
+rm -rf node_modules
+npm install
+npm run build
+```
+
+### Electron app shows blank screen
+- Ensure backend is running on port 8000
+- Check backend health: `curl http://localhost:8000/health`
+- Backend serves frontend static files from `frontend/dist`
+
+### Session data not persisting
+- IndexedDB is browser-specific
+- Check browser dev tools > Application > IndexedDB > MasterStatDB
+- Dexie.js handles all persistence automatically
+
+---
+
+## Summary for Claude Code
+
+**This is a complete, working statistical analysis application.**
+
+Key things to know:
+1. **Tier 2 is 100% complete** - All 4 features implemented and tested
+2. **Electron builds are current** (Jan 28, 2026) for all platforms
+3. **Session management works** via IndexedDB/Dexie.js
+4. **Multi-response optimization** has 3 compositing methods + overlay contours
+5. **Model validation** includes PRESS, k-fold CV, adequacy scoring
+
+For any new feature work:
+- Check `TIER2_STATUS.md` for detailed implementation notes
+- Follow existing code patterns (FastAPI + React + Tailwind dark mode)
+- Test with `npm run build` before committing
+- Build Electron with `npm run dist` for releases

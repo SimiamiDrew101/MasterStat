@@ -2,220 +2,120 @@
 
 **Professional-grade statistical analysis and Design of Experiments (DOE) platform**
 
-Free, open-source web application for researchers, engineers, and data scientists. Built with React, FastAPI, and modern visualization libraries.
+Free, open-source desktop application for researchers, engineers, and data scientists. Built with React, FastAPI, Electron, and modern visualization libraries.
 
 [![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
 [![Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/MasterStat)
 
-[Features](#features) • [Quick Start](#quick-start) • [Installation](#installation) • [Documentation](#documentation) • [Contributing](#contributing)
+[Features](#features) • [Download](#download) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Contributing](#contributing)
+
+---
+
+## Download Desktop App
+
+**Pre-built installers for all platforms (v1.0.0):**
+
+| Platform | Download | Notes |
+|----------|----------|-------|
+| **macOS (Apple Silicon)** | `MasterStat-1.0.0-arm64.dmg` | M1/M2/M3 Macs |
+| **macOS (Intel)** | `MasterStat-1.0.0.dmg` | Intel Macs |
+| **Windows** | `MasterStat Setup 1.0.0.exe` | Windows 10/11 (64-bit) |
+| **Windows Portable** | `MasterStat 1.0.0.exe` | No installation required |
+| **Linux** | `MasterStat-1.0.0-arm64.AppImage` | ARM64 systems |
+| **Linux (Debian)** | `masterstat_1.0.0_arm64.deb` | Debian/Ubuntu ARM64 |
+
+> **Note:** Requires Python 3.11+ installed on your system for the statistical backend.
 
 ---
 
 ## Features
 
-### Core Statistical Analysis Modules
+### Core Statistical Analysis
 
-- **Experiment Wizard** - Step-by-step guided experimental design with goal-based recommendations
-- **Data Preprocessing** - Transform, clean, detect outliers, handle missing values with multiple imputation methods
-- **Protocol Generator** - Create randomized, blinded experimental protocols with PDF export
-- **Experiment Planning** - Sample size calculation, power analysis, effect size estimation
-- **Hypothesis Testing** - t-tests, F-tests, Z-tests, Mann-Whitney, Kruskal-Wallis with confidence intervals
-- **ANOVA** - One-way, two-way, repeated measures with post-hoc tests (Tukey, Bonferroni, Scheffé)
-- **Factorial Designs** - Full 2^k, 3^k, fractional factorial, Plackett-Burman, screening designs
-- **Block Designs** - RCBD, Latin squares, Graeco-Latin squares, incomplete blocks
-- **Mixed Models** - Split-plot, nested designs, repeated measures, random effects, variance components
-- **Response Surface Methodology** - Central Composite Design, Box-Behnken, optimization, steepest ascent
-- **Mixture Design** - Simplex-centroid, simplex-lattice, constrained mixture regions
-- **Robust Design** - Taguchi methods, parameter design, noise factors, signal-to-noise ratios
-- **Bayesian DOE** - MCMC parameter estimation, sequential designs, posterior optimization, model comparison
+| Module | Description |
+|--------|-------------|
+| **Experiment Wizard** | Step-by-step guided design with DSD, Plackett-Burman, confounding analysis |
+| **Response Surface (RSM)** | CCD, Box-Behnken, optimization, 3D surfaces, contour plots |
+| **ANOVA** | One-way, two-way, repeated measures with Tukey, Bonferroni, Scheffé |
+| **Factorial Designs** | Full 2^k, 3^k, fractional factorial, screening designs |
+| **Mixed Models** | Split-plot, nested designs, random effects, variance components |
+| **Quality Control** | X-bar, R, S, P, C charts, process capability (Cp, Cpk) |
+| **Nonlinear Regression** | Curve fitting, growth models, convergence analysis |
+| **Bayesian DOE** | MCMC, posterior optimization, HDI, convergence diagnostics |
 
-### Advanced Bayesian Features (NEW)
+### Advanced Features (Tier 2 - NEW)
 
-- **Highest Density Intervals (HDI)** - More accurate 95% credible intervals than percentiles
-- **Convergence Diagnostics** - Effective Sample Size (ESS), R-hat, autocorrelation analysis
-- **Posterior Visualization** - Comprehensive plots with prior overlay, trace plots, ACF diagnostics
-- **Model Comparison** - Automatic BIC/AIC/Bayes factor comparison with best model selection
-- **Prior Specification** - One-click presets (Weakly Informative / Uninformative)
+| Feature | Description |
+|---------|-------------|
+| **Model Validation** | PRESS statistic, k-fold cross-validation, adequacy scoring (0-100), diagnostic tests |
+| **Multi-Response Optimization** | 3 desirability methods (geometric mean, minimum, weighted sum), overlay contour plots |
+| **Session Management** | Save/load analysis sessions, export/import JSON, search and filter history |
+| **Design Preview** | Interactive 3D visualization of experimental designs with power curves |
 
-### Data Preprocessing & Quality
+### Data Management
 
-- **Missing Data Imputation** - Mean, median, mode, forward fill, backward fill, linear interpolation
-- **Outlier Detection** - IQR method, Z-score method, visual diagnostics
-- **Data Transformation** - Log, square root, Box-Cox, standardization, normalization
 - **Excel-like Table Interface** - Edit data inline with copy/paste support
-
-### Protocol Generation
-
-- **Randomization Methods** - Complete (CRD), Block (RBD), Restricted randomization
-- **Seed-based Reproducibility** - Identical results with same seed for audit trails
-- **Blinding System** - Single, double, triple-blind with separate confidential key
-- **PDF Export** - Publication-ready protocols with all experimental details
-- **Comprehensive Sections** - Objective, materials, procedure, safety, quality controls
+- **Missing Data Imputation** - Mean, median, mode, interpolation, MICE
+- **Outlier Detection** - IQR method, Z-score method, visual diagnostics
+- **Data Transformation** - Log, square root, Box-Cox, standardization
+- **Session Persistence** - IndexedDB storage, export/import sessions
 
 ### Visualizations
 
 - Interactive 3D response surfaces with rotation and zoom
 - Contour plots with optimization paths and constraints
+- **Overlay contour plots** for multi-response optimization
 - Diagnostic plots (residuals, Q-Q, Cook's distance, leverage)
 - Main effects and interaction plots
-- Cube plots for factorial designs
-- Half-normal plots for effect screening
-- Posterior density plots with prior overlay (Bayesian)
-- MCMC trace plots with running mean (Bayesian)
-- Autocorrelation plots with significance bounds (Bayesian)
+- Power curves for sample size planning
+- Confounding diagrams with resolution badges
 
 ### Export Capabilities
 
-- **PDF** - Publication-ready reports with embedded figures and statistical tables
+- **PDF** - Publication-ready reports with embedded figures
 - **Excel** - Multi-sheet workbooks with formatted tables
-- **CSV/TSV** - Standard data formats for further analysis
-- **JMP/Minitab** - Industry-standard DOE formats
-- **PNG/SVG** - High-resolution figures (300-1200 DPI, vector graphics)
+- **CSV/TSV** - Standard data formats
+- **JSON** - Session export/import for reproducibility
+- **PNG/SVG** - High-resolution figures (300-1200 DPI)
 
 ---
 
 ## Quick Start
 
-**See [QUICKSTART.md](QUICKSTART.md) for detailed instructions**
+### Option 1: Download Desktop App (Recommended)
 
-### Electron Desktop App (NEW - Standalone Application)
+1. Download the installer for your platform from the releases
+2. Install and launch MasterStat
+3. The app automatically starts the Python backend
 
-Run MasterStat as a native desktop application without Docker or manual setup:
+**Requirements:** Python 3.11+ must be installed ([Download](https://python.org/downloads/))
 
-```bash
-git clone https://github.com/SimiamiDrew101/MasterStat.git
-cd MasterStat
-npm install
-npm run electron
-```
-
-**Benefits:**
-- 🚀 **One-click launch** - Backend and frontend start automatically
-- 💻 **Native desktop experience** - Runs as a standalone application
-- 🔒 **Offline capable** - No browser required, all processing local
-- 🎯 **Self-contained** - Python backend bundled and managed internally
-- ⚡ **Fast startup** - Optimized for desktop performance
-
-**Requirements:**
-- Node.js 16+ ([Download](https://nodejs.org/))
-- Python 3.11+ ([Download](https://python.org/downloads/))
-
-The Electron app automatically starts the Python backend on `http://127.0.0.1:8000` and displays the interface in a native window.
-
----
-
-### Docker (Recommended - Full Features)
-
-```bash
-git clone https://github.com/SimiamiDrew101/MasterStat.git
-cd MasterStat
-./start.sh
-```
-
-Open http://localhost:5173 in your browser.
-
-### Local Development
-
-```bash
-# Backend (Python 3.11+)
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-
-# Frontend (Node.js 16+)
-cd frontend
-npm install
-npm run dev
-```
-
-**Access points:**
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:8000
-- API Documentation: http://localhost:8000/docs
-
----
-
-## Installation
-
-### Prerequisites
-
-**For Electron Desktop App:**
-- Python 3.11+ ([Download](https://www.python.org/downloads/))
-- Node.js v16+ ([Download](https://nodejs.org/))
-
-**For Docker (recommended):**
-- [Docker Desktop](https://www.docker.com/products/docker-desktop)
-
-**For local development:**
-- Python 3.11+ ([Download](https://www.python.org/downloads/))
-- Node.js v16+ ([Download](https://nodejs.org/))
-
-### Electron Desktop App Setup
-
-The Electron desktop app provides a native application experience:
+### Option 2: Run from Source
 
 ```bash
 # Clone repository
 git clone https://github.com/SimiamiDrew101/MasterStat.git
 cd MasterStat
 
-# Install dependencies (root directory)
+# Install dependencies
 npm install
-
-# Install Python backend dependencies
-cd backend
-pip install -r requirements.txt
-cd ..
+cd backend && pip install -r requirements.txt && cd ..
+cd frontend && npm install && cd ..
 
 # Launch Electron app
 npm run electron
 ```
 
-The application will open in a native desktop window with the backend running on `http://127.0.0.1:8000`.
-
-**Features:**
-- Automatic backend startup and shutdown
-- Native desktop window with menu bar
-- Integrated Python backend management
-- Offline-capable (no internet required)
-- Automatic updates support (future feature)
-
-**Troubleshooting:**
+### Option 3: Development Mode
 
 ```bash
-# Port conflicts - close other instances first
-pkill -f electron
-pkill -f uvicorn
+# Terminal 1: Backend
+cd backend
+python -m uvicorn app.main:app --reload --port 8000
 
-# Missing dependencies
-cd backend && pip install -r requirements.txt
-cd .. && npm install
-
-# Check logs
-tail -f electron*.log
-tail -f backend*.log
-```
-
----
-
-### Docker Setup
-
-Docker provides the complete application with both frontend and backend:
-
-```bash
-# Clone repository
-git clone https://github.com/SimiamiDrew101/MasterStat.git
-cd MasterStat
-
-# Start application
-./start.sh
-
-# Or use docker compose directly
-docker compose up --build
-
-# Stop application
-# Press Ctrl+C, or run:
-docker compose down
+# Terminal 2: Frontend
+cd frontend
+npm run dev
 ```
 
 **Access points:**
@@ -223,218 +123,143 @@ docker compose down
 - Backend API: http://localhost:8000
 - API Documentation: http://localhost:8000/docs
 
-**Troubleshooting:**
-
-```bash
-# Port conflicts
-lsof -ti:5173
-lsof -ti:8000
-
-# Clean rebuild
-docker compose down -v
-docker compose build --no-cache
-docker compose up
-```
-
-### Local Development Setup
-
-**Backend:**
-
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
-
-**Frontend:**
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-**Production build:**
-
-```bash
-npm run build
-npm run preview
-```
-
----
-
-## Documentation
-
-### Example Workflows
-
-**1. Factorial Design & Analysis**
-
-Navigate to **Experiment Wizard** → Select goal (Screening/Optimization) → Enter factors → Generate design → Export to Excel/CSV
-
-**2. Response Surface Optimization**
-
-Go to **Response Surface** → Upload data → Fit quadratic model → View 3D surface and contours → Perform optimization → Export report
-
-**3. ANOVA with Post-hoc Tests**
-
-Open **ANOVA** → Choose design (One-way/Two-way) → Input data → Run analysis → View F-test results → Perform post-hoc comparisons (Tukey HSD)
-
-**4. Bayesian DOE with Convergence Diagnostics**
-
-Go to **Bayesian DOE** → Generate factorial design → Click "Weakly Informative" preset → Run analysis → Review posterior distributions, trace plots, ESS diagnostics → Compare models
-
-**5. Experimental Protocol Generation**
-
-Navigate to **Protocol Generator** → Enter study details → Configure randomization → Set up blinding → Export PDF protocol + confidential blinding key
-
-**6. Data Preprocessing**
-
-Open **Data Preprocessing** → Import data → Detect outliers (IQR/Z-score) → Handle missing values (imputation) → Transform data (log, Box-Cox) → Export clean data
-
-### Educational Features
-
-Built-in DOE glossary with 50+ terms including:
-- Aliasing and confounding patterns
-- Blocking strategies
-- Central Composite Design structures
-- Effect hierarchy principles
-- Interaction interpretation
-- Power and sample size
-- Resolution in fractional factorials
-- Bayesian credible intervals
-- Effective Sample Size (ESS)
-
-Hover over any statistical term for context-sensitive help with examples.
-
 ---
 
 ## Technology Stack
 
-**Frontend:**
-- React 18 with Vite 5.4
-- Plotly.js for interactive visualizations
-- TailwindCSS for styling
-- Axios for API communication
-- jsPDF for PDF generation
-- xlsx for Excel workbooks
-
-**Desktop App:**
-- Electron 28.1.0 for native desktop application
-- Cross-platform support (macOS, Windows, Linux)
-- Integrated backend process management
-- Native menu bar and window controls
-
-**Backend:**
-- FastAPI (Python 3.11)
-- scipy, statsmodels for statistical computing
-- pandas, numpy for data manipulation
-- ReportLab for PDF protocol generation
-
-**Statistical Methods:**
-- MCMC (Metropolis-Hastings) for Bayesian inference
-- Multiple imputation for missing data
-- Box-Cox transformation for normality
-- Robust outlier detection (IQR, Z-score)
+| Layer | Technologies |
+|-------|-------------|
+| **Frontend** | React 18.2, Vite 5.0, TailwindCSS 3.4, Plotly.js 3.3, Recharts |
+| **Backend** | Python 3.11+, FastAPI 0.109, Uvicorn, SciPy, statsmodels, pandas |
+| **Desktop** | Electron 28.1, cross-platform (macOS, Windows, Linux) |
+| **Persistence** | IndexedDB via Dexie.js 4.2 (client-side session storage) |
+| **Visualization** | Plotly.js (3D surfaces, contours), Recharts (charts) |
 
 ---
 
 ## Architecture
 
-**Component Organization:**
-
 ```
-frontend/src/
-├── pages/              # 14 analysis modules
-├── components/         # 70+ reusable UI components
-├── utils/              # Statistical utilities, validation
-└── services/           # API client
-
-backend/app/
-├── api/               # 13 FastAPI endpoint modules
-├── models/            # Statistical models
-└── utils/             # Report generation, helpers
-
-electron/
-├── main.js            # Electron main process
-├── preload.js         # Preload script for security
-└── icon.png           # Application icon
+MasterStat/
+├── backend/                 # Python/FastAPI statistical engine
+│   ├── app/
+│   │   ├── api/            # 14 API modules (rsm, anova, factorial, etc.)
+│   │   ├── utils/          # model_validation.py, report_generator.py
+│   │   └── main.py         # FastAPI entry point
+│   └── requirements.txt
+├── frontend/                # React/Vite web interface
+│   ├── src/
+│   │   ├── pages/          # 18 page components
+│   │   ├── components/     # 90+ reusable components
+│   │   ├── contexts/       # SessionContext.jsx
+│   │   └── utils/          # sessionManager.js, validation, etc.
+│   └── package.json
+├── electron/                # Electron desktop wrapper
+│   ├── main.js             # Main process
+│   └── preload.js          # Security layer
+└── package.json            # Root config (Electron builds)
 ```
 
 **Project Statistics:**
-- 14 statistical modules
-- 70+ React components
-- 40+ visualization types
-- 10+ export formats
-- ~25,000 lines of code
-- Publication-quality output
-- Modern, well-maintained dependencies
+- 18 statistical modules
+- 90+ React components
+- 14 backend API modules
+- 50+ visualization types
+- ~35,000 lines of code
+- Cross-platform desktop builds
+
+---
+
+## Example Workflows
+
+### 1. Response Surface Optimization
+
+1. Navigate to **Response Surface** → Generate CCD or Box-Behnken design
+2. Import experimental data → Fit quadratic model
+3. View 3D surface and contour plots
+4. **Validate model** with PRESS and k-fold CV
+5. Run desirability optimization → Export report
+
+### 2. Multi-Response Optimization (NEW)
+
+1. Fit models for multiple responses (Yield, Purity, Cost)
+2. Add each to desirability specifications
+3. Set goals (maximize, minimize, target) and weights
+4. Choose compositing method (geometric mean recommended)
+5. View **overlay contour plot** to find sweet spot
+
+### 3. Session Management (NEW)
+
+1. Complete any analysis
+2. Click **Save Session** → Enter name
+3. Access saved sessions via **Sessions** button in header
+4. Load, rename, delete, or export sessions as JSON
+
+### 4. Model Validation (NEW)
+
+1. Fit a model (ANOVA, Factorial, RSM, etc.)
+2. Click **Validate Model** button
+3. Review adequacy score (0-100)
+4. Check PRESS statistic and k-fold CV results
+5. Review diagnostic tests (normality, homoscedasticity)
+
+---
+
+## Building Desktop Apps
+
+```bash
+# Build for current platform
+npm run dist
+
+# Platform-specific builds
+npm run build:mac      # macOS (DMG + ZIP, arm64 + x64)
+npm run build:win      # Windows (NSIS installer + Portable)
+npm run build:linux    # Linux (AppImage + deb)
+```
+
+Output location: `dist-electron/`
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Here's how to help:
-
-**Ways to Contribute:**
-- Report bugs via GitHub Issues
-- Suggest features or improvements
-- Improve documentation
-- Submit pull requests
-- Help test new features
-- Share your use cases
-
-**Development Workflow:**
+Contributions welcome! See our guidelines:
 
 ```bash
-# Fork repository on GitHub
+# Fork and clone
 git clone https://github.com/YOUR_USERNAME/MasterStat.git
-cd MasterStat
-
-# Install dependencies
-cd frontend && npm install
-cd ../backend && pip install -r requirements.txt
 
 # Create feature branch
-git checkout -b feature/your-feature-name
+git checkout -b feature/your-feature
 
-# Make changes and test
-# Frontend: npm run dev
-# Backend: uvicorn app.main:app --reload
+# Make changes, test locally
+npm run dev  # or npm run electron
 
 # Commit and push
-git commit -m "Add: Brief description"
-git push origin feature/your-feature-name
+git commit -m "feat: Description of feature"
+git push origin feature/your-feature
 
-# Open Pull Request on GitHub
+# Open Pull Request
 ```
 
 **Code Guidelines:**
-- Use functional React components with hooks
-- Follow TailwindCSS utility-first approach
-- Write descriptive variable names
-- Add comments for complex statistical logic
-- Include JSDoc for component props
-- Maintain dark theme consistency
-- Test with sample data
+- React functional components with hooks
+- TailwindCSS dark mode (slate-800, slate-700 backgrounds)
+- FastAPI endpoints with Pydantic models
+- Plotly dark theme (paper_bgcolor: #1e293b, plot_bgcolor: #0f172a)
 
 ---
 
 ## Support
 
-MasterStat is free and open-source software. Support the project:
-
-**Financial Support:**
+MasterStat is free and open-source. Support the project:
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/MasterStat)
 
-Your contributions help us develop new features, improve visualizations, and keep the project free for everyone.
-
-**Other Ways to Help:**
-- Star this repository ⭐
+**Other ways to help:**
+- Star this repository
+- Report bugs via [GitHub Issues](https://github.com/SimiamiDrew101/MasterStat/issues)
 - Share with colleagues and students
-- Write tutorials or blog posts
-- Cite MasterStat in publications
-- Report bugs and suggest improvements
 - Contribute code or documentation
 
 ---
@@ -443,19 +268,13 @@ Your contributions help us develop new features, improve visualizations, and kee
 
 **Creative Commons Attribution 4.0 International (CC BY 4.0)**
 
-You are free to:
-- **Share** - copy and redistribute the material in any medium or format
-- **Adapt** - remix, transform, and build upon the material for any purpose, even commercially
+You are free to share and adapt for any purpose, even commercially, with attribution.
 
-Under the following terms:
-- **Attribution** - You must give appropriate credit to MasterStat, provide a link to the license, and indicate if changes were made. You may do so in any reasonable manner, but not in any way that suggests the licensor endorses you or your use.
+See [LICENSE](LICENSE) for details.
 
-See [LICENSE](LICENSE) file for full details or visit https://creativecommons.org/licenses/by/4.0/
-
-**How to Cite:**
-
+**Citation:**
 ```
-MasterStat: Professional-grade statistical analysis and Design of Experiments platform
+MasterStat: Professional statistical analysis and Design of Experiments platform
 https://github.com/SimiamiDrew101/MasterStat
 ```
 
@@ -463,30 +282,18 @@ https://github.com/SimiamiDrew101/MasterStat
 
 ## Acknowledgments
 
-Built with excellent open-source technologies:
-- **Frontend:** React, Vite, Plotly.js, TailwindCSS, Lucide Icons
+Built with:
+- **Frontend:** React, Vite, Plotly.js, TailwindCSS, Lucide Icons, Dexie.js
 - **Backend:** FastAPI, SciPy, statsmodels, pandas, NumPy, ReportLab
-- **Development:** Claude Code, GitHub
-
-**Special Thanks:**
-- The open-source community for amazing tools and libraries
-- All contributors and supporters of MasterStat
-- Research and engineering professionals who provide feedback
-
----
-
-## Contact
-
-- **Issues & Bugs:** [GitHub Issues](https://github.com/SimiamiDrew101/MasterStat/issues)
-- **Feature Requests:** [GitHub Discussions](https://github.com/SimiamiDrew101/MasterStat/discussions)
-- **Support:** [Ko-fi](https://ko-fi.com/MasterStat)
+- **Desktop:** Electron, electron-builder
+- **Development:** Claude Code
 
 ---
 
 <div align="center">
 
-**Made with ❤️ for the research and engineering community**
+**Made with care for the research and engineering community**
 
-[⬆ Back to Top](#masterstat)
+[Back to Top](#masterstat)
 
 </div>

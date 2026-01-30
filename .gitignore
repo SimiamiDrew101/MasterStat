@@ -27,6 +27,8 @@ CORS_FIX.md
 *_DEBUG_*.md
 *_FIX*.md
 *_TEST_REPORT.md
+GIT_*.md
+GIT_*.txt
 
 # Test files and artifacts (exclude from repo)
 test_*.py
@@ -53,8 +55,6 @@ env/
 venv/
 ENV/
 *.egg-info/
-dist/
-build/
 .pytest_cache/
 .ruff_cache/
 *.pyc
@@ -83,6 +83,12 @@ out/
 *.rpm
 *.zip
 *.blockmap
+*.nsis.7z
+build/masterstat/
+
+# PyInstaller
+*.spec
+launcher.py
 
 # Environment
 .env
@@ -97,11 +103,8 @@ out/
 *.swo
 *~
 
-# Claude Code (only ignore chat history and personal settings, not commands/hooks)
-.claude/chats/
-.claude/plans/
-.claude/settings.local.json
-.claude/*roadmap*.md
+# Claude Code
+.claude/
 
 # OS
 .DS_Store
@@ -110,12 +113,14 @@ Thumbs.db
 # Logs
 *.log
 logs/
-electron*.log
-backend*.log
 
 # Temporary files
 *.tmp
 *.temp
+/private/
 
 # Testing
 coverage/
+
+# Large binary files in root (old builds)
+MasterStat-*.dmg

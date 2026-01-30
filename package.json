@@ -135,8 +135,7 @@
     "linux": {
       "target": [
         "AppImage",
-        "deb",
-        "rpm"
+        "deb"
       ],
       "category": "Science",
       "icon": "build/icon.png",
