@@ -18,6 +18,7 @@ import PredictionProfiler from './pages/PredictionProfiler'
 import OptimalDesigns from './pages/OptimalDesigns'
 import NonlinearRegression from './pages/NonlinearRegression'
 import QualityControl from './pages/QualityControl'
+import ReliabilityAnalysis from './pages/ReliabilityAnalysis'
 import SessionHistory from './components/SessionHistory'
 import { SessionProvider, useSession } from './contexts/SessionContext'
 import { Menu, X, BarChart3, History } from 'lucide-react'
@@ -44,6 +45,7 @@ function AppContent() {
     { path: '/optimal-designs', label: 'Optimal Designs', icon: '✨' },
     { path: '/nonlinear-regression', label: 'Nonlinear Regression', icon: '📉' },
     { path: '/quality-control', label: 'Quality Control', icon: '🎯' },
+    { path: '/reliability', label: 'Reliability Analysis', icon: '⏱️' },
     { path: '/mixture', label: 'Mixture Designs', icon: '💧' },
     { path: '/robust', label: 'Robust Design', icon: '🛡️' },
     { path: '/bayesian-doe', label: 'Bayesian DOE', icon: '🎲' },
@@ -86,6 +88,14 @@ function AppContent() {
         </header>
 
         <div className="flex">
+          {/* Backdrop overlay for mobile sidebar */}
+          {sidebarOpen && (
+            <div
+              className="fixed inset-0 bg-black/50 z-30 lg:hidden mt-16"
+              onClick={() => setSidebarOpen(false)}
+            />
+          )}
+
           {/* Sidebar */}
           <aside
             className={`${
@@ -126,6 +136,7 @@ function AppContent() {
                 <Route path="/optimal-designs" element={<OptimalDesigns />} />
                 <Route path="/nonlinear-regression" element={<NonlinearRegression />} />
                 <Route path="/quality-control" element={<QualityControl />} />
+                <Route path="/reliability" element={<ReliabilityAnalysis />} />
                 <Route path="/mixture" element={<MixtureDesign />} />
                 <Route path="/robust" element={<RobustDesign />} />
                 <Route path="/bayesian-doe" element={<BayesianDOE />} />

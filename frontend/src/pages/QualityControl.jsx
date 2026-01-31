@@ -1,14 +1,17 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import axios from 'axios'
 import Plot from 'react-plotly.js'
-import { Upload, BarChart3, TrendingUp, Info, AlertTriangle } from 'lucide-react'
+import { Upload, BarChart3, TrendingUp, Info, AlertTriangle, Clipboard } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 const QualityControl = () => {
   // State
   const [activeTab, setActiveTab] = useState('data')
   const [data, setData] = useState([])
-  const [dataText, setDataText] = useState('')
+  // Excel-like table data (single column for measurements)
+  const [tableData, setTableData] = useState(
+    Array(20).fill(null).map(() => [''])
+  )
   const [chartType, setChartType] = useState('i-mr')
   const [subgroupSize, setSubgroupSize] = useState(5)
   const [chartResult, setChartResult] = useState(null)
@@ -16,6 +19,105 @@ const QualityControl = () => {
   const [specLimits, setSpecLimits] = useState({ lsl: '', usl: '', target: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // Excel-like table cell change handler
+  const handleCellChange = useCallback((rowIndex, value) => {
+    setTableData(prev => {
+      const newData = prev.map(row => [...row])
+      newData[rowIndex][0] = value
+
+      // Auto-add row if typing in last row
+      if (rowIndex === newData.length - 1 && value.trim() !== '') {
+        newData.push([''])
+      }
+      return newData
+    })
+  }, [])
+
+  // Arrow key navigation handler
+  const handleKeyDown = useCallback((e, rowIndex) => {
+    const numRows = tableData.length
+    let newRow = rowIndex
+
+    switch (e.key) {
+      case 'ArrowUp':
+        e.preventDefault()
+        newRow = Math.max(0, rowIndex - 1)
+        break
+      case 'ArrowDown':
+      case 'Enter':
+        e.preventDefault()
+        newRow = Math.min(numRows - 1, rowIndex + 1)
+        // Add new row if at end and pressing down/enter
+        if (rowIndex === numRows - 1) {
+          setTableData(prev => [...prev, ['']])
+          newRow = numRows
+        }
+        break
+      case 'Tab':
+        // Allow default tab behavior to move between elements
+        return
+      default:
+        return
+    }
+
+    // Focus the new cell after a brief delay to allow state update
+    setTimeout(() => {
+      const input = document.getElementById(`qc-cell-${newRow}`)
+      if (input) {
+        input.focus()
+        input.select()
+      }
+    }, 0)
+  }, [tableData.length])
+
+  // Handle paste from clipboard
+  const handlePaste = useCallback((e) => {
+    e.preventDefault()
+    const pastedData = e.clipboardData.getData('text')
+    const lines = pastedData.trim().split('\n')
+    const newTableData = []
+
+    lines.forEach(line => {
+      const value = line.trim().split(/[\s,\t]+/)[0] // Take first value if multiple columns
+      if (value) {
+        newTableData.push([value])
+      }
+    })
+
+    // Ensure at least 20 rows
+    while (newTableData.length < 20) {
+      newTableData.push([''])
+    }
+    // Add extra empty row at end
+    newTableData.push([''])
+
+    setTableData(newTableData)
+  }, [])
+
+  // Parse table data to numeric array
+  const parseTableData = useCallback(() => {
+    const parsedData = []
+    tableData.forEach(row => {
+      const value = parseFloat(row[0])
+      if (!isNaN(value)) {
+        parsedData.push(value)
+      }
+    })
+    return parsedData
+  }, [tableData])
+
+  // Apply data from table
+  const handleApplyData = () => {
+    const parsedData = parseTableData()
+    if (parsedData.length < 3) {
+      setError('Need at least 3 data points')
+      return
+    }
+    setData(parsedData)
+    setError('')
+    setActiveTab('chart')
+  }
 
   // Chart type information
   const chartTypes = [
@@ -92,36 +194,14 @@ const QualityControl = () => {
       setChartType('xbar-r')
     }
 
+    // Populate table data
+    const newTableData = exampleData.map(val => [val.toString()])
+    newTableData.push(['']) // Add empty row at end
+    setTableData(newTableData)
+
     setData(exampleData)
-    setDataText(exampleData.join('\n'))
     setSubgroupSize(exampleSubgroup)
     setActiveTab('chart')
-  }
-
-  // Parse pasted data
-  const handleParseData = () => {
-    try {
-      const lines = dataText.trim().split('\n')
-      const parsedData = []
-
-      lines.forEach(line => {
-        const value = parseFloat(line.trim())
-        if (!isNaN(value)) {
-          parsedData.push(value)
-        }
-      })
-
-      if (parsedData.length < 3) {
-        setError('Need at least 3 data points')
-        return
-      }
-
-      setData(parsedData)
-      setError('')
-      setActiveTab('chart')
-    } catch (err) {
-      setError('Failed to parse data. Enter one number per line')
-    }
   }
 
   // Upload Excel/CSV file
@@ -133,18 +213,20 @@ const QualityControl = () => {
 
     reader.onload = (e) => {
       try {
-        const data = new Uint8Array(e.target.result)
-        const workbook = XLSX.read(data, { type: 'array' })
+        const fileData = new Uint8Array(e.target.result)
+        const workbook = XLSX.read(fileData, { type: 'array' })
         const sheetName = workbook.SheetNames[0]
         const worksheet = workbook.Sheets[sheetName]
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
 
         const parsedData = []
+        const newTableData = []
         jsonData.forEach((row, i) => {
           if (i === 0) return // Skip header
           const value = parseFloat(row[0])
           if (!isNaN(value)) {
             parsedData.push(value)
+            newTableData.push([value.toString()])
           }
         })
 
@@ -153,8 +235,14 @@ const QualityControl = () => {
           return
         }
 
+        // Ensure minimum rows and add empty row at end
+        while (newTableData.length < 20) {
+          newTableData.push([''])
+        }
+        newTableData.push([''])
+
+        setTableData(newTableData)
         setData(parsedData)
-        setDataText(parsedData.join('\n'))
         setError('')
         setActiveTab('chart')
       } catch (err) {
@@ -350,24 +438,73 @@ const QualityControl = () => {
               </div>
             </div>
 
-            {/* Manual Data Entry */}
+            {/* Manual Data Entry - Excel-like table */}
             <div className="bg-slate-800/50 rounded-2xl p-6 backdrop-blur-sm border border-slate-700/50">
               <h2 className="text-2xl font-bold mb-4 text-gray-100">Enter Process Data</h2>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Paste measurements (one per line)
-              </label>
-              <textarea
-                value={dataText}
-                onChange={(e) => setDataText(e.target.value)}
-                className="w-full h-64 px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="20.1&#10;19.8&#10;20.3&#10;19.9&#10;20.2&#10;..."
-              />
-              <button
-                onClick={handleParseData}
-                className="mt-4 px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors"
-              >
-                Parse Data
-              </button>
+              <div className="flex items-center gap-2 mb-3">
+                <p className="text-sm text-gray-400">
+                  Enter measurements in the table below. Use arrow keys to navigate, or paste data from Excel.
+                </p>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.readText().then(text => {
+                      const lines = text.trim().split('\n')
+                      const newTableData = []
+                      lines.forEach(line => {
+                        const value = line.trim().split(/[\s,\t]+/)[0]
+                        if (value) newTableData.push([value])
+                      })
+                      while (newTableData.length < 20) newTableData.push([''])
+                      newTableData.push([''])
+                      setTableData(newTableData)
+                    }).catch(() => setError('Failed to read clipboard'))
+                  }}
+                  className="flex items-center gap-1 px-3 py-1 bg-slate-700 hover:bg-slate-600 text-gray-300 rounded text-sm transition-colors"
+                >
+                  <Clipboard size={14} />
+                  Paste
+                </button>
+              </div>
+              <div className="max-h-80 overflow-y-auto border border-slate-600 rounded-lg">
+                <table className="w-full">
+                  <thead className="sticky top-0 bg-slate-700">
+                    <tr>
+                      <th className="w-16 px-3 py-2 text-left text-xs font-semibold text-gray-400 border-b border-slate-600">#</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-400 border-b border-slate-600">Measurement</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tableData.map((row, rowIndex) => (
+                      <tr key={rowIndex} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                        <td className="px-3 py-1 text-xs text-gray-500 font-mono">{rowIndex + 1}</td>
+                        <td className="p-0">
+                          <input
+                            id={`qc-cell-${rowIndex}`}
+                            type="text"
+                            value={row[0]}
+                            onChange={(e) => handleCellChange(rowIndex, e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(e, rowIndex)}
+                            onPaste={handlePaste}
+                            className="w-full px-3 py-2 bg-transparent text-gray-100 focus:bg-slate-700/50 focus:outline-none focus:ring-1 focus:ring-purple-500/50 font-mono text-sm"
+                            placeholder={rowIndex === 0 ? 'Enter value...' : ''}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center gap-4 mt-4">
+                <button
+                  onClick={handleApplyData}
+                  className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors"
+                >
+                  Apply Data
+                </button>
+                <span className="text-sm text-gray-400">
+                  {parseTableData().length} valid measurements
+                </span>
+              </div>
             </div>
 
             {/* File Upload */}

@@ -77,8 +77,7 @@ hdiutil create -volname "MasterStat" -srcfolder dist/MasterStat.app -format UDZO
 | **DMG (compressed)** | **62 MB** |
 
 **Comparison:**
-- JMP Pro: ~1.2 GB installer
-- Minitab: ~850 MB installer
+- Commercial statistical software: ~800 MB - 1.2 GB installer
 - **MasterStat: 62 MB** ✅ Excellent
 
 ### Current Error
@@ -234,7 +233,7 @@ open http://localhost:5173
 2. Month 3-4: Auto-updater + native features
 3. Month 5-6: Code signing + notarization (macOS)
 
-**Deliverable:** Professional desktop app comparable to JMP/Minitab UX
+**Deliverable:** Professional desktop app with industry-standard UX
 
 ---
 

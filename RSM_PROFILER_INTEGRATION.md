@@ -211,7 +211,7 @@ function inferFactorRanges(tableData, factorNames) {
 **Why 10% Padding?**
 - Allows exploration slightly beyond experimental region
 - Prevents slider constraints from exactly matching data bounds
-- Matches JMP Pro behavior
+- Matches industry-standard behavior
 
 ### SessionStorage for Cross-Page Transfer
 
@@ -340,21 +340,21 @@ try {
 
 ---
 
-## Comparison with JMP Pro
+## Feature Checklist
 
-| Feature | JMP Pro 16 | MasterStat |  Status |
-|---------|-----------|------------|---------|
-| Fit RSM model | ✅ | ✅ | Match |
-| View coefficients | ✅ | ✅ | Match |
-| Export to Profiler | ✅ | ✅ | **NEW** |
-| Interactive sliders | ✅ | ✅ | Match |
-| Real-time prediction | ✅ | ✅ | Match |
-| Contour plots | ✅ | ✅ | Match |
-| Desirability optimization | ✅ | ✅ | Match |
-| Save profiler sessions | ✅ | ❌ | Future |
-| Multi-response profiler | ✅ | ⚠️ (code exists, not tested) | Future |
+| Feature | MasterStat | Status |
+|---------|------------|--------|
+| Fit RSM model | ✅ | Complete |
+| View coefficients | ✅ | Complete |
+| Export to Profiler | ✅ | Complete |
+| Interactive sliders | ✅ | Complete |
+| Real-time prediction | ✅ | Complete |
+| Contour plots | ✅ | Complete |
+| Desirability optimization | ✅ | Complete |
+| Save profiler sessions | ❌ | Future |
+| Multi-response profiler | ⚠️ | Future (code exists, not tested) |
 
-**Parity Achieved:** ~85% for single-response RSM profiling
+**Implementation Status:** ~85% complete for single-response RSM profiling
 
 ---
 

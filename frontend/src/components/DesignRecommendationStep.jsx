@@ -1009,7 +1009,7 @@ const getAllDesigns = (nFactors, budget, goal) => {
       when_to_use: `Consider when classical designs don't fit your constraints or budget. Use when you have ${budget} runs available and need maximum efficiency. Best when experimental region has unusual shape or forbidden combinations. Requires expertise to generate and analyze properly.`,
       practical_considerations: [
         `Uses your specified budget of ${budget} runs`,
-        'Requires design generation software (JMP, Design-Expert, R)',
+        'Requires design generation software (MasterStat, Design-Expert, R)',
         'Document design generation criteria and assumptions',
         'Consider robustness to model misspecification',
         'May need expert statistical consultation',

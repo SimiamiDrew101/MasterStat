@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import axios from 'axios'
 import Plot from 'react-plotly.js'
-import { Upload, TrendingUp, Activity, Info } from 'lucide-react'
+import { Upload, TrendingUp, Activity, Info, Clipboard } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 const NonlinearRegression = () => {
@@ -11,7 +11,10 @@ const NonlinearRegression = () => {
   const [yData, setYData] = useState([])
   const [xLabel, setXLabel] = useState('X')
   const [yLabel, setYLabel] = useState('Y')
-  const [dataText, setDataText] = useState('')
+  // Excel-like table data (two columns: X and Y)
+  const [tableData, setTableData] = useState(
+    Array(20).fill(null).map(() => ['', ''])
+  )
   const [availableModels, setAvailableModels] = useState([])
   const [selectedModel, setSelectedModel] = useState('')
   const [modelInfo, setModelInfo] = useState(null)
@@ -20,6 +23,148 @@ const NonlinearRegression = () => {
   const [fitResult, setFitResult] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // Excel-like table cell change handler
+  const handleCellChange = useCallback((rowIndex, colIndex, value) => {
+    setTableData(prev => {
+      const newData = prev.map(row => [...row])
+      newData[rowIndex][colIndex] = value
+
+      // Auto-add row if typing in last row
+      if (rowIndex === newData.length - 1 && value.trim() !== '') {
+        newData.push(['', ''])
+      }
+      return newData
+    })
+  }, [])
+
+  // Arrow key navigation handler for 2-column table
+  const handleKeyDown = useCallback((e, rowIndex, colIndex) => {
+    const numRows = tableData.length
+    const numCols = 2
+    let newRow = rowIndex
+    let newCol = colIndex
+
+    switch (e.key) {
+      case 'ArrowUp':
+        e.preventDefault()
+        newRow = Math.max(0, rowIndex - 1)
+        break
+      case 'ArrowDown':
+        e.preventDefault()
+        newRow = Math.min(numRows - 1, rowIndex + 1)
+        if (rowIndex === numRows - 1) {
+          setTableData(prev => [...prev, ['', '']])
+          newRow = numRows
+        }
+        break
+      case 'ArrowLeft':
+        e.preventDefault()
+        newCol = Math.max(0, colIndex - 1)
+        break
+      case 'ArrowRight':
+        e.preventDefault()
+        newCol = Math.min(numCols - 1, colIndex + 1)
+        break
+      case 'Tab':
+        e.preventDefault()
+        if (e.shiftKey) {
+          // Shift+Tab: move backwards
+          if (colIndex > 0) {
+            newCol = colIndex - 1
+          } else if (rowIndex > 0) {
+            newRow = rowIndex - 1
+            newCol = numCols - 1
+          }
+        } else {
+          // Tab: move forwards
+          if (colIndex < numCols - 1) {
+            newCol = colIndex + 1
+          } else if (rowIndex < numRows - 1) {
+            newRow = rowIndex + 1
+            newCol = 0
+          } else {
+            // At end, add new row
+            setTableData(prev => [...prev, ['', '']])
+            newRow = numRows
+            newCol = 0
+          }
+        }
+        break
+      case 'Enter':
+        e.preventDefault()
+        newRow = Math.min(numRows - 1, rowIndex + 1)
+        if (rowIndex === numRows - 1) {
+          setTableData(prev => [...prev, ['', '']])
+          newRow = numRows
+        }
+        newCol = 0 // Move to first column of next row
+        break
+      default:
+        return
+    }
+
+    setTimeout(() => {
+      const input = document.getElementById(`nlr-cell-${newRow}-${newCol}`)
+      if (input) {
+        input.focus()
+        input.select()
+      }
+    }, 0)
+  }, [tableData.length])
+
+  // Handle paste from clipboard
+  const handlePaste = useCallback((e) => {
+    e.preventDefault()
+    const pastedData = e.clipboardData.getData('text')
+    const lines = pastedData.trim().split('\n')
+    const newTableData = []
+
+    lines.forEach(line => {
+      const parts = line.trim().split(/[\s,\t]+/)
+      if (parts.length >= 2) {
+        newTableData.push([parts[0], parts[1]])
+      } else if (parts.length === 1 && parts[0]) {
+        newTableData.push([parts[0], ''])
+      }
+    })
+
+    // Ensure at least 20 rows
+    while (newTableData.length < 20) {
+      newTableData.push(['', ''])
+    }
+    newTableData.push(['', ''])
+
+    setTableData(newTableData)
+  }, [])
+
+  // Parse table data to X and Y arrays
+  const parseTableData = useCallback(() => {
+    const parsedX = []
+    const parsedY = []
+    tableData.forEach(row => {
+      const x = parseFloat(row[0])
+      const y = parseFloat(row[1])
+      if (!isNaN(x) && !isNaN(y)) {
+        parsedX.push(x)
+        parsedY.push(y)
+      }
+    })
+    return { x: parsedX, y: parsedY }
+  }, [tableData])
+
+  // Apply data from table
+  const handleApplyData = () => {
+    const { x, y } = parseTableData()
+    if (x.length < 3) {
+      setError('Need at least 3 complete data points (both X and Y values)')
+      return
+    }
+    setXData(x)
+    setYData(y)
+    setError('')
+    setActiveTab('model')
+  }
 
   // Load example datasets
   const loadExampleData = (exampleType) => {
@@ -47,45 +192,16 @@ const NonlinearRegression = () => {
       exampleYLabel = 'Y'
     }
 
+    // Populate table data
+    const newTableData = exampleX.map((x, i) => [x.toString(), exampleY[i].toString()])
+    newTableData.push(['', '']) // Add empty row at end
+    setTableData(newTableData)
+
     setXData(exampleX)
     setYData(exampleY)
     setXLabel(exampleXLabel)
     setYLabel(exampleYLabel)
-    setDataText(exampleX.map((x, i) => `${x}\t${exampleY[i]}`).join('\n'))
     setActiveTab('model')
-  }
-
-  // Parse pasted data
-  const handleParseData = () => {
-    try {
-      const lines = dataText.trim().split('\n')
-      const parsedX = []
-      const parsedY = []
-
-      lines.forEach(line => {
-        const parts = line.trim().split(/[\s,\t]+/)
-        if (parts.length >= 2) {
-          const x = parseFloat(parts[0])
-          const y = parseFloat(parts[1])
-          if (!isNaN(x) && !isNaN(y)) {
-            parsedX.push(x)
-            parsedY.push(y)
-          }
-        }
-      })
-
-      if (parsedX.length < 3) {
-        setError('Need at least 3 data points')
-        return
-      }
-
-      setXData(parsedX)
-      setYData(parsedY)
-      setError('')
-      setActiveTab('model')
-    } catch (err) {
-      setError('Failed to parse data. Use format: X Y (one pair per line)')
-    }
   }
 
   // Upload Excel/CSV file
@@ -97,8 +213,8 @@ const NonlinearRegression = () => {
 
     reader.onload = (e) => {
       try {
-        const data = new Uint8Array(e.target.result)
-        const workbook = XLSX.read(data, { type: 'array' })
+        const fileData = new Uint8Array(e.target.result)
+        const workbook = XLSX.read(fileData, { type: 'array' })
         const sheetName = workbook.SheetNames[0]
         const worksheet = workbook.Sheets[sheetName]
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
@@ -106,6 +222,7 @@ const NonlinearRegression = () => {
         // Extract X and Y columns (first two columns)
         const parsedX = []
         const parsedY = []
+        const newTableData = []
 
         jsonData.forEach((row, i) => {
           if (i === 0) return // Skip header
@@ -115,6 +232,7 @@ const NonlinearRegression = () => {
             if (!isNaN(x) && !isNaN(y)) {
               parsedX.push(x)
               parsedY.push(y)
+              newTableData.push([x.toString(), y.toString()])
             }
           }
         })
@@ -124,6 +242,13 @@ const NonlinearRegression = () => {
           return
         }
 
+        // Ensure minimum rows and add empty row at end
+        while (newTableData.length < 20) {
+          newTableData.push(['', ''])
+        }
+        newTableData.push(['', ''])
+
+        setTableData(newTableData)
         setXData(parsedX)
         setYData(parsedY)
         setError('')
@@ -201,7 +326,7 @@ const NonlinearRegression = () => {
   }
 
   // Load models on mount
-  useState(() => {
+  useEffect(() => {
     loadModels()
   }, [])
 
@@ -309,7 +434,7 @@ const NonlinearRegression = () => {
               </div>
             </div>
 
-            {/* Manual Data Entry */}
+            {/* Manual Data Entry - Excel-like table */}
             <div className="bg-slate-800/50 rounded-2xl p-6 backdrop-blur-sm border border-slate-700/50">
               <h2 className="text-2xl font-bold mb-4 text-gray-100">Enter Your Data</h2>
               <div className="grid grid-cols-2 gap-4 mb-4">
@@ -334,21 +459,87 @@ const NonlinearRegression = () => {
                   />
                 </div>
               </div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Paste data (format: X Y, one pair per line)
-              </label>
-              <textarea
-                value={dataText}
-                onChange={(e) => setDataText(e.target.value)}
-                className="w-full h-64 px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder="0 2.0&#10;1 2.7&#10;2 3.7&#10;3 5.4&#10;4 8.1&#10;5 12.2"
-              />
-              <button
-                onClick={handleParseData}
-                className="mt-4 px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors"
-              >
-                Parse Data
-              </button>
+              <div className="flex items-center gap-2 mb-3">
+                <p className="text-sm text-gray-400">
+                  Enter X and Y values in the table below. Use arrow keys or Tab to navigate, or paste data from Excel.
+                </p>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.readText().then(text => {
+                      const lines = text.trim().split('\n')
+                      const newTableData = []
+                      lines.forEach(line => {
+                        const parts = line.trim().split(/[\s,\t]+/)
+                        if (parts.length >= 2) {
+                          newTableData.push([parts[0], parts[1]])
+                        } else if (parts.length === 1 && parts[0]) {
+                          newTableData.push([parts[0], ''])
+                        }
+                      })
+                      while (newTableData.length < 20) newTableData.push(['', ''])
+                      newTableData.push(['', ''])
+                      setTableData(newTableData)
+                    }).catch(() => setError('Failed to read clipboard'))
+                  }}
+                  className="flex items-center gap-1 px-3 py-1 bg-slate-700 hover:bg-slate-600 text-gray-300 rounded text-sm transition-colors"
+                >
+                  <Clipboard size={14} />
+                  Paste
+                </button>
+              </div>
+              <div className="max-h-80 overflow-y-auto border border-slate-600 rounded-lg">
+                <table className="w-full">
+                  <thead className="sticky top-0 bg-slate-700">
+                    <tr>
+                      <th className="w-16 px-3 py-2 text-left text-xs font-semibold text-gray-400 border-b border-slate-600">#</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-400 border-b border-slate-600">{xLabel} (X)</th>
+                      <th className="px-3 py-2 text-left text-xs font-semibold text-gray-400 border-b border-slate-600">{yLabel} (Y)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tableData.map((row, rowIndex) => (
+                      <tr key={rowIndex} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                        <td className="px-3 py-1 text-xs text-gray-500 font-mono">{rowIndex + 1}</td>
+                        <td className="p-0 border-r border-slate-700/50">
+                          <input
+                            id={`nlr-cell-${rowIndex}-0`}
+                            type="text"
+                            value={row[0]}
+                            onChange={(e) => handleCellChange(rowIndex, 0, e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(e, rowIndex, 0)}
+                            onPaste={handlePaste}
+                            className="w-full px-3 py-2 bg-transparent text-gray-100 focus:bg-slate-700/50 focus:outline-none focus:ring-1 focus:ring-purple-500/50 font-mono text-sm"
+                            placeholder={rowIndex === 0 ? 'X value' : ''}
+                          />
+                        </td>
+                        <td className="p-0">
+                          <input
+                            id={`nlr-cell-${rowIndex}-1`}
+                            type="text"
+                            value={row[1]}
+                            onChange={(e) => handleCellChange(rowIndex, 1, e.target.value)}
+                            onKeyDown={(e) => handleKeyDown(e, rowIndex, 1)}
+                            onPaste={handlePaste}
+                            className="w-full px-3 py-2 bg-transparent text-gray-100 focus:bg-slate-700/50 focus:outline-none focus:ring-1 focus:ring-purple-500/50 font-mono text-sm"
+                            placeholder={rowIndex === 0 ? 'Y value' : ''}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex items-center gap-4 mt-4">
+                <button
+                  onClick={handleApplyData}
+                  className="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-colors"
+                >
+                  Apply Data
+                </button>
+                <span className="text-sm text-gray-400">
+                  {parseTableData().x.length} valid data points
+                </span>
+              </div>
             </div>
 
             {/* File Upload */}

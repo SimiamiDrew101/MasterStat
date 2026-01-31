@@ -9,7 +9,7 @@ values for each factor at each run.
 References:
 - Meyer & Nachtsheim (1995): "The Coordinate-Exchange Algorithm for
   Constructing Exact Optimal Experimental Designs"
-- JMP Pro 16 documentation on Custom Design
+- Atkinson, Donev & Tobias (2007): "Optimum Experimental Designs"
 """
 
 import numpy as np

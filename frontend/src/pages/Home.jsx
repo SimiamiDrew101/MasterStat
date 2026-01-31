@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee, Wand2, FileText } from 'lucide-react'
+import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee, Wand2, FileText, Activity, Gauge, SlidersHorizontal, Gem, GitBranch } from 'lucide-react'
 
 const Home = () => {
   const features = [
@@ -93,6 +93,41 @@ const Home = () => {
       description: 'Taguchi methods, noise factors, and parameter design',
       path: '/robust',
       color: 'from-amber-400 to-amber-600'
+    },
+    {
+      icon: <Activity className="w-12 h-12" />,
+      title: 'Reliability Analysis',
+      description: 'Survival analysis, Weibull fitting, Kaplan-Meier, Cox regression',
+      path: '/reliability',
+      color: 'from-rose-400 to-red-600'
+    },
+    {
+      icon: <Gauge className="w-12 h-12" />,
+      title: 'Quality Control',
+      description: 'Control charts, SPC, process capability analysis',
+      path: '/quality-control',
+      color: 'from-sky-400 to-blue-600'
+    },
+    {
+      icon: <SlidersHorizontal className="w-12 h-12" />,
+      title: 'Prediction Profiler',
+      description: 'Interactive factor profiling and sensitivity analysis',
+      path: '/prediction-profiler',
+      color: 'from-violet-400 to-purple-600'
+    },
+    {
+      icon: <Gem className="w-12 h-12" />,
+      title: 'Optimal Designs',
+      description: 'D-optimal, I-optimal, and A-optimal experimental designs',
+      path: '/optimal-designs',
+      color: 'from-yellow-400 to-orange-600'
+    },
+    {
+      icon: <GitBranch className="w-12 h-12" />,
+      title: 'Nonlinear Regression',
+      description: 'Curve fitting for exponential, logistic, and custom models',
+      path: '/nonlinear-regression',
+      color: 'from-lime-400 to-green-600'
     }
   ]
 
