@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pathlib import Path
-from app.api import hypothesis_testing, anova, factorial, block_designs, mixed_models, rsm, power_analysis, bayesian_doe, import_data, stats, preprocessing, imputation, protocol, prediction_profiler, optimal_designs, nonlinear_regression, quality_control, reliability, glm, custom_design, msa, predictive_modeling
+from app.api import hypothesis_testing, anova, factorial, block_designs, mixed_models, rsm, power_analysis, bayesian_doe, import_data, stats, preprocessing, imputation, protocol, prediction_profiler, optimal_designs, nonlinear_regression, quality_control, reliability, glm, custom_design, msa, predictive_modeling, mixture
 
 app = FastAPI(
     title="MasterStat - Statistical Analysis Tool",
@@ -49,6 +49,7 @@ app.include_router(glm.router, tags=["Generalized Linear Models"])
 app.include_router(custom_design.router, tags=["Custom Design"])
 app.include_router(msa.router, tags=["Measurement Systems Analysis"])
 app.include_router(predictive_modeling.router, tags=["Predictive Modeling"])
+app.include_router(mixture.router, tags=["Mixture Designs"])
 
 @app.get("/health")
 @app.head("/health")

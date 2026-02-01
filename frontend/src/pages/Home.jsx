@@ -83,7 +83,7 @@ const Home = () => {
     {
       icon: <TestTubes className="w-12 h-12" />,
       title: 'Mixture Design',
-      description: 'Simplex designs for mixture experiments and formulation optimization',
+      description: 'Simplex, Extreme Vertices, ternary plots, trace plots for formulations',
       path: '/mixture',
       color: 'from-teal-400 to-teal-600'
     },

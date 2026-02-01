@@ -1,7 +1,7 @@
 # MasterStat - Project Context for Claude Code
 
 **Last Updated:** 2026-02-01
-**Status:** Tier 3 In Progress | Features 1-5 COMPLETE (Reliability, GLM, Custom Design, Enhanced SPC/MSA, Predictive Modeling)
+**Status:** Tier 3 In Progress | Features 1-6 COMPLETE (Reliability, GLM, Custom Design, Enhanced SPC/MSA, Predictive Modeling, Complete Mixture Designs)
 
 ---
 
@@ -67,7 +67,7 @@ All core statistical analysis features working.
 | **Feature 3: Custom Design Platform** | COMPLETE | `custom_design.py`, `CustomDesign.jsx` |
 | **Feature 4: Enhanced SPC/MSA** | COMPLETE | `quality_control.py` (CUSUM, EWMA, CI), `msa.py`, `QualityControl.jsx` (MSA tab) |
 | **Feature 5: Predictive Modeling Suite** | COMPLETE | `predictive_modeling.py`, `PredictiveModeling.jsx` |
-| **Feature 6: Complete Mixture Designs** | NOT STARTED | - |
+| **Feature 6: Complete Mixture Designs** | COMPLETE | `mixture.py`, `MixtureDesign.jsx` (extreme vertices, ternary plots, trace plots, mixture+process) |
 
 ### Electron Builds: COMPLETE (2026-01-28)
 
@@ -85,7 +85,7 @@ All core statistical analysis features working.
 MasterStat/
 ├── backend/                      # Python/FastAPI statistical engine
 │   ├── app/
-│   │   ├── api/                 # 21 API modules (rsm.py, anova.py, reliability.py, glm.py, custom_design.py, msa.py, predictive_modeling.py, etc.)
+│   │   ├── api/                 # 22 API modules (rsm.py, anova.py, reliability.py, glm.py, custom_design.py, msa.py, predictive_modeling.py, mixture.py, etc.)
 │   │   ├── utils/               # model_validation.py, report_generator.py
 │   │   └── main.py              # FastAPI entry point
 │   └── requirements.txt
