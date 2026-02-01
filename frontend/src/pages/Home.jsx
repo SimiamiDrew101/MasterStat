@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee, Wand2, FileText, Activity, Gauge, SlidersHorizontal, Gem, GitBranch, BarChart2, Settings2, Cpu } from 'lucide-react'
+import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee, Wand2, FileText, Activity, Gauge, SlidersHorizontal, Gem, GitBranch, BarChart2, Settings2, Cpu, LayoutGrid } from 'lucide-react'
 
 const Home = () => {
   const features = [
@@ -149,6 +149,13 @@ const Home = () => {
       description: 'Decision Trees, Random Forest, Gradient Boosting, Regularized Regression',
       path: '/predictive-modeling',
       color: 'from-pink-400 to-rose-600'
+    },
+    {
+      icon: <LayoutGrid className="w-12 h-12" />,
+      title: 'Graph Builder',
+      description: 'Drag-and-drop visualization with scatter, bar, box, histogram, heatmap charts',
+      path: '/graph-builder',
+      color: 'from-indigo-400 to-purple-600'
     }
   ]
 

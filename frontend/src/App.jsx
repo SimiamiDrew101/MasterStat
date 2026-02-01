@@ -22,6 +22,7 @@ import ReliabilityAnalysis from './pages/ReliabilityAnalysis'
 import GLM from './pages/GLM'
 import CustomDesign from './pages/CustomDesign'
 import PredictiveModeling from './pages/PredictiveModeling'
+import GraphBuilder from './pages/GraphBuilder'
 import SessionHistory from './components/SessionHistory'
 import { SessionProvider, useSession } from './contexts/SessionContext'
 import { Menu, X, BarChart3, History } from 'lucide-react'
@@ -55,6 +56,7 @@ function AppContent() {
     { path: '/bayesian-doe', label: 'Bayesian DOE', icon: '🎲' },
     { path: '/custom-design', label: 'Custom Design', icon: '⚙️' },
     { path: '/predictive-modeling', label: 'Predictive Modeling', icon: '🤖' },
+    { path: '/graph-builder', label: 'Graph Builder', icon: '📊' },
   ]
 
   return (
@@ -149,6 +151,7 @@ function AppContent() {
                 <Route path="/bayesian-doe" element={<BayesianDOE />} />
                 <Route path="/custom-design" element={<CustomDesign />} />
                 <Route path="/predictive-modeling" element={<PredictiveModeling />} />
+                <Route path="/graph-builder" element={<GraphBuilder />} />
               </Routes>
             </div>
           </main>
