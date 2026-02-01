@@ -88,6 +88,7 @@ const GraphBuilder = () => {
 
   // UI state
   const [draggedColumn, setDraggedColumn] = useState(null)
+  const [selectedColumn, setSelectedColumn] = useState(null)  // For click-to-assign
   const [previewData, setPreviewData] = useState(null)
   const [error, setError] = useState(null)
   const [savedCharts, setSavedCharts] = useState([])
@@ -193,20 +194,33 @@ const GraphBuilder = () => {
   // Drag handlers
   const handleDragStart = (e, column) => {
     setDraggedColumn(column)
+    e.dataTransfer.setData('text/plain', column)
     e.dataTransfer.effectAllowed = 'move'
+    // Set a drag image (optional but helps with visual feedback)
+    if (e.target) {
+      e.dataTransfer.setDragImage(e.target, 0, 0)
+    }
   }
 
   const handleDragOver = (e) => {
     e.preventDefault()
+    e.stopPropagation()
     e.dataTransfer.dropEffect = 'move'
+  }
+
+  const handleDragEnter = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
   }
 
   const handleDrop = (e, zone) => {
     e.preventDefault()
-    if (draggedColumn) {
+    e.stopPropagation()
+    const column = e.dataTransfer.getData('text/plain') || draggedColumn
+    if (column) {
       setAssignments(prev => ({
         ...prev,
-        [zone]: draggedColumn
+        [zone]: column
       }))
     }
     setDraggedColumn(null)
@@ -214,6 +228,25 @@ const GraphBuilder = () => {
 
   const handleDragEnd = () => {
     setDraggedColumn(null)
+  }
+
+  // Click-to-assign handlers (alternative to drag-and-drop)
+  const handleColumnClick = (column) => {
+    if (selectedColumn === column) {
+      setSelectedColumn(null)  // Deselect if clicking same column
+    } else {
+      setSelectedColumn(column)
+    }
+  }
+
+  const handleZoneClick = (zone) => {
+    if (selectedColumn) {
+      setAssignments(prev => ({
+        ...prev,
+        [zone]: selectedColumn
+      }))
+      setSelectedColumn(null)
+    }
   }
 
   const removeAssignment = (zone) => {
@@ -563,7 +596,29 @@ const GraphBuilder = () => {
 
           {/* Column List */}
           <div className="bg-slate-800/50 backdrop-blur-lg rounded-xl p-4 border border-slate-700/50">
-            <h3 className="text-lg font-semibold text-gray-100 mb-3">Columns</h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-semibold text-gray-100">Columns</h3>
+              {selectedColumn && (
+                <button
+                  onClick={() => setSelectedColumn(null)}
+                  className="text-xs px-2 py-1 bg-red-600/50 text-red-200 rounded hover:bg-red-600"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {selectedColumn && (
+              <p className="text-green-400 text-xs mb-2">
+                Click a zone on the right to assign "{selectedColumn}"
+              </p>
+            )}
+
+            {!selectedColumn && columns.length > 0 && (
+              <p className="text-gray-500 text-xs mb-2">
+                Click a column, then click a zone to assign
+              </p>
+            )}
 
             {columns.length === 0 ? (
               <p className="text-gray-400 text-sm">Load data to see columns</p>
@@ -572,13 +627,16 @@ const GraphBuilder = () => {
                 {columns.map(col => (
                   <div
                     key={col}
-                    draggable
+                    draggable={true}
                     onDragStart={(e) => handleDragStart(e, col)}
                     onDragEnd={handleDragEnd}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-move transition-all ${
+                    onClick={() => handleColumnClick(col)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-grab active:cursor-grabbing transition-all select-none ${
                       draggedColumn === col
-                        ? 'bg-blue-600/50 border border-blue-500'
-                        : 'bg-slate-700/50 hover:bg-slate-600/50 border border-transparent'
+                        ? 'bg-blue-600/50 border border-blue-500 opacity-50'
+                        : selectedColumn === col
+                          ? 'bg-green-600/50 border-2 border-green-500 ring-2 ring-green-500/30'
+                          : 'bg-slate-700/50 hover:bg-slate-600/50 border border-transparent hover:border-blue-500/50'
                     }`}
                   >
                     <GripVertical className="w-4 h-4 text-gray-500" />
@@ -756,15 +814,17 @@ const GraphBuilder = () => {
                   <div
                     key={zone}
                     onDragOver={handleDragOver}
+                    onDragEnter={handleDragEnter}
                     onDrop={(e) => handleDrop(e, zone)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-dashed transition-all ${
-                      draggedColumn
-                        ? 'border-blue-500 bg-blue-900/20'
+                    onClick={() => handleZoneClick(zone)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-dashed transition-all cursor-pointer ${
+                      draggedColumn || selectedColumn
+                        ? 'border-blue-500 bg-blue-900/20 hover:bg-blue-900/40'
                         : isAssigned
                           ? 'border-green-600 bg-green-900/20'
                           : isRequired
-                            ? 'border-amber-600/50 bg-amber-900/10'
-                            : 'border-slate-600 bg-slate-700/30'
+                            ? 'border-amber-600/50 bg-amber-900/10 hover:border-amber-500'
+                            : 'border-slate-600 bg-slate-700/30 hover:border-slate-500'
                     }`}
                   >
                     <Icon className={`w-4 h-4 ${
