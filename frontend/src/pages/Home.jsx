@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee, Wand2, FileText, Activity, Gauge, SlidersHorizontal, Gem, GitBranch, BarChart2, Settings2, Cpu, LayoutGrid, Link2 } from 'lucide-react'
+import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee, Wand2, FileText, Activity, Gauge, SlidersHorizontal, Gem, GitBranch, BarChart2, Settings2, Cpu, LayoutGrid, Link2, Grid3X3 } from 'lucide-react'
 
 const Home = () => {
   const features = [
@@ -163,6 +163,13 @@ const Home = () => {
       description: 'Interactive linked plots with brushing, selection sync, and data table',
       path: '/linked-explorer',
       color: 'from-blue-400 to-cyan-600'
+    },
+    {
+      icon: <Grid3X3 className="w-12 h-12" />,
+      title: 'Space-Filling Designs',
+      description: 'Latin Hypercube, Sobol, Halton sequences for computer experiments',
+      path: '/space-filling',
+      color: 'from-cyan-400 to-teal-600'
     }
   ]
 
