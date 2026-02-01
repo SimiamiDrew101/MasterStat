@@ -1,7 +1,7 @@
 # MasterStat - Project Context for Claude Code
 
 **Last Updated:** 2026-02-01
-**Status:** Tier 3 In Progress | Features 1-7 COMPLETE (Reliability, GLM, Custom Design, Enhanced SPC/MSA, Predictive Modeling, Complete Mixture Designs, Graph Builder)
+**Status:** Tier 3 In Progress | Features 1-8 COMPLETE (Reliability, GLM, Custom Design, Enhanced SPC/MSA, Predictive Modeling, Complete Mixture Designs, Graph Builder, Dynamic Linking)
 
 ---
 
@@ -69,6 +69,7 @@ All core statistical analysis features working.
 | **Feature 5: Predictive Modeling Suite** | COMPLETE | `predictive_modeling.py`, `PredictiveModeling.jsx` |
 | **Feature 6: Complete Mixture Designs** | COMPLETE | `mixture.py`, `MixtureDesign.jsx` (extreme vertices, ternary plots, trace plots, mixture+process) |
 | **Feature 7: Graph Builder** | COMPLETE | `GraphBuilder.jsx` (drag-drop visualization, scatter/line/bar/box/histogram/heatmap/contour) |
+| **Feature 8: Dynamic Linking** | COMPLETE | `SelectionContext.jsx`, `LinkedDataExplorer.jsx` (brushing, linked plots, selection sync) |
 
 ### Electron Builds: COMPLETE (2026-01-28)
 
@@ -92,7 +93,7 @@ MasterStat/
 │   └── requirements.txt
 ├── frontend/                     # React/Vite web interface
 │   ├── src/
-│   │   ├── pages/               # 23 page components
+│   │   ├── pages/               # 24 page components
 │   │   ├── components/          # 94+ reusable components
 │   │   ├── contexts/            # SessionContext.jsx
 │   │   └── utils/               # sessionManager.js, smartValidation.js, etc.
@@ -789,7 +790,7 @@ npm run build
 | 5th | Predictive Modeling Suite | NOT STARTED |
 | 6th | Complete Mixture Designs | NOT STARTED |
 | 7th | Graph Builder | COMPLETE |
-| 8th | Dynamic Linking | NOT STARTED |
+| 8th | Dynamic Linking | COMPLETE |
 | 9th | Space-Filling Designs | NOT STARTED |
 | 10th | Time Series Analysis | NOT STARTED |
 | 11th | Professional Reporting | NOT STARTED |

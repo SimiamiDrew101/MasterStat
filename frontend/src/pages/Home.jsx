@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee, Wand2, FileText, Activity, Gauge, SlidersHorizontal, Gem, GitBranch, BarChart2, Settings2, Cpu, LayoutGrid } from 'lucide-react'
+import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee, Wand2, FileText, Activity, Gauge, SlidersHorizontal, Gem, GitBranch, BarChart2, Settings2, Cpu, LayoutGrid, Link2 } from 'lucide-react'
 
 const Home = () => {
   const features = [
@@ -156,6 +156,13 @@ const Home = () => {
       description: 'Drag-and-drop visualization with scatter, bar, box, histogram, heatmap charts',
       path: '/graph-builder',
       color: 'from-indigo-400 to-purple-600'
+    },
+    {
+      icon: <Link2 className="w-12 h-12" />,
+      title: 'Linked Explorer',
+      description: 'Interactive linked plots with brushing, selection sync, and data table',
+      path: '/linked-explorer',
+      color: 'from-blue-400 to-cyan-600'
     }
   ]
 

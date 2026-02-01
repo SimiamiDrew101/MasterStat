@@ -23,6 +23,7 @@ import GLM from './pages/GLM'
 import CustomDesign from './pages/CustomDesign'
 import PredictiveModeling from './pages/PredictiveModeling'
 import GraphBuilder from './pages/GraphBuilder'
+import LinkedDataExplorer from './pages/LinkedDataExplorer'
 import SessionHistory from './components/SessionHistory'
 import { SessionProvider, useSession } from './contexts/SessionContext'
 import { Menu, X, BarChart3, History } from 'lucide-react'
@@ -57,6 +58,7 @@ function AppContent() {
     { path: '/custom-design', label: 'Custom Design', icon: '⚙️' },
     { path: '/predictive-modeling', label: 'Predictive Modeling', icon: '🤖' },
     { path: '/graph-builder', label: 'Graph Builder', icon: '📊' },
+    { path: '/linked-explorer', label: 'Linked Explorer', icon: '🔗' },
   ]
 
   return (
@@ -152,6 +154,7 @@ function AppContent() {
                 <Route path="/custom-design" element={<CustomDesign />} />
                 <Route path="/predictive-modeling" element={<PredictiveModeling />} />
                 <Route path="/graph-builder" element={<GraphBuilder />} />
+                <Route path="/linked-explorer" element={<LinkedDataExplorer />} />
               </Routes>
             </div>
           </main>
