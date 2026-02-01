@@ -20,6 +20,21 @@ class CapabilityRequest(BaseModel):
     data: List[float] = Field(..., description="Process measurements")
     spec_limits: Dict[str, float] = Field(..., description="Specification limits (must have lsl and/or usl)")
     target: Optional[float] = Field(None, description="Target value for Cpm calculation")
+    confidence_level: float = Field(0.95, description="Confidence level for intervals")
+
+class CUSUMRequest(BaseModel):
+    data: List[float] = Field(..., description="Process measurements")
+    target: Optional[float] = Field(None, description="Target mean (defaults to sample mean)")
+    k: float = Field(0.5, description="Slack value (allowance) in sigma units")
+    h: float = Field(5.0, description="Decision interval (threshold) in sigma units")
+    sigma: Optional[float] = Field(None, description="Known process std dev (estimated if not provided)")
+
+class EWMARequest(BaseModel):
+    data: List[float] = Field(..., description="Process measurements")
+    lambda_: float = Field(0.2, description="Smoothing parameter (0 < lambda <= 1)")
+    L: float = Field(3.0, description="Control limit width in sigma units")
+    target: Optional[float] = Field(None, description="Target mean (defaults to sample mean)")
+    sigma: Optional[float] = Field(None, description="Known process std dev (estimated if not provided)")
 
 # ============================================================================
 # Control Chart Constants (ASQ/ASTM)
@@ -260,6 +275,143 @@ def generate_c_chart(data: np.ndarray) -> Dict:
         }
     }
 
+def generate_u_chart(data: np.ndarray, sample_sizes: np.ndarray) -> Dict:
+    """
+    U chart for defects per unit with varying sample sizes
+    Data: number of defects per sample
+    Sample sizes: number of units inspected per sample
+    """
+    # Calculate defect rates
+    u = data / sample_sizes
+    u_bar = np.sum(data) / np.sum(sample_sizes)
+
+    # Control limits (vary by sample size)
+    ucl = u_bar + 3 * np.sqrt(u_bar / sample_sizes)
+    lcl = u_bar - 3 * np.sqrt(u_bar / sample_sizes)
+    lcl = np.maximum(0, lcl)  # LCL can't be negative
+
+    return {
+        "chart_type": "u",
+        "u_chart": {
+            "values": u.tolist(),
+            "center_line": float(u_bar),
+            "ucl": ucl.tolist(),
+            "lcl": lcl.tolist(),
+            "sample_sizes": sample_sizes.tolist()
+        }
+    }
+
+def generate_cusum_chart(data: np.ndarray, target: float, k: float, h: float, sigma: float) -> Dict:
+    """
+    CUSUM (Cumulative Sum) control chart
+    Detects small shifts in process mean faster than Shewhart charts
+
+    Parameters:
+    - target: Target mean value
+    - k: Slack value (allowance), typically 0.5 sigma
+    - h: Decision interval (threshold), typically 4-5 sigma
+    - sigma: Process standard deviation
+    """
+    n = len(data)
+
+    # Standardize the data
+    z = (data - target) / sigma
+
+    # One-sided CUSUM - upper (detects upward shifts)
+    cusum_upper = np.zeros(n)
+    # One-sided CUSUM - lower (detects downward shifts)
+    cusum_lower = np.zeros(n)
+
+    for i in range(n):
+        if i == 0:
+            cusum_upper[i] = max(0, z[i] - k)
+            cusum_lower[i] = min(0, z[i] + k)
+        else:
+            cusum_upper[i] = max(0, cusum_upper[i-1] + z[i] - k)
+            cusum_lower[i] = min(0, cusum_lower[i-1] + z[i] + k)
+
+    # Two-sided CUSUM (absolute values for lower)
+    cusum_lower_abs = np.abs(cusum_lower)
+
+    # Detect violations
+    upper_violations = np.where(cusum_upper > h)[0].tolist()
+    lower_violations = np.where(cusum_lower_abs > h)[0].tolist()
+
+    # Decision threshold lines
+    ucl = h
+    lcl = -h
+
+    return {
+        "chart_type": "cusum",
+        "cusum_chart": {
+            "values": data.tolist(),
+            "cusum_upper": cusum_upper.tolist(),
+            "cusum_lower": cusum_lower.tolist(),
+            "target": float(target),
+            "k": float(k),
+            "h": float(h),
+            "sigma": float(sigma),
+            "ucl": float(ucl),
+            "lcl": float(lcl),
+            "upper_violations": upper_violations,
+            "lower_violations": lower_violations
+        }
+    }
+
+def generate_ewma_chart(data: np.ndarray, lambda_: float, L: float, target: float, sigma: float) -> Dict:
+    """
+    EWMA (Exponentially Weighted Moving Average) control chart
+    Weights recent observations more heavily, good for detecting small shifts
+
+    Parameters:
+    - lambda_: Smoothing parameter (0 < λ ≤ 1). Smaller values give more weight to history
+    - L: Control limit width in sigma units (typically 2.5-3.0)
+    - target: Target mean value
+    - sigma: Process standard deviation
+    """
+    n = len(data)
+
+    # Calculate EWMA statistic
+    ewma = np.zeros(n)
+    ewma[0] = lambda_ * data[0] + (1 - lambda_) * target
+    for i in range(1, n):
+        ewma[i] = lambda_ * data[i] + (1 - lambda_) * ewma[i-1]
+
+    # Time-varying control limits (approach asymptotic limits)
+    # UCL/LCL = target ± L × σ × sqrt(λ/(2-λ) × (1-(1-λ)^(2i)))
+    i_vals = np.arange(1, n + 1)
+    factor = np.sqrt((lambda_ / (2 - lambda_)) * (1 - (1 - lambda_) ** (2 * i_vals)))
+    ucl = target + L * sigma * factor
+    lcl = target - L * sigma * factor
+
+    # Asymptotic limits (for reference)
+    asymptotic_factor = np.sqrt(lambda_ / (2 - lambda_))
+    ucl_asymptotic = target + L * sigma * asymptotic_factor
+    lcl_asymptotic = target - L * sigma * asymptotic_factor
+
+    # Detect violations
+    violations = []
+    for i in range(n):
+        if ewma[i] > ucl[i] or ewma[i] < lcl[i]:
+            violations.append(i)
+
+    return {
+        "chart_type": "ewma",
+        "ewma_chart": {
+            "values": data.tolist(),
+            "ewma": ewma.tolist(),
+            "target": float(target),
+            "lambda": float(lambda_),
+            "L": float(L),
+            "sigma": float(sigma),
+            "ucl": ucl.tolist(),
+            "lcl": lcl.tolist(),
+            "ucl_asymptotic": float(ucl_asymptotic),
+            "lcl_asymptotic": float(lcl_asymptotic),
+            "violations": violations
+        }
+    }
+
 # ============================================================================
 # Western Electric Rules (Control Chart Rule Violations)
 # ============================================================================
@@ -364,8 +516,48 @@ def detect_rule_violations(values: List[float], cl: float, ucl: float, lcl: floa
 # Process Capability Analysis
 # ============================================================================
 
+def calculate_capability_confidence_intervals(n: int, cpk: float, confidence: float = 0.95) -> Dict:
+    """
+    Calculate confidence intervals for Cpk using the Chou et al. (1990) method
+    Based on non-central chi-square distribution approximation
+    """
+    alpha = 1 - confidence
+    z_alpha2 = stats.norm.ppf(1 - alpha / 2)
+
+    # Approximate variance of Cpk
+    # Var(Cpk) ≈ 1/(9n) + Cpk^2/(2(n-1))
+    var_cpk = 1 / (9 * n) + (cpk ** 2) / (2 * (n - 1))
+    se_cpk = np.sqrt(var_cpk)
+
+    lower = cpk - z_alpha2 * se_cpk
+    upper = cpk + z_alpha2 * se_cpk
+
+    return {
+        "lower": float(max(0, lower)),
+        "upper": float(upper),
+        "se": float(se_cpk)
+    }
+
+def calculate_cp_confidence_interval(n: int, cp: float, confidence: float = 0.95) -> Dict:
+    """
+    Calculate confidence interval for Cp using chi-square distribution
+    """
+    alpha = 1 - confidence
+
+    # Cp follows sqrt(chi-square(n-1)/(n-1)) distribution
+    chi2_lower = stats.chi2.ppf(alpha / 2, n - 1)
+    chi2_upper = stats.chi2.ppf(1 - alpha / 2, n - 1)
+
+    lower = cp * np.sqrt(chi2_lower / (n - 1))
+    upper = cp * np.sqrt(chi2_upper / (n - 1))
+
+    return {
+        "lower": float(lower),
+        "upper": float(upper)
+    }
+
 def calculate_capability_indices(data: np.ndarray, lsl: Optional[float], usl: Optional[float],
-                                 target: Optional[float]) -> Dict:
+                                 target: Optional[float], confidence: float = 0.95) -> Dict:
     """
     Calculate process capability indices:
     - Cp: Potential capability (process spread vs. spec width)
@@ -458,6 +650,41 @@ def calculate_capability_indices(data: np.ndarray, lsl: Optional[float], usl: Op
         z_min = results["cpk"] * 3  # Minimum z-score
         ppm = (1 - stats.norm.cdf(z_min)) * 1e6 * 2  # Two-tail
         results["estimated_ppm"] = float(ppm)
+
+    # Confidence intervals
+    n = len(data)
+    results["confidence_level"] = confidence
+
+    if results.get("cp") is not None:
+        results["cp_ci"] = calculate_cp_confidence_interval(n, results["cp"], confidence)
+
+    if results.get("cpk") is not None:
+        results["cpk_ci"] = calculate_capability_confidence_intervals(n, results["cpk"], confidence)
+
+    if results.get("pp") is not None:
+        results["pp_ci"] = calculate_cp_confidence_interval(n, results["pp"], confidence)
+
+    if results.get("ppk") is not None:
+        results["ppk_ci"] = calculate_capability_confidence_intervals(n, results["ppk"], confidence)
+
+    # Histogram data for visualization
+    hist_counts, hist_edges = np.histogram(data, bins='auto')
+    results["histogram"] = {
+        "counts": hist_counts.tolist(),
+        "edges": hist_edges.tolist(),
+        "bin_centers": ((hist_edges[:-1] + hist_edges[1:]) / 2).tolist()
+    }
+
+    # Normal curve overlay data
+    x_range = np.linspace(mean - 4 * std_within, mean + 4 * std_within, 100)
+    normal_pdf = stats.norm.pdf(x_range, mean, std_within)
+    # Scale to match histogram
+    bin_width = hist_edges[1] - hist_edges[0]
+    normal_scaled = normal_pdf * n * bin_width
+    results["normal_curve"] = {
+        "x": x_range.tolist(),
+        "y": normal_scaled.tolist()
+    }
 
     return results
 
@@ -568,10 +795,71 @@ async def capability_analysis(request: CapabilityRequest):
         if lsl is None and usl is None:
             raise ValueError("Must provide at least one specification limit (lsl or usl)")
 
-        results = calculate_capability_indices(data, lsl, usl, target)
+        results = calculate_capability_indices(data, lsl, usl, target, request.confidence_level)
         results["spec_limits"] = request.spec_limits
 
         return results
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/cusum")
+async def cusum_chart(request: CUSUMRequest):
+    """
+    Generate CUSUM (Cumulative Sum) control chart.
+    More sensitive to small, persistent shifts in process mean than Shewhart charts.
+    """
+    try:
+        data = np.array(request.data)
+
+        if len(data) < 5:
+            raise ValueError("Need at least 5 data points for CUSUM chart")
+
+        # Use sample mean as target if not provided
+        target = request.target if request.target is not None else float(np.mean(data))
+
+        # Estimate sigma from moving range if not provided
+        if request.sigma is not None:
+            sigma = request.sigma
+        else:
+            mr = np.abs(np.diff(data))
+            sigma = float(np.mean(mr) / 1.128)
+
+        chart_data = generate_cusum_chart(data, target, request.k, request.h, sigma)
+
+        return chart_data
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/ewma")
+async def ewma_chart(request: EWMARequest):
+    """
+    Generate EWMA (Exponentially Weighted Moving Average) control chart.
+    Weights recent observations more heavily, effective for detecting small shifts.
+    """
+    try:
+        data = np.array(request.data)
+
+        if len(data) < 5:
+            raise ValueError("Need at least 5 data points for EWMA chart")
+
+        if not (0 < request.lambda_ <= 1):
+            raise ValueError("Lambda must be between 0 and 1")
+
+        # Use sample mean as target if not provided
+        target = request.target if request.target is not None else float(np.mean(data))
+
+        # Estimate sigma from moving range if not provided
+        if request.sigma is not None:
+            sigma = request.sigma
+        else:
+            mr = np.abs(np.diff(data))
+            sigma = float(np.mean(mr) / 1.128)
+
+        chart_data = generate_ewma_chart(data, request.lambda_, request.L, target, sigma)
+
+        return chart_data
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -612,6 +900,24 @@ async def get_info():
                 "description": "For number of defects per unit",
                 "use_case": "Count of defects with constant sample size",
                 "data_type": "Attribute"
+            },
+            "u": {
+                "name": "U chart (Defects per Unit)",
+                "description": "For defects per unit with varying sample sizes",
+                "use_case": "Number of defects when sample size varies",
+                "data_type": "Attribute"
+            },
+            "cusum": {
+                "name": "CUSUM (Cumulative Sum)",
+                "description": "Cumulative sum of deviations from target",
+                "use_case": "Detecting small, persistent shifts in process mean",
+                "data_type": "Continuous"
+            },
+            "ewma": {
+                "name": "EWMA (Exponentially Weighted Moving Average)",
+                "description": "Weighted average giving more weight to recent data",
+                "use_case": "Detecting small shifts, smooth response to changes",
+                "data_type": "Continuous"
             }
         },
         "western_electric_rules": [

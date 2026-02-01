@@ -1,7 +1,7 @@
 # MasterStat - Project Context for Claude Code
 
-**Last Updated:** 2026-01-31
-**Status:** Tier 3 In Progress | Feature 1 (Reliability/Survival) COMPLETE
+**Last Updated:** 2026-02-01
+**Status:** Tier 3 In Progress | Features 1-5 COMPLETE (Reliability, GLM, Custom Design, Enhanced SPC/MSA, Predictive Modeling)
 
 ---
 
@@ -63,10 +63,10 @@ All core statistical analysis features working.
 | Feature | Status | Key Files |
 |---------|--------|-----------|
 | **Feature 1: Reliability/Survival Analysis** | COMPLETE | `reliability.py`, `ReliabilityAnalysis.jsx`, `SurvivalCurvePlot.jsx`, `WeibullPlot.jsx`, `HazardRatioForest.jsx`, `LifeDistributionResults.jsx` |
-| **Feature 2: Generalized Linear Models (GLM)** | NOT STARTED | - |
-| **Feature 3: Custom Design Platform** | NOT STARTED | - |
-| **Feature 4: Enhanced SPC/MSA** | NOT STARTED | - |
-| **Feature 5: Predictive Modeling Suite** | NOT STARTED | - |
+| **Feature 2: Generalized Linear Models (GLM)** | COMPLETE | `glm.py`, `GLM.jsx` |
+| **Feature 3: Custom Design Platform** | COMPLETE | `custom_design.py`, `CustomDesign.jsx` |
+| **Feature 4: Enhanced SPC/MSA** | COMPLETE | `quality_control.py` (CUSUM, EWMA, CI), `msa.py`, `QualityControl.jsx` (MSA tab) |
+| **Feature 5: Predictive Modeling Suite** | COMPLETE | `predictive_modeling.py`, `PredictiveModeling.jsx` |
 | **Feature 6: Complete Mixture Designs** | NOT STARTED | - |
 
 ### Electron Builds: COMPLETE (2026-01-28)
@@ -85,13 +85,13 @@ All core statistical analysis features working.
 MasterStat/
 ├── backend/                      # Python/FastAPI statistical engine
 │   ├── app/
-│   │   ├── api/                 # 17 API modules (rsm.py, anova.py, reliability.py, etc.)
+│   │   ├── api/                 # 21 API modules (rsm.py, anova.py, reliability.py, glm.py, custom_design.py, msa.py, predictive_modeling.py, etc.)
 │   │   ├── utils/               # model_validation.py, report_generator.py
 │   │   └── main.py              # FastAPI entry point
 │   └── requirements.txt
 ├── frontend/                     # React/Vite web interface
 │   ├── src/
-│   │   ├── pages/               # 19 page components
+│   │   ├── pages/               # 22 page components
 │   │   ├── components/          # 94+ reusable components
 │   │   ├── contexts/            # SessionContext.jsx
 │   │   └── utils/               # sessionManager.js, smartValidation.js, etc.

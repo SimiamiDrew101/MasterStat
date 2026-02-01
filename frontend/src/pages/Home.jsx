@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee, Wand2, FileText, Activity, Gauge, SlidersHorizontal, Gem, GitBranch } from 'lucide-react'
+import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee, Wand2, FileText, Activity, Gauge, SlidersHorizontal, Gem, GitBranch, BarChart2, Settings2, Cpu } from 'lucide-react'
 
 const Home = () => {
   const features = [
@@ -128,6 +128,27 @@ const Home = () => {
       description: 'Curve fitting for exponential, logistic, and custom models',
       path: '/nonlinear-regression',
       color: 'from-lime-400 to-green-600'
+    },
+    {
+      icon: <BarChart2 className="w-12 h-12" />,
+      title: 'Generalized Linear Models',
+      description: 'Poisson, Binomial, Gamma, and Negative Binomial regression',
+      path: '/glm',
+      color: 'from-indigo-400 to-blue-600'
+    },
+    {
+      icon: <Settings2 className="w-12 h-12" />,
+      title: 'Custom Design',
+      description: 'D-optimal, I-optimal, A-optimal designs with constraints',
+      path: '/custom-design',
+      color: 'from-cyan-400 to-teal-600'
+    },
+    {
+      icon: <Cpu className="w-12 h-12" />,
+      title: 'Predictive Modeling',
+      description: 'Decision Trees, Random Forest, Gradient Boosting, Regularized Regression',
+      path: '/predictive-modeling',
+      color: 'from-pink-400 to-rose-600'
     }
   ]
 
