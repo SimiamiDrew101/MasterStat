@@ -522,7 +522,7 @@ const RSM = () => {
         }
         blob = new Blob([bytes], { type: 'application/pdf' })
       } else {
-        // Text files (JMP, R, Python) as-is
+        // Text files (R, Python) as-is
         blob = new Blob([response.data.content], { type: response.data.mime_type })
       }
 
@@ -1809,15 +1809,6 @@ const RSM = () => {
                 <span className="text-2xl mb-2">📄</span>
                 <span>PDF Report</span>
                 <span className="text-xs opacity-80 mt-1">Complete Report (.pdf)</span>
-              </button>
-
-              <button
-                onClick={() => handleExport('jmp')}
-                className="flex flex-col items-center justify-center bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-xl font-semibold transition-all duration-200 hover:scale-105"
-              >
-                <span className="text-2xl mb-2">📊</span>
-                <span>Export to JMP</span>
-                <span className="text-xs opacity-80 mt-1">JSL Script (.jsl)</span>
               </button>
 
               <button

@@ -8,7 +8,7 @@ Provides:
 - Component trace plots
 - Scheffé polynomial models with constraints
 
-JMP Pro 16 Parity Feature
+Advanced Mixture Designs Feature
 """
 
 from fastapi import APIRouter, HTTPException

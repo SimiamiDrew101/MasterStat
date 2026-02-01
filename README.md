@@ -2,7 +2,7 @@
 
 **Professional-grade statistical analysis and Design of Experiments (DOE) platform**
 
-Free, open-source desktop application for researchers, engineers, and data scientists. Feature parity with JMP Pro 16. Built with React, FastAPI, Electron, and modern visualization libraries.
+Free, open-source desktop application for researchers, engineers, and data scientists. Comprehensive statistical analysis suite built with React, FastAPI, Electron, and modern visualization libraries.
 
 [![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
 [![Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/MasterStat)

@@ -10,7 +10,6 @@ import FactorInteractionSelector from '../components/FactorInteractionSelector'
 import {
   downloadPDF,
   downloadExcel,
-  downloadJMP,
   downloadMinitab,
   downloadCSV
 } from '../utils/designExport'
@@ -1028,13 +1027,6 @@ const DesignResults = ({ design, wizardData }) => {
       icon: <Download className="w-5 h-5" />,
       color: 'text-blue-400',
       handler: () => downloadCSV(getCurrentDesign(), wizardData, true)
-    },
-    {
-      label: 'JMP Format',
-      description: 'Compatible with JMP software',
-      icon: <FileCode className="w-5 h-5" />,
-      color: 'text-purple-400',
-      handler: () => downloadJMP(getCurrentDesign(), wizardData)
     },
     {
       label: 'Minitab Format',
