@@ -2,11 +2,13 @@ import { useState } from 'react'
 import axios from 'axios'
 import { TrendingUp, Play, Download, BarChart3, Activity, RefreshCw, Calendar, Layers, Target, Info, AlertCircle } from 'lucide-react'
 import Plot from 'react-plotly.js'
+import ExcelTable from '../components/ExcelTable'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
 
 const TimeSeriesAnalysis = () => {
-  const [rawData, setRawData] = useState('')
+  const [tableData, setTableData] = useState(Array(20).fill(null).map(() => ['']))
+  const [columns] = useState([{ key: 'value', label: 'Value' }])
   const [data, setData] = useState(null)
   const [activeTab, setActiveTab] = useState('data')
   const [loading, setLoading] = useState(false)
@@ -30,12 +32,14 @@ const TimeSeriesAnalysis = () => {
 
   const parseData = () => {
     try {
-      const lines = rawData.trim().split('\n')
-      const values = lines.map(line => {
-        const num = parseFloat(line.trim().replace(',', ''))
-        if (isNaN(num)) throw new Error(`Invalid number: ${line}`)
-        return num
-      })
+      const values = tableData
+        .map(row => row[0])
+        .filter(val => val !== '' && val !== null && val !== undefined)
+        .map(val => {
+          const num = parseFloat(String(val).trim().replace(',', ''))
+          if (isNaN(num)) throw new Error(`Invalid number: ${val}`)
+          return num
+        })
 
       if (values.length < 4) {
         setError('Need at least 4 data points')
@@ -173,7 +177,12 @@ const TimeSeriesAnalysis = () => {
       seasonal: Array.from({ length: 48 }, (_, i) => (50 + 20 * Math.sin(2 * Math.PI * i / 12) + Math.random() * 5).toFixed(2)),
       random: Array.from({ length: 40 }, () => (100 + Math.random() * 20 - 10).toFixed(2))
     }
-    setRawData(samples[type].join('\n'))
+    const newTableData = samples[type].map(val => [val])
+    // Add empty rows to reach minimum
+    while (newTableData.length < 20) {
+      newTableData.push([''])
+    }
+    setTableData(newTableData)
   }
 
   const renderTimeSeriesPlot = (values, title, color = '#3b82f6') => (
@@ -409,19 +418,24 @@ const TimeSeriesAnalysis = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-slate-800/50 rounded-xl p-6 border border-slate-700">
             <h2 className="text-xl font-semibold text-gray-100 mb-4">Enter Time Series Data</h2>
-            <p className="text-gray-400 text-sm mb-4">Enter one value per line (chronological order)</p>
+            <p className="text-gray-400 text-sm mb-4">Enter values in chronological order. Use arrow keys to navigate.</p>
 
-            <textarea
-              value={rawData}
-              onChange={(e) => setRawData(e.target.value)}
-              className="w-full h-64 bg-slate-900 text-gray-100 px-4 py-3 rounded-lg border border-slate-600 font-mono text-sm"
-              placeholder="100.5&#10;102.3&#10;101.8&#10;103.2&#10;..."
-            />
+            <div className="max-h-80 overflow-y-auto">
+              <ExcelTable
+                data={tableData}
+                columns={columns}
+                onChange={setTableData}
+                minRows={20}
+                maxRows={500}
+                allowAddRows={true}
+                allowDeleteRows={true}
+              />
+            </div>
 
             <div className="flex gap-3 mt-4">
               <button
                 onClick={parseData}
-                disabled={!rawData.trim()}
+                disabled={!tableData.some(row => row[0] !== '' && row[0] !== null)}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold disabled:opacity-50"
               >
                 <Play className="w-5 h-5" /> Load Data
