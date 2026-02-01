@@ -2334,7 +2334,7 @@ async def analyze_robust_design(request: RobustAnalysisRequest):
 # ============================================================================
 
 class ExportRequest(BaseModel):
-    format: str = Field(..., description="Export format: 'r', 'python', 'pdf'")
+    format: str = Field(..., description="Export format: 'tsv', 'r', 'python', 'pdf'")
     model_data: Dict[str, Any] = Field(..., description="Complete model results")
     factors: List[str] = Field(..., description="Factor names")
     response: str = Field(..., description="Response variable name")
@@ -2345,12 +2345,23 @@ class ExportRequest(BaseModel):
 async def export_model(request: ExportRequest):
     """
     Export RSM model to industry standard formats:
+    - TSV: Tab-delimited universal format
     - R: R script with all analysis code
     - Python: Python script using statsmodels
-    - PDF: Professional report (not yet implemented)
+    - PDF: Professional report
     """
     try:
-        if request.format == 'r':
+        if request.format == 'tsv':
+            # Generate tab-delimited format
+            content = generate_tsv_export(request)
+            return {
+                "format": "tsv",
+                "filename": f"rsm_analysis_{request.response}.txt",
+                "content": content,
+                "mime_type": "text/plain"
+            }
+
+        elif request.format == 'r':
             # Generate R script
             script = generate_r_script(request)
             return {
@@ -2387,6 +2398,27 @@ async def export_model(request: ExportRequest):
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+def generate_tsv_export(request: ExportRequest) -> str:
+    """Generate tab-delimited format for universal compatibility"""
+    lines = []
+
+    # Header
+    headers = ['Run'] + request.factors + [request.response]
+    lines.append('\t'.join(headers))
+
+    # Data rows
+    for i, row in enumerate(request.data, 1):
+        values = [str(i)]
+        for factor in request.factors:
+            val = row.get(factor, 0)
+            values.append(f"{val:.6f}" if isinstance(val, (int, float)) else str(val))
+        resp_val = row.get(request.response, '')
+        values.append(f"{resp_val:.6f}" if isinstance(resp_val, (int, float)) else str(resp_val))
+        lines.append('\t'.join(values))
+
+    return '\n'.join(lines)
 
 
 def generate_r_script(request: ExportRequest) -> str:

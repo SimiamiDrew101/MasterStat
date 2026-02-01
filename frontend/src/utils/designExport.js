@@ -422,6 +422,30 @@ export const generateExcelWorkbook = (design, wizardData) => {
   return wb
 }
 
+// ==================== TAB-DELIMITED FORMAT EXPORT ====================
+
+export const generateJMPFormat = (design, wizardData) => {
+  const factorNames = design.factorNames || []
+  const designMatrix = design.design_matrix || []
+  const factorLevels = design.factorLevels || []
+
+  // Tab-delimited format with specific headers
+  const headers = ['Pattern', 'Run', ...factorNames, 'Y']
+  let content = headers.join('\t') + '\n'
+
+  designMatrix.forEach((row, idx) => {
+    const pattern = idx + 1
+    const runNumber = idx + 1
+    const values = factorNames.map(name => {
+      const value = row[name]
+      return typeof value === 'number' ? value.toFixed(6) : value
+    })
+    content += [pattern, runNumber, ...values, ''].join('\t') + '\n'
+  })
+
+  return content
+}
+
 // ==================== MINITAB FORMAT EXPORT ====================
 
 export const generateMinitabFormat = (design, wizardData) => {
@@ -518,6 +542,11 @@ export const downloadPDF = (design, wizardData) => {
 export const downloadExcel = (design, wizardData) => {
   const wb = generateExcelWorkbook(design, wizardData)
   XLSX.writeFile(wb, 'experiment-design.xlsx')
+}
+
+export const downloadJMP = (design, wizardData) => {
+  const content = generateJMPFormat(design, wizardData)
+  downloadFile(content, 'experiment-design.jmp.txt', 'text/plain')
 }
 
 export const downloadMinitab = (design, wizardData) => {

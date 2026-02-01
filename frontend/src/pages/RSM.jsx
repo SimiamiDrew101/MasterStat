@@ -1812,6 +1812,15 @@ const RSM = () => {
               </button>
 
               <button
+                onClick={() => handleExport('tsv')}
+                className="flex flex-col items-center justify-center bg-orange-600 hover:bg-orange-700 text-white px-6 py-4 rounded-xl font-semibold transition-all duration-200 hover:scale-105"
+              >
+                <span className="text-2xl mb-2">📊</span>
+                <span>Tab-Delimited</span>
+                <span className="text-xs opacity-80 mt-1">Universal Format (.txt)</span>
+              </button>
+
+              <button
                 onClick={() => handleExport('r')}
                 className="flex flex-col items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-xl font-semibold transition-all duration-200 hover:scale-105"
               >
