@@ -1,4 +1,10 @@
-# Planning and Analysis Documents (exclude from repo)
+# =============================================================================
+# MasterStat .gitignore - Production Configuration
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Planning and Analysis Documents (internal development notes)
+# -----------------------------------------------------------------------------
 *_IMPROVEMENTS*.md
 *_PLAN*.md
 *_ROADMAP*.md
@@ -18,8 +24,11 @@ Further_improvements.md
 FEATURE_*.md
 EXCEL_TABLE_IMPLEMENTATION.md
 SVG_EXPORT_IMPLEMENTATION.md
+TIER*_STATUS.md
 
-# Debug and Fix Documentation (exclude from repo)
+# -----------------------------------------------------------------------------
+# Debug and Fix Documentation (internal development notes)
+# -----------------------------------------------------------------------------
 ELECTRON_*.md
 OUTLIER_*.md
 PREPROCESSING_FIX.md
@@ -30,7 +39,9 @@ CORS_FIX.md
 GIT_*.md
 GIT_*.txt
 
-# Test files and artifacts (exclude from repo)
+# -----------------------------------------------------------------------------
+# Test Files and Artifacts
+# -----------------------------------------------------------------------------
 test_*.py
 test_*.json
 test_*.html
@@ -45,7 +56,9 @@ modelfit_metrix.png
 test_rsm_report.pdf
 resolution.png
 
+# -----------------------------------------------------------------------------
 # Python
+# -----------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
@@ -53,22 +66,59 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
+env.bak/
+venv.bak/
 *.egg-info/
+*.egg
+.eggs/
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
 .pytest_cache/
 .ruff_cache/
-*.pyc
+.mypy_cache/
+.dmypy.json
+dmypy.json
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+*.cover
+*.py,cover
+.hypothesis/
+pytestdebug.log
+nosetests.xml
+coverage.xml
+*.mo
+*.pot
+MANIFEST
 
-# Node
+# -----------------------------------------------------------------------------
+# Node.js
+# -----------------------------------------------------------------------------
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+lerna-debug.log*
+.npm
+.yarn-integrity
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
 .vite/
 package-electron.json
 
-# Build outputs
+# -----------------------------------------------------------------------------
+# Build Outputs
+# -----------------------------------------------------------------------------
 frontend/dist/
 frontend/build/
 dist/
@@ -86,41 +136,127 @@ out/
 *.nsis.7z
 build/masterstat/
 
+# -----------------------------------------------------------------------------
 # PyInstaller
+# -----------------------------------------------------------------------------
 *.spec
 launcher.py
 
-# Environment
+# -----------------------------------------------------------------------------
+# Environment Variables
+# -----------------------------------------------------------------------------
 .env
 .env.local
+.env.development.local
+.env.test.local
+.env.production.local
 .env.*.local
 .env.production
+*.pem
 
-# IDE
+# -----------------------------------------------------------------------------
+# IDE and Editors
+# -----------------------------------------------------------------------------
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+*.sublime-workspace
+*.sublime-project
+.project
+.classpath
+.settings/
+*.iml
+.spyproject
+.spyderproject
+.ropeproject
 
-# Claude Code
+# -----------------------------------------------------------------------------
+# Claude Code / AI Tools
+# -----------------------------------------------------------------------------
 .claude/
 
-# OS
+# -----------------------------------------------------------------------------
+# Operating System
+# -----------------------------------------------------------------------------
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
 
+# -----------------------------------------------------------------------------
 # Logs
+# -----------------------------------------------------------------------------
 *.log
 logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Temporary files
+# -----------------------------------------------------------------------------
+# Temporary Files
+# -----------------------------------------------------------------------------
 *.tmp
 *.temp
+*.bak
+*.backup
+*.swp
 /private/
+tmp/
+temp/
+.cache/
 
-# Testing
+# -----------------------------------------------------------------------------
+# Testing and Coverage
+# -----------------------------------------------------------------------------
 coverage/
+.nyc_output/
+*.lcov
 
-# Large binary files in root (old builds)
+# -----------------------------------------------------------------------------
+# Large Binary Files in Root (old builds)
+# -----------------------------------------------------------------------------
 MasterStat-*.dmg
+MasterStat-*.exe
+MasterStat-*.AppImage
+
+# -----------------------------------------------------------------------------
+# Miscellaneous
+# -----------------------------------------------------------------------------
+*.pid
+*.seed
+*.pid.lock
+.lock-wscript
+.node_repl_history
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+.eslintcache
+.stylelintcache
+.fusebox/
+.dynamodb/
+.serverless/
+.tern-port
+.parcel-cache
+
+# -----------------------------------------------------------------------------
+# Jupyter Notebooks
+# -----------------------------------------------------------------------------
+.ipynb_checkpoints
+*/.ipynb_checkpoints/*
+profile_default/
+ipython_config.py
+
+# -----------------------------------------------------------------------------
+# Secrets (never commit)
+# -----------------------------------------------------------------------------
+secrets/
+*.key
+*.crt
+credentials.json
+service-account.json

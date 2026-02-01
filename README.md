@@ -2,12 +2,12 @@
 
 **Professional-grade statistical analysis and Design of Experiments (DOE) platform**
 
-Free, open-source desktop application for researchers, engineers, and data scientists. Built with React, FastAPI, Electron, and modern visualization libraries.
+Free, open-source desktop application for researchers, engineers, and data scientists. Feature parity with JMP Pro 16. Built with React, FastAPI, Electron, and modern visualization libraries.
 
 [![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
 [![Ko-fi](https://img.shields.io/badge/Support-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/MasterStat)
 
-[Features](#features) • [Download](#download) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Contributing](#contributing)
+[Features](#features) | [Download](#download) | [Quick Start](#quick-start) | [Documentation](#documentation) | [Contributing](#contributing)
 
 ---
 
@@ -30,27 +30,78 @@ Free, open-source desktop application for researchers, engineers, and data scien
 
 ## Features
 
-### Core Statistical Analysis
+### Design of Experiments (DOE)
 
 | Module | Description |
 |--------|-------------|
 | **Experiment Wizard** | Step-by-step guided design with DSD, Plackett-Burman, confounding analysis |
 | **Response Surface (RSM)** | CCD, Box-Behnken, optimization, 3D surfaces, contour plots |
-| **ANOVA** | One-way, two-way, repeated measures with Tukey, Bonferroni, Scheffé |
 | **Factorial Designs** | Full 2^k, 3^k, fractional factorial, screening designs |
-| **Mixed Models** | Split-plot, nested designs, random effects, variance components |
-| **Quality Control** | X-bar, R, S, P, C charts, process capability (Cp, Cpk) |
-| **Nonlinear Regression** | Curve fitting, growth models, convergence analysis |
+| **Custom Design** | D-optimal, I-optimal, A-optimal designs with constraints |
+| **Mixture Designs** | Simplex-lattice, simplex-centroid, extreme vertices, ternary plots |
+| **Block Designs** | RCBD, Latin squares, BIBD, incomplete blocks |
 | **Bayesian DOE** | MCMC, posterior optimization, HDI, convergence diagnostics |
+| **Optimal Designs** | Space-filling, coordinate exchange algorithms |
 
-### Advanced Features (Tier 2 - NEW)
+### Statistical Analysis
+
+| Module | Description |
+|--------|-------------|
+| **ANOVA** | One-way, two-way, repeated measures with Tukey, Bonferroni, Scheffe |
+| **Mixed Models** | Split-plot, nested designs, random effects, variance components, BLUPs |
+| **GLM** | Poisson, Binomial, Gamma, Negative Binomial regression |
+| **Nonlinear Regression** | Curve fitting, growth models, convergence analysis |
+| **Hypothesis Testing** | t-tests, F-tests, Z-tests with confidence intervals |
+| **Model Validation** | PRESS statistic, k-fold CV, adequacy scoring, diagnostic tests |
+
+### Reliability & Survival Analysis
 
 | Feature | Description |
 |---------|-------------|
-| **Model Validation** | PRESS statistic, k-fold cross-validation, adequacy scoring (0-100), diagnostic tests |
-| **Multi-Response Optimization** | 3 desirability methods (geometric mean, minimum, weighted sum), overlay contour plots |
-| **Session Management** | Save/load analysis sessions, export/import JSON, search and filter history |
-| **Design Preview** | Interactive 3D visualization of experimental designs with power curves |
+| **Life Distribution** | Weibull, lognormal, exponential distribution fitting |
+| **Kaplan-Meier** | Non-parametric survival curves, log-rank tests |
+| **Cox Proportional Hazards** | Semi-parametric regression for censored data |
+| **Accelerated Life Testing** | Arrhenius, power law models for stress testing |
+| **Reliability Test Planning** | Sample size calculations for demonstration tests |
+
+### Quality Control & MSA
+
+| Feature | Description |
+|---------|-------------|
+| **Control Charts** | X-bar, R, S, P, C, CUSUM, EWMA charts |
+| **Process Capability** | Cp, Cpk, Pp, Ppk with confidence intervals |
+| **Gauge R&R** | Crossed and nested MSA studies |
+| **Attribute Agreement** | Kappa, Kendall's W for categorical data |
+| **Western Electric Rules** | Automatic out-of-control detection |
+
+### Predictive Modeling
+
+| Method | Purpose |
+|--------|---------|
+| **Decision Trees (CART)** | Interpretable segmentation |
+| **Random Forest** | Variable importance, robust prediction |
+| **Gradient Boosting** | High-accuracy prediction |
+| **Regularized Regression** | Lasso, Ridge, Elastic Net for variable selection |
+| **Model Comparison** | Automated comparison across all methods |
+
+### Interactive Visualization
+
+| Feature | Description |
+|---------|-------------|
+| **Graph Builder** | Drag-and-drop chart creation (scatter, bar, box, histogram, heatmap) |
+| **Linked Explorer** | Linked plots with brushing, selection sync across views |
+| **3D Surfaces** | Interactive response surfaces with rotation and zoom |
+| **Contour Plots** | Overlay contours for multi-response optimization |
+| **Ternary Plots** | Triangular plots for mixture designs |
+| **Diagnostic Plots** | Residuals, Q-Q, Cook's distance, leverage |
+
+### Multi-Response Optimization
+
+| Feature | Description |
+|---------|-------------|
+| **Desirability Functions** | Geometric mean, minimum, weighted sum methods |
+| **Overlay Contours** | Find feasible regions for multiple responses |
+| **Optimization Profiler** | Interactive factor profiling and sensitivity analysis |
 
 ### Data Management
 
@@ -59,16 +110,6 @@ Free, open-source desktop application for researchers, engineers, and data scien
 - **Outlier Detection** - IQR method, Z-score method, visual diagnostics
 - **Data Transformation** - Log, square root, Box-Cox, standardization
 - **Session Persistence** - IndexedDB storage, export/import sessions
-
-### Visualizations
-
-- Interactive 3D response surfaces with rotation and zoom
-- Contour plots with optimization paths and constraints
-- **Overlay contour plots** for multi-response optimization
-- Diagnostic plots (residuals, Q-Q, Cook's distance, leverage)
-- Main effects and interaction plots
-- Power curves for sample size planning
-- Confounding diagrams with resolution badges
 
 ### Export Capabilities
 
@@ -130,10 +171,10 @@ npm run dev
 | Layer | Technologies |
 |-------|-------------|
 | **Frontend** | React 18.2, Vite 5.0, TailwindCSS 3.4, Plotly.js 3.3, Recharts |
-| **Backend** | Python 3.11+, FastAPI 0.109, Uvicorn, SciPy, statsmodels, pandas |
+| **Backend** | Python 3.11+, FastAPI 0.109, Uvicorn, SciPy, statsmodels, pandas, scikit-learn, lifelines |
 | **Desktop** | Electron 28.1, cross-platform (macOS, Windows, Linux) |
 | **Persistence** | IndexedDB via Dexie.js 4.2 (client-side session storage) |
-| **Visualization** | Plotly.js (3D surfaces, contours), Recharts (charts) |
+| **Visualization** | Plotly.js (3D surfaces, contours, ternary), Recharts (charts) |
 
 ---
 
@@ -143,15 +184,15 @@ npm run dev
 MasterStat/
 ├── backend/                 # Python/FastAPI statistical engine
 │   ├── app/
-│   │   ├── api/            # 14 API modules (rsm, anova, factorial, etc.)
+│   │   ├── api/            # 24 API modules
 │   │   ├── utils/          # model_validation.py, report_generator.py
 │   │   └── main.py         # FastAPI entry point
 │   └── requirements.txt
 ├── frontend/                # React/Vite web interface
 │   ├── src/
-│   │   ├── pages/          # 18 page components
+│   │   ├── pages/          # 24 page components
 │   │   ├── components/     # 90+ reusable components
-│   │   ├── contexts/       # SessionContext.jsx
+│   │   ├── contexts/       # SessionContext.jsx, SelectionContext.jsx
 │   │   └── utils/          # sessionManager.js, validation, etc.
 │   └── package.json
 ├── electron/                # Electron desktop wrapper
@@ -161,11 +202,11 @@ MasterStat/
 ```
 
 **Project Statistics:**
-- 18 statistical modules
+- 24 statistical API modules
+- 24 page components
 - 90+ React components
-- 14 backend API modules
 - 50+ visualization types
-- ~35,000 lines of code
+- ~93,000 lines of code
 - Cross-platform desktop builds
 
 ---
@@ -174,34 +215,51 @@ MasterStat/
 
 ### 1. Response Surface Optimization
 
-1. Navigate to **Response Surface** → Generate CCD or Box-Behnken design
-2. Import experimental data → Fit quadratic model
+1. Navigate to **Response Surface** -> Generate CCD or Box-Behnken design
+2. Import experimental data -> Fit quadratic model
 3. View 3D surface and contour plots
 4. **Validate model** with PRESS and k-fold CV
-5. Run desirability optimization → Export report
+5. Run desirability optimization -> Export report
 
-### 2. Multi-Response Optimization (NEW)
+### 2. Reliability Analysis
 
-1. Fit models for multiple responses (Yield, Purity, Cost)
-2. Add each to desirability specifications
-3. Set goals (maximize, minimize, target) and weights
-4. Choose compositing method (geometric mean recommended)
-5. View **overlay contour plot** to find sweet spot
+1. Navigate to **Reliability Analysis**
+2. Enter time-to-event data with censoring indicators
+3. Fit life distributions (Weibull, lognormal, exponential)
+4. Generate Kaplan-Meier survival curves
+5. Run Cox regression with covariates -> View hazard ratios
 
-### 3. Session Management (NEW)
+### 3. Predictive Modeling Comparison
 
-1. Complete any analysis
-2. Click **Save Session** → Enter name
-3. Access saved sessions via **Sessions** button in header
-4. Load, rename, delete, or export sessions as JSON
+1. Navigate to **Predictive Modeling**
+2. Load dataset with response variable
+3. Run **Model Comparison** across all methods
+4. Compare R-squared, RMSE, MAE across models
+5. View variable importance from Random Forest
 
-### 4. Model Validation (NEW)
+### 4. Mixture Design with Ternary Plots
 
-1. Fit a model (ANOVA, Factorial, RSM, etc.)
-2. Click **Validate Model** button
-3. Review adequacy score (0-100)
-4. Check PRESS statistic and k-fold CV results
-5. Review diagnostic tests (normality, homoscedasticity)
+1. Navigate to **Mixture Design**
+2. Define 3+ components with constraints
+3. Generate extreme vertices design
+4. Fit Scheffe model to response data
+5. View **ternary contour plot** with optimal region
+
+### 5. Graph Builder
+
+1. Navigate to **Graph Builder**
+2. Load or paste data
+3. Drag columns to X, Y, Color zones (or click to assign)
+4. Select chart type (scatter, bar, box, histogram, heatmap)
+5. Customize appearance and export
+
+### 6. Linked Data Exploration
+
+1. Navigate to **Linked Explorer**
+2. Load dataset
+3. Select variables for scatter plot
+4. **Brush select** points in scatter -> See highlighting in histogram and box plot
+5. View selection statistics and filtered data table
 
 ---
 
@@ -218,6 +276,40 @@ npm run build:linux    # Linux (AppImage + deb)
 ```
 
 Output location: `dist-electron/`
+
+---
+
+## API Reference
+
+### Design Generation Endpoints
+```
+POST /api/rsm/ccd/generate
+POST /api/rsm/box-behnken/generate
+POST /api/rsm/dsd/generate
+POST /api/factorial/generate
+POST /api/custom-design/generate
+POST /api/mixture/simplex-lattice
+POST /api/mixture/extreme-vertices/generate
+```
+
+### Analysis Endpoints
+```
+POST /api/anova/analyze
+POST /api/rsm/fit-model
+POST /api/glm/fit
+POST /api/reliability/kaplan-meier
+POST /api/reliability/cox-ph
+POST /api/predictive-modeling/model-comparison
+```
+
+### Quality Control Endpoints
+```
+POST /api/quality-control/control-chart
+POST /api/quality-control/capability
+POST /api/msa/gauge-rr
+```
+
+Full API documentation available at http://localhost:8000/docs when running the backend.
 
 ---
 
@@ -284,7 +376,7 @@ https://github.com/SimiamiDrew101/MasterStat
 
 Built with:
 - **Frontend:** React, Vite, Plotly.js, TailwindCSS, Lucide Icons, Dexie.js
-- **Backend:** FastAPI, SciPy, statsmodels, pandas, NumPy, ReportLab
+- **Backend:** FastAPI, SciPy, statsmodels, pandas, NumPy, scikit-learn, lifelines, ReportLab
 - **Desktop:** Electron, electron-builder
 - **Development:** Claude Code
 
