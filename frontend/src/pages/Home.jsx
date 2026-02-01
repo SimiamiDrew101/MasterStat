@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee, Wand2, FileText, Activity, Gauge, SlidersHorizontal, Gem, GitBranch, BarChart2, Settings2, Cpu, LayoutGrid, Link2, Grid3X3 } from 'lucide-react'
+import { TrendingUp, Database, Beaker, Grid, Layers, Mountain, Network, Target, Sparkles, TestTubes, ShieldCheck, Heart, Coffee, Wand2, FileText, Activity, Gauge, SlidersHorizontal, Gem, GitBranch, BarChart2, Settings2, Cpu, LayoutGrid, Link2, Grid3X3, Clock } from 'lucide-react'
 
 const Home = () => {
   const features = [
@@ -170,6 +170,13 @@ const Home = () => {
       description: 'Latin Hypercube, Sobol, Halton sequences for computer experiments',
       path: '/space-filling',
       color: 'from-cyan-400 to-teal-600'
+    },
+    {
+      icon: <Clock className="w-12 h-12" />,
+      title: 'Time Series Analysis',
+      description: 'ARIMA modeling, seasonal decomposition, forecasting, and trend analysis',
+      path: '/time-series',
+      color: 'from-amber-400 to-orange-600'
     }
   ]
 

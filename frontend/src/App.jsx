@@ -25,6 +25,7 @@ import PredictiveModeling from './pages/PredictiveModeling'
 import GraphBuilder from './pages/GraphBuilder'
 import LinkedDataExplorer from './pages/LinkedDataExplorer'
 import SpaceFillingDesigns from './pages/SpaceFillingDesigns'
+import TimeSeriesAnalysis from './pages/TimeSeriesAnalysis'
 import SessionHistory from './components/SessionHistory'
 import { SessionProvider, useSession } from './contexts/SessionContext'
 import { Menu, X, BarChart3, History } from 'lucide-react'
@@ -61,6 +62,7 @@ function AppContent() {
     { path: '/graph-builder', label: 'Graph Builder', icon: '📊' },
     { path: '/linked-explorer', label: 'Linked Explorer', icon: '🔗' },
     { path: '/space-filling', label: 'Space-Filling Designs', icon: '🎯' },
+    { path: '/time-series', label: 'Time Series', icon: '📈' },
   ]
 
   return (
@@ -158,6 +160,7 @@ function AppContent() {
                 <Route path="/graph-builder" element={<GraphBuilder />} />
                 <Route path="/linked-explorer" element={<LinkedDataExplorer />} />
                 <Route path="/space-filling" element={<SpaceFillingDesigns />} />
+                <Route path="/time-series" element={<TimeSeriesAnalysis />} />
               </Routes>
             </div>
           </main>
